@@ -93,6 +93,11 @@ HRESULT WINAPI winwrap_UnregisterApplicationRestart(void);
 // --- Fibers ----------------------------------------------------------------
 // Vista+. XP has fibers, just not these two on top of them.
 LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags);
+LPVOID WINAPI winwrap_CreateFiberEx(SIZE_T dwStackCommitSize,
+                                    SIZE_T dwStackReserveSize,
+                                    DWORD dwFlags,
+                                    LPFIBER_START_ROUTINE lpStartAddress,
+                                    LPVOID lpParameter);
 BOOL WINAPI winwrap_IsThreadAFiber(void);
 
 // --- Condition variables ---------------------------------------------------

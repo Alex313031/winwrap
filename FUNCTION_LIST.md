@@ -21,7 +21,8 @@ exactly where the line falls.
 | `GetErrorMode` | kernel32 | Vista | Read from the process information NT already keeps, with the low bit inverted |
 | `RegisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`; XP has no Restart Manager |
 | `UnregisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`, to agree with its other half |
-| `ConvertThreadToFiberEx` | kernel32 | Vista | Forwards to `ConvertThreadToFiber`; `FIBER_FLAG_FLOAT_SWITCH` is accepted and ignored |
+| `ConvertThreadToFiberEx` | kernel32 | Vista | Defers to the real one where it exists; otherwise `ConvertThreadToFiber`, dropping `FIBER_FLAG_FLOAT_SWITCH` |
+| `CreateFiberEx` | kernel32 | XP (flag: Vista) | Present on XP but refuses `FIBER_FLAG_FLOAT_SWITCH`; retried without it rather than failing |
 | `IsThreadAFiber` | kernel32 | Vista | Tests the TEB field `GetCurrentFiber()` reads against the 0x1E00 non-fiber sentinel |
 | `InitializeConditionVariable` | kernel32 | Vista | No state: the variable's address is the parking-lot key, so the word stays zero |
 | `SleepConditionVariableCS` | kernel32 | Vista | Queues before releasing the lock, which is what makes the wake-up unlosable |

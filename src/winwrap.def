@@ -26,6 +26,7 @@ EXPORTS
     RegisterApplicationRestart = winwrap_RegisterApplicationRestart
     UnregisterApplicationRestart = winwrap_UnregisterApplicationRestart
     ConvertThreadToFiberEx = winwrap_ConvertThreadToFiberEx
+    CreateFiberEx = winwrap_CreateFiberEx
     IsThreadAFiber = winwrap_IsThreadAFiber
     InitializeConditionVariable = winwrap_InitializeConditionVariable
     SleepConditionVariableCS = winwrap_SleepConditionVariableCS

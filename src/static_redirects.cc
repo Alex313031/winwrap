@@ -76,6 +76,7 @@ WINWRAP_REDIRECT(RegisterApplicationRestart, 8);
 WINWRAP_REDIRECT(UnregisterApplicationRestart, 0);
 
 WINWRAP_REDIRECT(ConvertThreadToFiberEx, 8);
+WINWRAP_REDIRECT(CreateFiberEx, 20);
 WINWRAP_REDIRECT(IsThreadAFiber, 0);
 
 WINWRAP_REDIRECT(InitializeConditionVariable, 4);
