@@ -65,6 +65,12 @@ WINWRAP_REDIRECT(ReleaseSRWLockExclusive, 4);
 WINWRAP_REDIRECT(AcquireSRWLockShared, 4);
 WINWRAP_REDIRECT(ReleaseSRWLockShared, 4);
 
+WINWRAP_REDIRECT(GetQueuedCompletionStatusEx, 24);
+WINWRAP_REDIRECT(SetFileCompletionNotificationModes, 8);
+
+WINWRAP_REDIRECT(CancelIoEx, 8);
+WINWRAP_REDIRECT(CancelSynchronousIo, 4);
+
 WINWRAP_REDIRECT(InitializeCriticalSectionEx, 12);
 
 WINWRAP_REDIRECT(FlsAlloc, 4);

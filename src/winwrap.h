@@ -46,6 +46,32 @@ BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                         PVOID Parameter,
                                         LPVOID* Context);
 
+// --- I/O completion ports --------------------------------------------------
+// Both Vista+. OVERLAPPED_ENTRY needs no declaration here: minwinbase.h
+// defines it next to OVERLAPPED with no version gate at all, so it is present
+// even at NTDDI_WINXPSP3. Only the skip flags are gated.
+#if !defined(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)
+#define FILE_SKIP_COMPLETION_PORT_ON_SUCCESS 0x1
+#define FILE_SKIP_SET_EVENT_ON_HANDLE 0x2
+#endif
+
+BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(
+    HANDLE CompletionPort,
+    LPOVERLAPPED_ENTRY lpCompletionPortEntries,
+    ULONG ulCount,
+    PULONG ulNumEntriesRemoved,
+    DWORD dwMilliseconds,
+    BOOL fAlertable);
+BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle,
+                                                       UCHAR Flags);
+
+// --- I/O cancellation ------------------------------------------------------
+// Both Vista+, and both exist to cancel I/O issued by another thread, which XP
+// cannot do at all. CancelIoEx is best effort through CancelIo;
+// CancelSynchronousIo always fails. See cancel_io.cc.
+BOOL WINAPI winwrap_CancelIoEx(HANDLE hFile, LPOVERLAPPED lpOverlapped);
+BOOL WINAPI winwrap_CancelSynchronousIo(HANDLE hThread);
+
 // --- Critical sections -----------------------------------------------------
 // InitializeCriticalSectionEx: Vista+. The SDK hides the flag below 0x0600.
 #if !defined(CRITICAL_SECTION_NO_DEBUG_INFO)

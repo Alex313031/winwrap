@@ -9,6 +9,10 @@ exactly where the line falls.
 
 | Function | DLL | Native since | Notes |
 |---|---|---|---|
+| `CancelIoEx` | kernel32 | Vista | Best effort via `CancelIo`: same-thread only, and cannot target one request |
+| `CancelSynchronousIo` | kernel32 | Vista | Always fails with `ERROR_NOT_FOUND`; cross-thread by definition, impossible on XP |
+| `GetQueuedCompletionStatusEx` | kernel32 | Vista | `GetQueuedCompletionStatus` in a loop; `fAlertable` ignored, no alertable form exists |
+| `SetFileCompletionNotificationModes` | kernel32 | Vista | Always fails with `ERROR_INVALID_FUNCTION`; no XP equivalent. See the libuv note below |
 | `GetTickCount64` | kernel32 | Vista | Built on the 32-bit counter plus a wrap extension |
 | `InitializeCriticalSectionEx` | kernel32 | Vista | Forwards to `InitializeCriticalSectionAndSpinCount`, flag folded into the spin count |
 | `InitOnceExecuteOnce` | kernel32 | Vista | Tagged-pointer state machine. libuv's `uv_once()` is built directly on this |
@@ -33,6 +37,18 @@ expects each fiber to see its own FLS values will not get that. Neither
 Chromium nor the CRT does this, and faking it would mean intercepting the whole
 fiber API.
 
+### SetFileCompletionNotificationModes needs a libuv patch
+
+Reporting success would be far worse than failing. libuv would set
+`UV_HANDLE_SYNC_BYPASS_IOCP` and stop expecting a completion packet for a
+synchronous read, while XP keeps posting one, so every such read is processed
+twice. Failing is the honest answer.
+
+libuv's UDP path already tolerates it, skipping the optimisation when the error
+is `ERROR_INVALID_FUNCTION` -- which is why that is the code returned. Its TCP
+path does not: `uv__tcp_set_socket()` returns the error and fails socket
+creation outright, so it needs a patch to behave like the UDP path.
+
 ### The SRWLOCK family is all-or-nothing
 
 Do not redirect part of it. Vista exports everything except the two
@@ -55,7 +71,6 @@ observe.
 |---|---|
 | Condition variables | `InitializeConditionVariable`, `SleepConditionVariableCS`, `SleepConditionVariableSRW`, `WakeConditionVariable`, `WakeAllConditionVariable` |
 | File information | `GetFileInformationByHandleEx`, `SetFileInformationByHandle`, `GetFinalPathNameByHandleW`, `ReOpenFile` |
-| I/O | `CancelIoEx`, `CancelSynchronousIo`, `GetQueuedCompletionStatusEx`, `SetFileCompletionNotificationModes` |
 | Fibers | `ConvertThreadToFiberEx`, `IsThreadAFiber` |
 | Locale and string | `CompareStringOrdinal`, `GetLocaleInfoEx` |
 | Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |

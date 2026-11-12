@@ -17,9 +17,11 @@ assert(is_win || target_os == "win", "winwrap only has a reason to exist on Wind
 # to load on XP before any of this runs.
 _winwrap_sources = [
   "src/app_user_model_id.cc",
+  "src/cancel_io.cc",
   "src/critical_section.cc",
   "src/fls.cc",
   "src/init_once.cc",
+  "src/io_completion.cc",
   "src/parking_lot.cc",
   "src/parking_lot.h",
   "src/srwlock.cc",
@@ -38,7 +40,14 @@ config("winwrap_public_config") {
 config("winwrap_internal_config") {
   cflags = [
     "-U_WIN32_WINNT", # Must undef first to avoid redefinition errors.
-    "-D_WIN32_WINNT=0x0501" # XP, for winwrap's own sources only.
+    "-D_WIN32_WINNT=0x0501", # XP, for winwrap's own sources only.
+
+    # NTDDI_VERSION as well, or the guardrail only half works: plenty of SDK
+    # headers gate on NTDDI_VERSION rather than _WIN32_WINNT, so lowering one
+    # and not the other still exposes post-XP declarations. OVERLAPPED_ENTRY
+    # is one such -- visible at _WIN32_WINNT=0x0501 until this was added.
+    "-UNTDDI_VERSION",
+    "-DNTDDI_VERSION=0x05010300", # NTDDI_WINXPSP3
   ]
 
   # winwrap is a C++17 project. Chromium builds at a newer standard, and the
