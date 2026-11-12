@@ -18,6 +18,7 @@ assert(is_win || target_os == "win", "winwrap only has a reason to exist on Wind
 _winwrap_sources = [
   "src/app_user_model_id.cc",
   "src/cancel_io.cc",
+  "src/condition_variable.cc",
   "src/critical_section.cc",
   "src/fls.cc",
   "src/init_once.cc",

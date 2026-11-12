@@ -94,19 +94,43 @@ void NTAPI OnThreadEvent(PVOID, DWORD reason, PVOID) {
   }
 }
 
+// Unlinks `waiter` if it is still queued. Caller holds the bucket.
+bool RemoveIfQueued(Bucket* bucket, Waiter* waiter) {
+  Waiter* prev = nullptr;
+  for (Waiter* node = bucket->head; node; node = node->next) {
+    if (node == waiter) {
+      if (prev) {
+        prev->next = node->next;
+      } else {
+        bucket->head = node->next;
+      }
+      if (bucket->tail == node) {
+        bucket->tail = prev;
+      }
+      return true;
+    }
+    prev = node;
+  }
+  return false;
+}
+
 }  // namespace
 
-bool Park(const void* address, Queue queue, bool (*validate)(void* context),
-          void* context) {
+ParkResult Park(const void* address,
+                Queue queue,
+                bool (*validate)(void* context),
+                void (*before_sleep)(void* context),
+                void* context,
+                DWORD timeout_ms) {
   Bucket* bucket = BucketFor(address);
   HANDLE event = ThreadEvent();
 
   Waiter waiter = {nullptr, address, queue, event};
 
   ::EnterCriticalSection(&bucket->lock);
-  if (!validate(context)) {
+  if (validate && !validate(context)) {
     ::LeaveCriticalSection(&bucket->lock);
-    return false;
+    return ParkResult::kDeclined;
   }
   // Appended, so waiters of one class are woken oldest first. Not a fairness
   // guarantee -- a thread that has not parked can still take the lock first,
@@ -120,25 +144,47 @@ bool Park(const void* address, Queue queue, bool (*validate)(void* context),
   bucket->tail = &waiter;
   ::LeaveCriticalSection(&bucket->lock);
 
+  // Queued but not yet asleep, which is the only safe moment to let go of
+  // whatever lock the caller is holding.
+  if (before_sleep) {
+    before_sleep(context);
+  }
+
+  if (::WaitForSingleObject(event, timeout_ms) == WAIT_OBJECT_0) {
+    return ParkResult::kWoken;
+  }
+
+  // The timeout expired, but an unparker may have dequeued this waiter and be
+  // about to signal it. Whether we are still queued is the authoritative
+  // answer, and the bucket lock is what makes it authoritative.
+  ::EnterCriticalSection(&bucket->lock);
+  bool still_queued = RemoveIfQueued(bucket, &waiter);
+  ::LeaveCriticalSection(&bucket->lock);
+
+  if (still_queued) {
+    return ParkResult::kTimedOut;
+  }
+
+  // Already dequeued, so a signal is on its way. Consume it, or it would be
+  // left pending on this thread's event and swallow the next park.
   ::WaitForSingleObject(event, INFINITE);
-  return true;
+  return ParkResult::kWoken;
 }
 
-void Unpark(const void* address, Queue queue,
+void Unpark(const void* address,
+            Queue queue,
+            size_t max_to_wake,
             void (*on_dequeued)(void* context, size_t woken, bool any_left),
             void* context) {
   Bucket* bucket = BucketFor(address);
 
-  // At most one for kExclusive; kShared wakes every reader, and the count is
-  // bounded by the threads that exist, so collect handles on the way through
-  // and signal them after the bucket is free. Signalling under the lock would
-  // hand a woken thread a bucket it immediately needs.
-  constexpr size_t kInlineWakes = 16;
-  HANDLE inline_events[kInlineWakes];
-  HANDLE* events = inline_events;
-  size_t capacity = kInlineWakes;
+  // Dequeued waiters are moved onto a local chain and signalled after the
+  // bucket is free; signalling under it would hand a woken thread a lock it
+  // may immediately want back. The chain reuses the nodes' own next pointers,
+  // so a broadcast to any number of waiters costs no allocation.
+  Waiter* wake_head = nullptr;
+  Waiter** wake_tail = &wake_head;
   size_t woken = 0;
-  bool overflowed = false;
 
   ::EnterCriticalSection(&bucket->lock);
 
@@ -146,18 +192,8 @@ void Unpark(const void* address, Queue queue,
   Waiter* node = bucket->head;
   while (node) {
     Waiter* next = node->next;
-    bool take = node->address == address && node->queue == queue &&
-                (queue == Queue::kShared || woken == 0);
-    if (take) {
-      if (woken == capacity) {
-        // More readers than fit inline. Rather than allocate while holding a
-        // bucket -- which could reenter the allocator's own locks -- stop
-        // here and let the remaining readers be woken by whoever releases
-        // next; any_left below reports them, so the bit stays set.
-        overflowed = true;
-        break;
-      }
-      events[woken++] = node->event;
+    if (node->address == address && node->queue == queue &&
+        woken < max_to_wake) {
       if (prev) {
         prev->next = next;
       } else {
@@ -166,19 +202,21 @@ void Unpark(const void* address, Queue queue,
       if (bucket->tail == node) {
         bucket->tail = prev;
       }
+      *wake_tail = node;
+      wake_tail = &node->next;
+      ++woken;
     } else {
       prev = node;
     }
     node = next;
   }
+  *wake_tail = nullptr;
 
-  bool any_left = overflowed;
-  if (!any_left) {
-    for (Waiter* n = bucket->head; n; n = n->next) {
-      if (n->address == address && n->queue == queue) {
-        any_left = true;
-        break;
-      }
+  bool any_left = false;
+  for (Waiter* n = bucket->head; n; n = n->next) {
+    if (n->address == address && n->queue == queue) {
+      any_left = true;
+      break;
     }
   }
 
@@ -187,8 +225,14 @@ void Unpark(const void* address, Queue queue,
   }
   ::LeaveCriticalSection(&bucket->lock);
 
-  for (size_t i = 0; i < woken; ++i) {
-    ::SetEvent(events[i]);
+  // A waiter's node lives on its own stack, so it can cease to exist the
+  // instant its event is signalled. Read everything needed out of the node
+  // before signalling it.
+  for (Waiter* n = wake_head; n;) {
+    Waiter* next = n->next;
+    HANDLE event = n->event;
+    n = next;
+    ::SetEvent(event);
   }
 }
 

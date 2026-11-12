@@ -167,7 +167,7 @@ bool LcidForName(LPCWSTR name, LCID* out) {
   if (found) {
     *out = g_found_lcid;
 
-    int i = 0;
+    size_t i = 0;
     for (; name[i] && i < ARRAYSIZE(g_cached_name) - 1; ++i) {
       g_cached_name[i] = name[i];
     }

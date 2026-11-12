@@ -13,6 +13,11 @@ EXPORTS
     DllGetVersion
     GetTickCount64 = winwrap_GetTickCount64
     InitOnceExecuteOnce = winwrap_InitOnceExecuteOnce
+    InitializeConditionVariable = winwrap_InitializeConditionVariable
+    SleepConditionVariableCS = winwrap_SleepConditionVariableCS
+    SleepConditionVariableSRW = winwrap_SleepConditionVariableSRW
+    WakeConditionVariable = winwrap_WakeConditionVariable
+    WakeAllConditionVariable = winwrap_WakeAllConditionVariable
     InitializeSRWLock = winwrap_InitializeSRWLock
     AcquireSRWLockExclusive = winwrap_AcquireSRWLockExclusive
     ReleaseSRWLockExclusive = winwrap_ReleaseSRWLockExclusive

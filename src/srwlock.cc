@@ -40,6 +40,7 @@
 
 namespace {
 
+using winwrap::kWakeAll;
 using winwrap::Park;
 using winwrap::Queue;
 using winwrap::Unpark;
@@ -114,7 +115,7 @@ void WakeNext(PSRWLOCK lock) {
 
   if (value & kWritersWaiting) {
     WakeContext wake = {lock, kWritersWaiting, 0};
-    Unpark(lock, Queue::kExclusive, &OnDequeued, &wake);
+    Unpark(lock, Queue::kExclusive, 1, &OnDequeued, &wake);
     if (wake.woken) {
       return;
     }
@@ -126,7 +127,7 @@ void WakeNext(PSRWLOCK lock) {
 
   if (value & kReadersWaiting) {
     WakeContext wake = {lock, kReadersWaiting, 0};
-    Unpark(lock, Queue::kShared, &OnDequeued, &wake);
+    Unpark(lock, Queue::kShared, kWakeAll, &OnDequeued, &wake);
   }
 }
 
@@ -167,7 +168,8 @@ VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
       continue;
     }
 
-    Park(SRWLock, Queue::kExclusive, &ValidateExclusive, SRWLock);
+    Park(SRWLock, Queue::kExclusive, &ValidateExclusive, nullptr, SRWLock,
+         INFINITE);
     spins = 0;
   }
 }
@@ -208,7 +210,7 @@ VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
       continue;
     }
 
-    Park(SRWLock, Queue::kShared, &ValidateShared, SRWLock);
+    Park(SRWLock, Queue::kShared, &ValidateShared, nullptr, SRWLock, INFINITE);
     spins = 0;
   }
 }

@@ -39,6 +39,25 @@ VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
+// --- Condition variables ---------------------------------------------------
+// Vista+. CONDITION_VARIABLE and the lockmode flag are not version-gated --
+// only the functions are -- so only these declarations are needed.
+VOID WINAPI winwrap_InitializeConditionVariable(
+    PCONDITION_VARIABLE ConditionVariable);
+BOOL WINAPI winwrap_SleepConditionVariableCS(
+    PCONDITION_VARIABLE ConditionVariable,
+    PCRITICAL_SECTION CriticalSection,
+    DWORD dwMilliseconds);
+BOOL WINAPI winwrap_SleepConditionVariableSRW(
+    PCONDITION_VARIABLE ConditionVariable,
+    PSRWLOCK SRWLock,
+    DWORD dwMilliseconds,
+    ULONG Flags);
+VOID WINAPI winwrap_WakeConditionVariable(
+    PCONDITION_VARIABLE ConditionVariable);
+VOID WINAPI winwrap_WakeAllConditionVariable(
+    PCONDITION_VARIABLE ConditionVariable);
+
 // --- One-time initialisation -----------------------------------------------
 // InitOnceExecuteOnce: Vista+. libuv's uv_once() is built directly on this.
 BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,

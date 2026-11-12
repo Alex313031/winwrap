@@ -9,6 +9,11 @@ exactly where the line falls.
 
 | Function | DLL | Native since | Notes |
 |---|---|---|---|
+| `InitializeConditionVariable` | kernel32 | Vista | No state: the variable's address is the parking-lot key, so the word stays zero |
+| `SleepConditionVariableCS` | kernel32 | Vista | Queues before releasing the lock, which is what makes the wake-up unlosable |
+| `SleepConditionVariableSRW` | kernel32 | Vista | Honours `CONDITION_VARIABLE_LOCKMODE_SHARED`; re-acquires in the same mode |
+| `WakeConditionVariable` | kernel32 | Vista | |
+| `WakeAllConditionVariable` | kernel32 | Vista | |
 | `CompareStringOrdinal` | kernel32 | Vista | Written out; binary comparison is not something `CompareStringW` can be asked for |
 | `GetLocaleInfoEx` | kernel32 | Vista | Resolves the locale name to an LCID by enumeration, then `GetLocaleInfoW` |
 | `CancelIoEx` | kernel32 | Vista | Best effort via `CancelIo`: same-thread only, and cannot target one request |
@@ -71,7 +76,6 @@ observe.
 
 | Group | Functions |
 |---|---|
-| Condition variables | `InitializeConditionVariable`, `SleepConditionVariableCS`, `SleepConditionVariableSRW`, `WakeConditionVariable`, `WakeAllConditionVariable` |
 | File information | `GetFileInformationByHandleEx`, `SetFileInformationByHandle`, `GetFinalPathNameByHandleW`, `ReOpenFile` |
 | Fibers | `ConvertThreadToFiberEx`, `IsThreadAFiber` |
 | Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |

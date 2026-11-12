@@ -59,6 +59,12 @@
 WINWRAP_REDIRECT(GetTickCount64, 0);
 WINWRAP_REDIRECT(InitOnceExecuteOnce, 16);
 
+WINWRAP_REDIRECT(InitializeConditionVariable, 4);
+WINWRAP_REDIRECT(SleepConditionVariableCS, 12);
+WINWRAP_REDIRECT(SleepConditionVariableSRW, 16);
+WINWRAP_REDIRECT(WakeConditionVariable, 4);
+WINWRAP_REDIRECT(WakeAllConditionVariable, 4);
+
 WINWRAP_REDIRECT(InitializeSRWLock, 4);
 WINWRAP_REDIRECT(AcquireSRWLockExclusive, 4);
 WINWRAP_REDIRECT(ReleaseSRWLockExclusive, 4);
