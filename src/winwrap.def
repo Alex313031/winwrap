@@ -23,6 +23,8 @@ EXPORTS
     GetNamedPipeServerProcessId = winwrap_GetNamedPipeServerProcessId
     GetCurrentProcessorNumber = winwrap_GetCurrentProcessorNumber
     GetErrorMode = winwrap_GetErrorMode
+    SetProcessDPIAware = winwrap_SetProcessDPIAware
+    RegGetValueW = winwrap_RegGetValueW
     RegisterApplicationRestart = winwrap_RegisterApplicationRestart
     UnregisterApplicationRestart = winwrap_UnregisterApplicationRestart
     ConvertThreadToFiberEx = winwrap_ConvertThreadToFiberEx

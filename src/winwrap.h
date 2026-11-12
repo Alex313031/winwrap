@@ -18,7 +18,7 @@
 // signature of the function it stands in for, so the redirect in
 // static_redirects.cc is a plain assignment with no casting.
 
-#include <windows.h>
+#include "framework.h"
 
 #include "winwrap_version.h"
 
@@ -82,10 +82,27 @@ BOOL WINAPI winwrap_GetNamedPipeServerProcessId(HANDLE Pipe,
 // Server 2003+. Derived from the CPUID initial APIC ID; see threads.cc.
 DWORD WINAPI winwrap_GetCurrentProcessorNumber(void);
 
-// --- Miscellaneous ---------------------------------------------------------
-// GetErrorMode is Vista+ and fully implemented. RegisterApplicationRestart is
-// Vista+ and always fails: XP has no Restart Manager to register with.
+// --- Process-wide state ----------------------------------------------------
+// Both Vista+. GetErrorMode reads what the kernel already tracks;
+// SetProcessDPIAware reports success because XP has no DPI virtualisation to
+// opt out of. See process.cc.
 UINT WINAPI winwrap_GetErrorMode(void);
+BOOL WINAPI winwrap_SetProcessDPIAware(void);
+
+// --- Registry --------------------------------------------------------------
+// Vista+. RegQueryValueEx plus a type filter, guaranteed string termination
+// and environment expansion. See registry.cc.
+LSTATUS APIENTRY winwrap_RegGetValueW(HKEY hkey,
+                                      LPCWSTR lpSubKey,
+                                      LPCWSTR lpValue,
+                                      DWORD dwFlags,
+                                      LPDWORD pdwType,
+                                      PVOID pvData,
+                                      LPDWORD pcbData);
+
+// --- Miscellaneous ---------------------------------------------------------
+// RegisterApplicationRestart is Vista+ and always fails: XP has no Restart
+// Manager to register with.
 HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline,
                                                   DWORD dwFlags);
 HRESULT WINAPI winwrap_UnregisterApplicationRestart(void);

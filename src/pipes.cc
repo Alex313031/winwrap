@@ -45,8 +45,6 @@
 
 #include "winwrap.h"
 
-#include <winternl.h>
-
 namespace {
 
 // CTL_CODE(FILE_DEVICE_NAMED_PIPE, 14, METHOD_BUFFERED, FILE_ANY_ACCESS).

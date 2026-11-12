@@ -1,8 +1,19 @@
 #ifndef WINWRAP_WINWRAP_UNITTEST_H_
 #define WINWRAP_WINWRAP_UNITTEST_H_
 
-#include <stdio.h>
+#ifndef UNICODE
+ #define UNICODE
+#endif
+
+#ifndef _UNICODE
+ #define _UNICODE
+#endif
+
+// clang-format off
 #include <windows.h>
+
+#include <stdio.h>
+// clang-format on
 
 // inline, not an anonymous-namespace global: a second test file would
 // otherwise get its own counter and main() would report success while another

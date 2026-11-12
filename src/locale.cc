@@ -11,9 +11,6 @@
 // rather than LCID, so the work is turning one into the other, and XP has no
 // LocaleNameToLCID to do it with.
 
-#include <stdlib.h>  // wcstoul
-#include <string.h>  // wcslen
-
 #include "winwrap.h"
 
 namespace {

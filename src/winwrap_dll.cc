@@ -4,9 +4,11 @@
 
 // winwrap.dll functions
 
-#include <shlwapi.h>
-
+// clang-format off
 #include "winwrap.h"
+
+#include <shlwapi.h>
+// clang-format on
 
 extern "C" {
 

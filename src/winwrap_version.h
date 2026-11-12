@@ -13,6 +13,10 @@
  #define _UNICODE
 #endif
 
+#if defined(__clang__) && defined(_UNICODE)
+ #pragma code_page(65001) // UTF-8
+#endif
+
 // Macro to convert to string
 #if !defined(_STRINGIZER_)
  #define _STRINGIZER_
@@ -34,10 +38,10 @@
 // Adhere to semver -> semver.org
 #define WINWRAP_MAJOR_VERSION 0
 #define WINWRAP_MINOR_VERSION 2
-#define WINWRAP_BUILD_VERSION 2
+#define WINWRAP_BUILD_VERSION 3
 
 #define WINWRAP_VERSION_STRING \
-        _VERSION(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION) // e.g. L"0.1.8"
+        _VERSION(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION) // e.g. L"0.2.3"
 
 // Base name as a BARE token (not a "..." literal) so STRINGIZE can fold it
 // into the composite literals below.

@@ -5,9 +5,9 @@
 // Thread functions. Fibers live in fibers.cc; everything else thread-shaped
 // belongs here.
 
-#include "winwrap.h"
-
 #include <intrin.h>  // __cpuid
+
+#include "winwrap.h"
 
 extern "C" {
 

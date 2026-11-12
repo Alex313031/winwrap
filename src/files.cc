@@ -31,10 +31,6 @@
 // "No Target Architecture".
 #include "winwrap.h"
 
-#include <winternl.h>
-
-#include <string.h>  // wcslen, wcsncmp
-
 namespace {
 
 // NT information classes. winternl.h declares the enum but only names one
