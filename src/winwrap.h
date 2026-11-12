@@ -70,6 +70,18 @@ BOOLEAN WINAPI winwrap_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
                                            DWORD dwFlags);
 BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName);
 
+// --- Threads ---------------------------------------------------------------
+// Server 2003+. Derived from the CPUID initial APIC ID; see threads.cc.
+DWORD WINAPI winwrap_GetCurrentProcessorNumber(void);
+
+// --- Miscellaneous ---------------------------------------------------------
+// GetErrorMode is Vista+ and fully implemented. RegisterApplicationRestart is
+// Vista+ and always fails: XP has no Restart Manager to register with.
+UINT WINAPI winwrap_GetErrorMode(void);
+HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline,
+                                                  DWORD dwFlags);
+HRESULT WINAPI winwrap_UnregisterApplicationRestart(void);
+
 // --- Fibers ----------------------------------------------------------------
 // Vista+. XP has fibers, just not these two on top of them.
 LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags);

@@ -11,6 +11,14 @@ exactly where the line falls.
 |---|---|---|---|
 | `CreateSymbolicLinkW` | kernel32 | Vista | Always fails with `ERROR_NOT_SUPPORTED`; XP has no symbolic links to create |
 | `NeedCurrentDirectoryForExePathW` | kernel32 | Server 2003 | Implemented in full; the rule is `NoDefaultCurrentDirectoryInExePath` plus a backslash test |
+| `GetFileInformationByHandleEx` | kernel32 | Vista | `NtQueryInformationFile`, plus `NtQueryDirectoryFile` for the enumeration classes and a synthesised `FileIdInfo` |
+| `SetFileInformationByHandle` | kernel32 | Vista | `NtSetInformationFile`; the rename class translates its DOS path to an NT one |
+| `GetFinalPathNameByHandleW` | kernel32 | Vista | `NtQueryObject` plus a device-to-drive map. `VOLUME_NAME_DOS` and `VOLUME_NAME_NT` only |
+| `ReOpenFile` | kernel32 | Server 2003 | `NtCreateFile` relative to the original handle |
+| `GetCurrentProcessorNumber` | kernel32 | Server 2003 | From the CPUID initial APIC ID; a hint, as the real one is too |
+| `GetErrorMode` | kernel32 | Vista | Read from the process information NT already keeps, with the low bit inverted |
+| `RegisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`; XP has no Restart Manager |
+| `UnregisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`, to agree with its other half |
 | `ConvertThreadToFiberEx` | kernel32 | Vista | Forwards to `ConvertThreadToFiber`; `FIBER_FLAG_FLOAT_SWITCH` is accepted and ignored |
 | `IsThreadAFiber` | kernel32 | Vista | Tests the TEB field `GetCurrentFiber()` reads against the 0x1E00 non-fiber sentinel |
 | `InitializeConditionVariable` | kernel32 | Vista | No state: the variable's address is the parking-lot key, so the word stays zero |
@@ -40,6 +48,17 @@ exactly where the line falls.
 | `FlsSetValue` | kernel32 | Server 2003 / Vista | |
 | `GetCurrentProcessExplicitAppUserModelID` | shell32 | Windows 7 | Reports no ID set; Vista has no AppUserModelID concept to report |
 | `SetCurrentProcessExplicitAppUserModelID` | shell32 | Windows 7 | Accepts and discards, but rejects a null ID like the real one |
+
+### Not everything here succeeds
+
+Four of these cannot do what their name says on XP, and say so rather than
+pretending: `CreateSymbolicLinkW` (no symbolic links exist),
+`CancelSynchronousIo` (no way to reach another thread's synchronous I/O),
+`RegisterApplicationRestart` and `UnregisterApplicationRestart` (no Restart
+Manager), and
+`SetFileCompletionNotificationModes` for `FILE_SKIP_COMPLETION_PORT_ON_SUCCESS`
+(claiming success there invites a use-after-free). Each returns the error code
+its callers already test for, which is not the same as returning any error.
 
 ### FLS is per thread here, not per fiber
 
@@ -80,9 +99,7 @@ observe.
 
 | Group | Functions |
 |---|---|
-| File information | `GetFileInformationByHandleEx`, `SetFileInformationByHandle`, `GetFinalPathNameByHandleW`, `ReOpenFile` |
 | Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |
-| Misc | `GetCurrentProcessorNumber`, `GetErrorMode`, `RegisterApplicationRestart` |
 
 The `Fls*` set and `InitializeCriticalSectionEx`, both implemented above, are
 pulled in by the MSVC static CRT itself rather than by any application code. An
