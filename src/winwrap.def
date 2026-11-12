@@ -19,6 +19,8 @@ EXPORTS
     ReOpenFile = winwrap_ReOpenFile
     CreateSymbolicLinkW = winwrap_CreateSymbolicLinkW
     NeedCurrentDirectoryForExePathW = winwrap_NeedCurrentDirectoryForExePathW
+    GetNamedPipeClientProcessId = winwrap_GetNamedPipeClientProcessId
+    GetNamedPipeServerProcessId = winwrap_GetNamedPipeServerProcessId
     GetCurrentProcessorNumber = winwrap_GetCurrentProcessorNumber
     GetErrorMode = winwrap_GetErrorMode
     RegisterApplicationRestart = winwrap_RegisterApplicationRestart

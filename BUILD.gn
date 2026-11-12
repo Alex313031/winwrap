@@ -30,6 +30,7 @@ _winwrap_sources = [
   "src/misc.cc",
   "src/parking_lot.cc",
   "src/parking_lot.h",
+  "src/pipes.cc",
   "src/srwlock.cc",
   "src/threads.cc",
   "src/tick_count.cc",

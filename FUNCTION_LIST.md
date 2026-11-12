@@ -15,6 +15,8 @@ exactly where the line falls.
 | `SetFileInformationByHandle` | kernel32 | Vista | `NtSetInformationFile`; the rename class translates its DOS path to an NT one |
 | `GetFinalPathNameByHandleW` | kernel32 | Vista | `NtQueryObject` plus a device-to-drive map. `VOLUME_NAME_DOS` and `VOLUME_NAME_NT` only |
 | `ReOpenFile` | kernel32 | Server 2003 | `NtCreateFile` relative to the original handle |
+| `GetNamedPipeClientProcessId` | kernel32 | Vista | Asks npfs through the control code the real function uses; fails where the kernel has no answer |
+| `GetNamedPipeServerProcessId` | kernel32 | Vista | Always fails on XP: npfs records neither party and no inference is safe |
 | `GetCurrentProcessorNumber` | kernel32 | Server 2003 | From the CPUID initial APIC ID; a hint, as the real one is too |
 | `GetErrorMode` | kernel32 | Vista | Read from the process information NT already keeps, with the low bit inverted |
 | `RegisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`; XP has no Restart Manager |
@@ -57,8 +59,14 @@ pretending: `CreateSymbolicLinkW` (no symbolic links exist),
 `RegisterApplicationRestart` and `UnregisterApplicationRestart` (no Restart
 Manager), and
 `SetFileCompletionNotificationModes` for `FILE_SKIP_COMPLETION_PORT_ON_SUCCESS`
-(claiming success there invites a use-after-free). Each returns the error code
-its callers already test for, which is not the same as returning any error.
+(claiming success there invites a use-after-free), and the named-pipe process
+IDs (XP's npfs does not record who connected). Each returns the error code its
+callers already test for, which is not the same as returning any error.
+
+The named-pipe pair is the clearest case of why that matters. Mojo uses it to
+check that the process at the other end of an IPC channel is at least as
+privileged as itself; a confident wrong answer there does not degrade a
+feature, it defeats a security check.
 
 ### FLS is per thread here, not per fiber
 
@@ -99,7 +107,6 @@ observe.
 
 | Group | Functions |
 |---|---|
-| Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |
 
 The `Fls*` set and `InitializeCriticalSectionEx`, both implemented above, are
 pulled in by the MSVC static CRT itself rather than by any application code. An

@@ -70,6 +70,14 @@ BOOLEAN WINAPI winwrap_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
                                            DWORD dwFlags);
 BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName);
 
+// --- Named pipes -----------------------------------------------------------
+// Vista+. Answer only where the kernel can be made to say; see pipes.cc for
+// why no inference is attempted.
+BOOL WINAPI winwrap_GetNamedPipeClientProcessId(HANDLE Pipe,
+                                                PULONG ClientProcessId);
+BOOL WINAPI winwrap_GetNamedPipeServerProcessId(HANDLE Pipe,
+                                                PULONG ServerProcessId);
+
 // --- Threads ---------------------------------------------------------------
 // Server 2003+. Derived from the CPUID initial APIC ID; see threads.cc.
 DWORD WINAPI winwrap_GetCurrentProcessorNumber(void);

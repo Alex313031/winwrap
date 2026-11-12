@@ -67,6 +67,9 @@ WINWRAP_REDIRECT(ReOpenFile, 16);
 WINWRAP_REDIRECT(CreateSymbolicLinkW, 12);
 WINWRAP_REDIRECT(NeedCurrentDirectoryForExePathW, 4);
 
+WINWRAP_REDIRECT(GetNamedPipeClientProcessId, 8);
+WINWRAP_REDIRECT(GetNamedPipeServerProcessId, 8);
+
 WINWRAP_REDIRECT(GetCurrentProcessorNumber, 0);
 WINWRAP_REDIRECT(GetErrorMode, 0);
 WINWRAP_REDIRECT(RegisterApplicationRestart, 8);
