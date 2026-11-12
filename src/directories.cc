@@ -87,13 +87,15 @@ BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName) {
     return TRUE;
   }
 
-  // Asking for the size of a variable that does not exist returns 0, which is
-  // how presence is tested without caring about the value -- any value, empty
-  // included, turns the behaviour off.
-  return ::GetEnvironmentVariableW(L"NoDefaultCurrentDirectoryInExePath",
-                                   nullptr, 0) == 0
-             ? TRUE
-             : FALSE;
+  // Presence, not value: any value at all turns the behaviour off. The size
+  // probe alone is not enough to test it, because a variable whose value is
+  // the empty string can report a size of zero, which is also what a missing
+  // variable reports. Only the error code separates the two.
+  ::SetLastError(ERROR_SUCCESS);
+  DWORD size = ::GetEnvironmentVariableW(L"NoDefaultCurrentDirectoryInExePath",
+                                         nullptr, 0);
+  bool present = size != 0 || ::GetLastError() != ERROR_ENVVAR_NOT_FOUND;
+  return present ? FALSE : TRUE;
 }
 
 }  // extern "C"

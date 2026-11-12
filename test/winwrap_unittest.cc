@@ -21,7 +21,10 @@
 
 #include "winwrap_unittest.h"
 
-#include <stdio.h>
+// The AppUserModelID pair lives in shlobj.h, and CoTaskMemFree in objbase.h;
+// neither arrives with windows.h.
+#include <objbase.h>
+#include <shlobj.h>
 
 namespace {
 
@@ -428,6 +431,563 @@ void TestMisc() {
   }
 }
 
+
+// --- File information by handle --------------------------------------------
+
+// Makes a temp file holding `bytes` bytes. Returns the handle and writes out
+// the path.
+HANDLE MakeTempFile(wchar_t* path_out, DWORD bytes) {
+  wchar_t directory[MAX_PATH] = {};
+  if (::GetTempPathW(ARRAYSIZE(directory), directory) == 0) {
+    return INVALID_HANDLE_VALUE;
+  }
+  if (::GetTempFileNameW(directory, L"wwt", 0, path_out) == 0) {
+    return INVALID_HANDLE_VALUE;
+  }
+
+  HANDLE file = ::CreateFileW(
+      path_out, GENERIC_READ | GENERIC_WRITE | DELETE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    return file;
+  }
+  if (bytes != 0) {
+    auto* payload = static_cast<BYTE*>(
+        ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, bytes));
+    DWORD written = 0;
+    ::WriteFile(file, payload, bytes, &written, nullptr);
+    ::FlushFileBuffers(file);
+    ::HeapFree(::GetProcessHeap(), 0, payload);
+  }
+  return file;
+}
+
+void TestFileInformationQuery() {
+  ::printf("  GetFileInformationByHandleEx\n");
+
+  wchar_t path[MAX_PATH] = {};
+  HANDLE file = MakeTempFile(path, 123);
+  CHECK(file != INVALID_HANDLE_VALUE, "could not create a temp file (%lu)",
+        ::GetLastError());
+  if (file == INVALID_HANDLE_VALUE) {
+    return;
+  }
+
+  FILE_STANDARD_INFO standard = {};
+  CHECK(::GetFileInformationByHandleEx(file, FileStandardInfo, &standard,
+                                       sizeof(standard)),
+        "FileStandardInfo failed (%lu)", ::GetLastError());
+  CHECK(standard.EndOfFile.QuadPart == 123, "size is %lld, expected 123",
+        standard.EndOfFile.QuadPart);
+  CHECK(!standard.Directory, "a file reported itself as a directory");
+
+  FILE_BASIC_INFO basic = {};
+  CHECK(::GetFileInformationByHandleEx(file, FileBasicInfo, &basic,
+                                       sizeof(basic)),
+        "FileBasicInfo failed (%lu)", ::GetLastError());
+  CHECK(basic.FileAttributes != 0, "no attributes reported");
+  CHECK(basic.LastWriteTime.QuadPart != 0, "no write time reported");
+
+  // FileNameInfo is variable length and needs more than the bare struct.
+  BYTE name_buffer[sizeof(FILE_NAME_INFO) + MAX_PATH * sizeof(WCHAR)] = {};
+  auto* name = reinterpret_cast<FILE_NAME_INFO*>(name_buffer);
+  CHECK(::GetFileInformationByHandleEx(file, FileNameInfo, name,
+                                       sizeof(name_buffer)),
+        "FileNameInfo failed (%lu)", ::GetLastError());
+  CHECK(name->FileNameLength > 0, "an empty name came back");
+
+  FILE_ATTRIBUTE_TAG_INFO tag = {};
+  CHECK(::GetFileInformationByHandleEx(file, FileAttributeTagInfo, &tag,
+                                       sizeof(tag)),
+        "FileAttributeTagInfo failed (%lu)", ::GetLastError());
+  CHECK(tag.FileAttributes == basic.FileAttributes,
+        "attributes disagree between classes: %lu vs %lu", tag.FileAttributes,
+        basic.FileAttributes);
+
+  // Windows 8 added this one; below that it is assembled from the volume
+  // serial number and the index number, both of which must be populated.
+  FILE_ID_INFO id = {};
+  if (::GetFileInformationByHandleEx(file, FileIdInfo, &id, sizeof(id))) {
+    CHECK(id.VolumeSerialNumber != 0, "a zero volume serial number");
+    bool any = false;
+    for (size_t i = 0; i < sizeof(id.FileId.Identifier); ++i) {
+      any = any || id.FileId.Identifier[i] != 0;
+    }
+    CHECK(any, "an all-zero file ID");
+  } else {
+    ::printf("    FileIdInfo unavailable (%lu)\n", ::GetLastError());
+  }
+
+  // A buffer too small to hold the answer, and a class that does not exist.
+  // Both must be refused rather than half-filled.
+  BYTE tiny[2] = {};
+  CHECK(!::GetFileInformationByHandleEx(file, FileStandardInfo, tiny,
+                                        sizeof(tiny)),
+        "an undersized buffer was accepted");
+  CHECK(!::GetFileInformationByHandleEx(
+            file, static_cast<FILE_INFO_BY_HANDLE_CLASS>(99), &standard,
+            sizeof(standard)),
+        "an unknown information class was accepted");
+  CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
+        "unknown class gave error %lu, expected ERROR_INVALID_PARAMETER",
+        ::GetLastError());
+
+  ::CloseHandle(file);
+  ::DeleteFileW(path);
+}
+
+void TestFileInformationSet() {
+  ::printf("  SetFileInformationByHandle\n");
+
+  wchar_t path[MAX_PATH] = {};
+  HANDLE file = MakeTempFile(path, 500);
+  if (file == INVALID_HANDLE_VALUE) {
+    CHECK(false, "could not create a temp file (%lu)", ::GetLastError());
+    return;
+  }
+
+  FILE_END_OF_FILE_INFO eof = {};
+  eof.EndOfFile.QuadPart = 10;
+  CHECK(::SetFileInformationByHandle(file, FileEndOfFileInfo, &eof,
+                                     sizeof(eof)),
+        "FileEndOfFileInfo failed (%lu)", ::GetLastError());
+  FILE_STANDARD_INFO standard = {};
+  ::GetFileInformationByHandleEx(file, FileStandardInfo, &standard,
+                                 sizeof(standard));
+  CHECK(standard.EndOfFile.QuadPart == 10, "truncation left %lld bytes",
+        standard.EndOfFile.QuadPart);
+
+  FILE_BASIC_INFO basic = {};
+  ::GetFileInformationByHandleEx(file, FileBasicInfo, &basic, sizeof(basic));
+  basic.FileAttributes = FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_TEMPORARY;
+  CHECK(::SetFileInformationByHandle(file, FileBasicInfo, &basic,
+                                     sizeof(basic)),
+        "FileBasicInfo set failed (%lu)", ::GetLastError());
+
+  CHECK(!::SetFileInformationByHandle(
+            file, static_cast<FILE_INFO_BY_HANDLE_CLASS>(99), &basic,
+            sizeof(basic)),
+        "an unknown set class was accepted");
+
+  // Delete-on-close through the disposition class, which is what libuv's
+  // process code uses to discard a crash dump it could not finish writing.
+  FILE_DISPOSITION_INFO disposition = {};
+  disposition.DeleteFile = TRUE;
+  CHECK(::SetFileInformationByHandle(file, FileDispositionInfo, &disposition,
+                                     sizeof(disposition)),
+        "FileDispositionInfo failed (%lu)", ::GetLastError());
+  ::CloseHandle(file);
+  CHECK(::GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES,
+        "the file survived a delete-on-close disposition");
+  ::DeleteFileW(path);
+}
+
+void TestFinalPathAndReOpen() {
+  ::printf("  GetFinalPathNameByHandleW, ReOpenFile\n");
+
+  wchar_t path[MAX_PATH] = {};
+  HANDLE file = MakeTempFile(path, 8);
+  if (file == INVALID_HANDLE_VALUE) {
+    CHECK(false, "could not create a temp file (%lu)", ::GetLastError());
+    return;
+  }
+
+  // The documented two-call shape: with no buffer it returns the length
+  // including the terminator, and callers size their buffer from that.
+  DWORD needed = ::GetFinalPathNameByHandleW(file, nullptr, 0, VOLUME_NAME_DOS);
+  CHECK(needed > 0, "length probe failed (%lu)", ::GetLastError());
+  if (needed > 0) {
+    auto* buffer = static_cast<wchar_t*>(::HeapAlloc(
+        ::GetProcessHeap(), HEAP_ZERO_MEMORY, (needed + 1) * sizeof(wchar_t)));
+    DWORD written =
+        ::GetFinalPathNameByHandleW(file, buffer, needed, VOLUME_NAME_DOS);
+    CHECK(written > 0 && written < needed,
+          "second call returned %lu against a probe of %lu", written, needed);
+    CHECK(::wcsncmp(buffer, L"\\\\?\\", 4) == 0,
+          "the DOS form is not prefixed with \\\\?\\: \"%ls\"", buffer);
+    ::printf("    final path: %ls\n", buffer);
+    ::HeapFree(::GetProcessHeap(), 0, buffer);
+  }
+
+  wchar_t nt_path[1024] = {};
+  DWORD nt_written = ::GetFinalPathNameByHandleW(
+      file, nt_path, ARRAYSIZE(nt_path), VOLUME_NAME_NT);
+  CHECK(nt_written > 0, "VOLUME_NAME_NT failed (%lu)", ::GetLastError());
+  if (nt_written > 0) {
+    CHECK(nt_path[0] == L'\\', "an NT path not starting with a separator");
+  }
+
+  HANDLE reopened = ::ReOpenFile(
+      file, FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0);
+  CHECK(reopened != INVALID_HANDLE_VALUE, "ReOpenFile on a file failed (%lu)",
+        ::GetLastError());
+  if (reopened != INVALID_HANDLE_VALUE) {
+    ::CloseHandle(reopened);
+  }
+
+  ::CloseHandle(file);
+  ::DeleteFileW(path);
+
+  // A directory, which is the case that breaks if the implementation forbids
+  // directories outright. FILE_FLAG_BACKUP_SEMANTICS is how a caller says the
+  // handle might be one, and libuv depends on it to reopen a directory for
+  // FILE_WRITE_ATTRIBUTES.
+  wchar_t directory[MAX_PATH] = {};
+  ::GetTempPathW(ARRAYSIZE(directory), directory);
+  HANDLE dir = ::CreateFileW(
+      directory, FILE_READ_ATTRIBUTES,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+      OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+  if (dir != INVALID_HANDLE_VALUE) {
+    HANDLE dir_again = ::ReOpenFile(
+        dir, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_FLAG_BACKUP_SEMANTICS);
+    CHECK(dir_again != INVALID_HANDLE_VALUE,
+          "ReOpenFile could not reopen a directory (%lu)", ::GetLastError());
+    if (dir_again != INVALID_HANDLE_VALUE) {
+      ::CloseHandle(dir_again);
+    }
+    ::CloseHandle(dir);
+  }
+}
+
+// --- Named pipes -----------------------------------------------------------
+
+void TestNamedPipes() {
+  ::printf("  Named pipe process IDs\n");
+
+  wchar_t name[128] = {};
+  ::wsprintfW(name, L"\\\\.\\pipe\\winwrap-test-%lu", ::GetCurrentProcessId());
+
+  HANDLE server =
+      ::CreateNamedPipeW(name, PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT,
+                         1, 512, 512, 0, nullptr);
+  CHECK(server != INVALID_HANDLE_VALUE, "CreateNamedPipeW failed (%lu)",
+        ::GetLastError());
+  if (server == INVALID_HANDLE_VALUE) {
+    return;
+  }
+
+  HANDLE client = ::CreateFileW(name, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                                OPEN_EXISTING, 0, nullptr);
+  CHECK(client != INVALID_HANDLE_VALUE, "connecting to the pipe failed (%lu)",
+        ::GetLastError());
+
+  // Both ends belong to this process, so any answer at all must be this
+  // process. Where the information is unavailable the call has to fail
+  // cleanly rather than invent one: a wrong process ID here would defeat the
+  // privilege check Mojo builds on top of it.
+  const DWORD self = ::GetCurrentProcessId();
+  ULONG pid = 0;
+  if (::GetNamedPipeServerProcessId(server, &pid)) {
+    CHECK(pid == self, "server process ID is %lu, expected %lu", pid, self);
+  } else {
+    CHECK(::GetLastError() == ERROR_NOT_SUPPORTED,
+          "server ID failed with %lu, expected ERROR_NOT_SUPPORTED",
+          ::GetLastError());
+    ::printf("    peer process IDs unavailable, as expected before Vista\n");
+  }
+
+  if (client != INVALID_HANDLE_VALUE) {
+    pid = 0;
+    if (::GetNamedPipeClientProcessId(server, &pid)) {
+      CHECK(pid == self, "client process ID is %lu, expected %lu", pid, self);
+    } else {
+      CHECK(::GetLastError() == ERROR_NOT_SUPPORTED,
+            "client ID failed with %lu, expected ERROR_NOT_SUPPORTED",
+            ::GetLastError());
+    }
+    ::CloseHandle(client);
+  }
+
+  CHECK(!::GetNamedPipeServerProcessId(server, nullptr),
+        "a null out parameter was accepted");
+  CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
+        "a null out parameter gave %lu", ::GetLastError());
+
+  ::CloseHandle(server);
+}
+
+// --- Threads, error mode, restart ------------------------------------------
+
+void TestProcessorNumber() {
+  ::printf("  GetCurrentProcessorNumber\n");
+
+  SYSTEM_INFO info = {};
+  ::GetSystemInfo(&info);
+
+  // Pinning the thread makes the answer stable, which is the only property
+  // worth asserting: the numbering itself comes from firmware.
+  DWORD_PTR previous = ::SetThreadAffinityMask(::GetCurrentThread(), 1);
+  DWORD first = ::GetCurrentProcessorNumber();
+  DWORD second = ::GetCurrentProcessorNumber();
+  if (previous != 0) {
+    ::SetThreadAffinityMask(::GetCurrentThread(), previous);
+  }
+
+  CHECK(first == second, "pinned to one processor but reported %lu then %lu",
+        first, second);
+  ::printf("    reported processor %lu of %lu\n", first,
+           info.dwNumberOfProcessors);
+  if (first >= info.dwNumberOfProcessors) {
+    // Not a failure: the APIC IDs this derives from need not be dense.
+    ::printf("    note: above the processor count, so IDs are sparse here\n");
+  }
+}
+
+void TestErrorModeAndRestart() {
+  ::printf("  GetErrorMode, RegisterApplicationRestart\n");
+
+  const UINT original = ::GetErrorMode();
+
+  // A round trip through SetErrorMode is what catches an inverted bit, which
+  // is the one way this is easy to get wrong.
+  const UINT wanted = SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX;
+  ::SetErrorMode(wanted);
+  CHECK(::GetErrorMode() == wanted, "set %#x, read back %#x", wanted,
+        ::GetErrorMode());
+
+  ::SetErrorMode(SEM_NOOPENFILEERRORBOX);
+  CHECK(::GetErrorMode() == SEM_NOOPENFILEERRORBOX, "set %#x, read back %#x",
+        SEM_NOOPENFILEERRORBOX, ::GetErrorMode());
+
+  ::SetErrorMode(0);
+  CHECK(::GetErrorMode() == 0u, "set 0, read back %#x", ::GetErrorMode());
+
+  ::SetErrorMode(original);
+
+  HRESULT hr = ::RegisterApplicationRestart(L"--restarted", 0);
+  CHECK(FAILED(hr), "RegisterApplicationRestart reported success (%#lx)", hr);
+  hr = ::UnregisterApplicationRestart();
+  CHECK(FAILED(hr), "UnregisterApplicationRestart reported success (%#lx)", hr);
+}
+
+// --- Directories -----------------------------------------------------------
+
+void TestDirectories() {
+  ::printf("  CreateSymbolicLinkW, NeedCurrentDirectoryForExePathW\n");
+
+  wchar_t directory[MAX_PATH] = {};
+  ::GetTempPathW(ARRAYSIZE(directory), directory);
+  wchar_t link[MAX_PATH] = {};
+  ::wsprintfW(link, L"%swinwrap-link-%lu", directory, ::GetCurrentProcessId());
+
+  if (::CreateSymbolicLinkW(link, directory, SYMBOLIC_LINK_FLAG_DIRECTORY)) {
+    ::printf("    symbolic links are available here\n");
+    ::RemoveDirectoryW(link);
+  } else {
+    ::printf("    symbolic link refused (%lu), as expected without support\n",
+             ::GetLastError());
+  }
+
+  // A name that already carries a path never consults the environment.
+  CHECK(::NeedCurrentDirectoryForExePathW(L"dir\\program.exe"),
+        "a path-qualified name was refused the current directory");
+
+  const wchar_t kVariable[] = L"NoDefaultCurrentDirectoryInExePath";
+  const bool had = ::GetEnvironmentVariableW(kVariable, nullptr, 0) != 0;
+
+  ::SetEnvironmentVariableW(kVariable, nullptr);
+  CHECK(::NeedCurrentDirectoryForExePathW(L"program.exe"),
+        "the current directory was refused with the variable unset");
+
+  ::SetEnvironmentVariableW(kVariable, L"1");
+  CHECK(!::NeedCurrentDirectoryForExePathW(L"program.exe"),
+        "the current directory was allowed with the variable set");
+  CHECK(::NeedCurrentDirectoryForExePathW(L"dir\\program.exe"),
+        "a path-qualified name was affected by the variable");
+
+  // Any value counts as set, including an empty one -- but only if the system
+  // kept the variable at all. Setting an environment variable to an empty
+  // string removes it outright on some Windows versions, which would make this
+  // a test of SetEnvironmentVariableW rather than of the function under test,
+  // so check the premise before asserting on it.
+  ::SetEnvironmentVariableW(kVariable, L"");
+  ::SetLastError(ERROR_SUCCESS);
+  DWORD probe = ::GetEnvironmentVariableW(kVariable, nullptr, 0);
+  if (probe != 0 || ::GetLastError() != ERROR_ENVVAR_NOT_FOUND) {
+    CHECK(!::NeedCurrentDirectoryForExePathW(L"program.exe"),
+          "an empty value did not count as set");
+  } else {
+    ::printf("    an empty value removes the variable here; skipped\n");
+  }
+
+  if (!had) {
+    ::SetEnvironmentVariableW(kVariable, nullptr);
+  }
+}
+
+// --- Fibers ----------------------------------------------------------------
+
+DWORD WINAPI FiberBody(LPVOID) {
+  CHECK(!::IsThreadAFiber(), "a fresh thread claimed to be a fiber");
+
+  LPVOID fiber = ::ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
+  CHECK(fiber != nullptr, "ConvertThreadToFiberEx failed (%lu)",
+        ::GetLastError());
+  if (fiber == nullptr) {
+    return 0;
+  }
+
+  CHECK(::IsThreadAFiber(), "a converted thread did not report as a fiber");
+  CHECK(::ConvertFiberToThread(), "ConvertFiberToThread failed (%lu)",
+        ::GetLastError());
+  CHECK(!::IsThreadAFiber(),
+        "a thread converted back still reports as a fiber");
+  return 0;
+}
+
+void TestFibers() {
+  ::printf("  ConvertThreadToFiberEx, IsThreadAFiber\n");
+  // On a worker, so the main thread is not left converted.
+  RunThreads(FiberBody, 1);
+}
+
+// --- Critical sections and I/O cancellation --------------------------------
+
+void TestCriticalSectionEx() {
+  ::printf("  InitializeCriticalSectionEx\n");
+
+  CRITICAL_SECTION section;
+  CHECK(::InitializeCriticalSectionEx(&section, 1000,
+                                      CRITICAL_SECTION_NO_DEBUG_INFO),
+        "InitializeCriticalSectionEx failed (%lu)", ::GetLastError());
+  ::EnterCriticalSection(&section);
+  CHECK(::TryEnterCriticalSection(&section),
+        "a critical section refused its owning thread");
+  ::LeaveCriticalSection(&section);
+  ::LeaveCriticalSection(&section);
+  ::DeleteCriticalSection(&section);
+}
+
+void TestIoCancellation() {
+  ::printf("  CancelIoEx, CancelSynchronousIo\n");
+
+  wchar_t path[MAX_PATH] = {};
+  HANDLE file = MakeTempFile(path, 4);
+  if (file != INVALID_HANDLE_VALUE) {
+    // Nothing is outstanding, which counts as a successful cancel.
+    CHECK(::CancelIoEx(file, nullptr),
+          "CancelIoEx failed with nothing pending (%lu)", ::GetLastError());
+    ::CloseHandle(file);
+    ::DeleteFileW(path);
+  }
+
+  // Cancelling another thread's synchronous I/O is what cannot be done before
+  // Vista, and what must not be claimed.
+  if (!::CancelSynchronousIo(::GetCurrentThread())) {
+    CHECK(::GetLastError() == ERROR_NOT_FOUND,
+          "CancelSynchronousIo failed with %lu, expected ERROR_NOT_FOUND",
+          ::GetLastError());
+  }
+}
+
+// --- Completion ports ------------------------------------------------------
+
+VOID CALLBACK NoopApc(ULONG_PTR) {}
+
+void TestCompletionPort() {
+  ::printf("  GetQueuedCompletionStatusEx, SetFileCompletionNotificationModes\n");
+
+  HANDLE port = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
+  CHECK(port != nullptr, "CreateIoCompletionPort failed (%lu)",
+        ::GetLastError());
+  if (port == nullptr) {
+    return;
+  }
+
+  // Hand-posted packets carry a null OVERLAPPED and must still count as
+  // dequeued; libuv posts exactly these to break its loop out of a wait.
+  constexpr ULONG kPosted = 4;
+  for (ULONG i = 0; i < kPosted; ++i) {
+    ::PostQueuedCompletionStatus(port, i, 100 + i, nullptr);
+  }
+
+  OVERLAPPED_ENTRY entries[8] = {};
+  ULONG removed = 0;
+  CHECK(::GetQueuedCompletionStatusEx(port, entries, ARRAYSIZE(entries),
+                                      &removed, 1000, FALSE),
+        "dequeue failed (%lu)", ::GetLastError());
+  CHECK(removed == kPosted, "removed %lu entries, expected %lu", removed,
+        kPosted);
+  for (ULONG i = 0; i < removed && i < kPosted; ++i) {
+    CHECK(entries[i].lpCompletionKey == 100 + i,
+          "entry %lu has key %llu, expected %lu", i,
+          static_cast<unsigned long long>(entries[i].lpCompletionKey),
+          100 + i);
+    CHECK(entries[i].dwNumberOfBytesTransferred == i,
+          "entry %lu has %lu bytes, expected %lu", i,
+          entries[i].dwNumberOfBytesTransferred, i);
+  }
+
+  // An empty port must time out rather than report a phantom entry.
+  removed = 99;
+  CHECK(!::GetQueuedCompletionStatusEx(port, entries, ARRAYSIZE(entries),
+                                       &removed, 0, FALSE),
+        "an empty port reported success");
+  CHECK(::GetLastError() == WAIT_TIMEOUT, "an empty port gave error %lu",
+        ::GetLastError());
+
+  // The alertable path: a queued APC must end the wait and be reported as
+  // such, which the non-alertable path cannot do at all.
+  ::QueueUserAPC(NoopApc, ::GetCurrentThread(), 0);
+  removed = 0;
+  BOOL alertable = ::GetQueuedCompletionStatusEx(
+      port, entries, ARRAYSIZE(entries), &removed, 1000, TRUE);
+  CHECK(!alertable, "an empty port reported success while alertable");
+  CHECK(::GetLastError() == WAIT_IO_COMPLETION,
+        "a queued APC gave error %lu, expected WAIT_IO_COMPLETION",
+        ::GetLastError());
+
+  ::CloseHandle(port);
+
+  // The two notification flags are not equally safe to pretend about.
+  // Skipping the handle event is harmless; skipping the completion packet is
+  // not, and must be refused where it cannot actually be arranged.
+  wchar_t path[MAX_PATH] = {};
+  HANDLE file = MakeTempFile(path, 1);
+  if (file != INVALID_HANDLE_VALUE) {
+    CHECK(::SetFileCompletionNotificationModes(file,
+                                               FILE_SKIP_SET_EVENT_ON_HANDLE),
+          "skipping the handle event was refused (%lu)", ::GetLastError());
+    if (!::SetFileCompletionNotificationModes(
+            file, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)) {
+      CHECK(::GetLastError() == ERROR_INVALID_FUNCTION,
+            "the refusal gave %lu, expected ERROR_INVALID_FUNCTION",
+            ::GetLastError());
+    }
+    ::CloseHandle(file);
+    ::DeleteFileW(path);
+  }
+}
+
+// --- AppUserModelID --------------------------------------------------------
+
+void TestAppUserModelId() {
+  ::printf("  Get/SetCurrentProcessExplicitAppUserModelID\n");
+
+  CHECK(::SetCurrentProcessExplicitAppUserModelID(nullptr) == E_INVALIDARG,
+        "a null application ID was accepted");
+
+  HRESULT hr = ::SetCurrentProcessExplicitAppUserModelID(L"winwrap.test");
+  CHECK(SUCCEEDED(hr), "setting an application ID failed (%#lx)", hr);
+
+  PWSTR current = reinterpret_cast<PWSTR>(static_cast<ULONG_PTR>(0xdeadbeef));
+  hr = ::GetCurrentProcessExplicitAppUserModelID(&current);
+  if (SUCCEEDED(hr)) {
+    CHECK(current != nullptr, "success with no identifier returned");
+    ::CoTaskMemFree(current);
+  } else {
+    // The out parameter must be cleared even on failure: callers free it
+    // unconditionally, and freeing an uninitialised pointer is a crash.
+    CHECK(current == nullptr,
+          "failure left the out parameter untouched, and callers free it");
+  }
+}
+
 }  // namespace
 
 int wmain(int argc, WCHAR* argv[]) {
@@ -441,6 +1001,19 @@ int wmain(int argc, WCHAR* argv[]) {
   TestConditionVariableBroadcast();
   TestFls();
   TestMisc();
+
+  TestFileInformationQuery();
+  TestFileInformationSet();
+  TestFinalPathAndReOpen();
+  TestNamedPipes();
+  TestProcessorNumber();
+  TestErrorModeAndRestart();
+  TestDirectories();
+  TestFibers();
+  TestCriticalSectionEx();
+  TestIoCancellation();
+  TestCompletionPort();
+  TestAppUserModelId();
 
   if (g_failures == 0) {
     ::printf("all passed\n");

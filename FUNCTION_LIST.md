@@ -100,16 +100,13 @@ That is why a Vista target is better served by teaching the caller that the
 
 ## Not yet implemented
 
-What is still missing for Windows XP, measured against a real XP SP3 x86
-`kernel32.dll`. These are all static imports, so every one has to exist before a
-Chromium-based binary will load at all — there is no partial progress to
-observe.
+Nothing, for Windows XP. The 29 functions a Chromium-based binary statically
+imports and XP SP3 does not export are all present above, measured against a
+real XP SP3 x86 `kernel32.dll` with `tools/check_win_imports.py`.
 
-| Group | Functions |
-|---|---|
-
-The `Fls*` set and `InitializeCriticalSectionEx`, both implemented above, are
-pulled in by the MSVC static CRT itself rather than by any application code. An
-XP target needs them whatever the program does -- including `winwrap.dll`,
-which links that same CRT and so cannot load on XP without redirecting its own
-calls into itself.
+That is a statement about one binary's needs, not about Win32. A different
+consumer will import functions this list has never heard of, and adding one is
+a file, a declaration, a redirect and a `.def` line. The groundwork that made
+the hard ones tractable -- the parking lot behind SRWLOCK and condition
+variables, the ntdll resolution behind the file and pipe queries -- is already
+here to be reused.

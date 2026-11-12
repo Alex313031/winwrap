@@ -1,10 +1,15 @@
 #ifndef WINWRAP_WINWRAP_UNITTEST_H_
 #define WINWRAP_WINWRAP_UNITTEST_H_
 
+#include <stdio.h>
 #include <windows.h>
 
+// inline, not an anonymous-namespace global: a second test file would
+// otherwise get its own counter and main() would report success while another
+// translation unit printed failures.
+inline int g_failures = 0;
+
 namespace {
-  int g_failures = 0;
 
   #define CHECK(cond, ...)                              \
     do {                                                \
