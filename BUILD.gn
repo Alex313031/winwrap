@@ -22,6 +22,7 @@ _winwrap_sources = [
   "src/critical_section.cc",
   "src/directories.cc",
   "src/fibers.cc",
+  "src/files.cc",
   "src/fls.cc",
   "src/init_once.cc",
   "src/io_completion.cc",

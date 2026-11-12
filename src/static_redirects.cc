@@ -59,6 +59,11 @@
 WINWRAP_REDIRECT(GetTickCount64, 0);
 WINWRAP_REDIRECT(InitOnceExecuteOnce, 16);
 
+WINWRAP_REDIRECT(GetFileInformationByHandleEx, 16);
+WINWRAP_REDIRECT(SetFileInformationByHandle, 16);
+WINWRAP_REDIRECT(GetFinalPathNameByHandleW, 16);
+WINWRAP_REDIRECT(ReOpenFile, 16);
+
 WINWRAP_REDIRECT(CreateSymbolicLinkW, 12);
 WINWRAP_REDIRECT(NeedCurrentDirectoryForExePathW, 4);
 

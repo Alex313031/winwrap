@@ -13,6 +13,10 @@ EXPORTS
     DllGetVersion
     GetTickCount64 = winwrap_GetTickCount64
     InitOnceExecuteOnce = winwrap_InitOnceExecuteOnce
+    GetFileInformationByHandleEx = winwrap_GetFileInformationByHandleEx
+    SetFileInformationByHandle = winwrap_SetFileInformationByHandle
+    GetFinalPathNameByHandleW = winwrap_GetFinalPathNameByHandleW
+    ReOpenFile = winwrap_ReOpenFile
     CreateSymbolicLinkW = winwrap_CreateSymbolicLinkW
     NeedCurrentDirectoryForExePathW = winwrap_NeedCurrentDirectoryForExePathW
     ConvertThreadToFiberEx = winwrap_ConvertThreadToFiberEx

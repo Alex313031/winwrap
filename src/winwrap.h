@@ -39,6 +39,27 @@ VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
+// --- File information by handle --------------------------------------------
+// Vista+ (ReOpenFile is Server 2003+). The information class parameter is
+// typed int rather than FILE_INFO_BY_HANDLE_CLASS because that enum is gated
+// on NTDDI_LONGHORN and so does not exist here; the ABI is identical.
+BOOL WINAPI winwrap_GetFileInformationByHandleEx(HANDLE hFile,
+                                                 int FileInformationClass,
+                                                 LPVOID lpFileInformation,
+                                                 DWORD dwBufferSize);
+BOOL WINAPI winwrap_SetFileInformationByHandle(HANDLE hFile,
+                                               int FileInformationClass,
+                                               LPVOID lpFileInformation,
+                                               DWORD dwBufferSize);
+DWORD WINAPI winwrap_GetFinalPathNameByHandleW(HANDLE hFile,
+                                               LPWSTR lpszFilePath,
+                                               DWORD cchFilePath,
+                                               DWORD dwFlags);
+HANDLE WINAPI winwrap_ReOpenFile(HANDLE hOriginalFile,
+                                 DWORD dwDesiredAccess,
+                                 DWORD dwShareMode,
+                                 DWORD dwFlagsAndAttributes);
+
 // --- Directories -----------------------------------------------------------
 // CreateSymbolicLinkW is Vista+ and not emulable: XP has no symbolic links at
 // all, so it always fails with ERROR_NOT_SUPPORTED. Note the BOOLEAN return,
