@@ -39,6 +39,16 @@ VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
+// --- Directories -----------------------------------------------------------
+// CreateSymbolicLinkW is Vista+ and not emulable: XP has no symbolic links at
+// all, so it always fails with ERROR_NOT_SUPPORTED. Note the BOOLEAN return,
+// unlike its neighbours. NeedCurrentDirectoryForExePathW is Server 2003+ and
+// is implemented in full; its rule lives entirely in user space.
+BOOLEAN WINAPI winwrap_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
+                                           LPCWSTR lpTargetFileName,
+                                           DWORD dwFlags);
+BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName);
+
 // --- Fibers ----------------------------------------------------------------
 // Vista+. XP has fibers, just not these two on top of them.
 LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags);

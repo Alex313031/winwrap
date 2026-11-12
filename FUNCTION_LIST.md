@@ -9,6 +9,8 @@ exactly where the line falls.
 
 | Function | DLL | Native since | Notes |
 |---|---|---|---|
+| `CreateSymbolicLinkW` | kernel32 | Vista | Always fails with `ERROR_NOT_SUPPORTED`; XP has no symbolic links to create |
+| `NeedCurrentDirectoryForExePathW` | kernel32 | Server 2003 | Implemented in full; the rule is `NoDefaultCurrentDirectoryInExePath` plus a backslash test |
 | `ConvertThreadToFiberEx` | kernel32 | Vista | Forwards to `ConvertThreadToFiber`; `FIBER_FLAG_FLOAT_SWITCH` is accepted and ignored |
 | `IsThreadAFiber` | kernel32 | Vista | Tests the TEB field `GetCurrentFiber()` reads against the 0x1E00 non-fiber sentinel |
 | `InitializeConditionVariable` | kernel32 | Vista | No state: the variable's address is the parking-lot key, so the word stays zero |
@@ -80,7 +82,7 @@ observe.
 |---|---|
 | File information | `GetFileInformationByHandleEx`, `SetFileInformationByHandle`, `GetFinalPathNameByHandleW`, `ReOpenFile` |
 | Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |
-| Misc | `GetCurrentProcessorNumber`, `GetErrorMode`, `CreateSymbolicLinkW`, `NeedCurrentDirectoryForExePathW`, `RegisterApplicationRestart` |
+| Misc | `GetCurrentProcessorNumber`, `GetErrorMode`, `RegisterApplicationRestart` |
 
 The `Fls*` set and `InitializeCriticalSectionEx`, both implemented above, are
 pulled in by the MSVC static CRT itself rather than by any application code. An

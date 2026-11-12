@@ -13,6 +13,8 @@ EXPORTS
     DllGetVersion
     GetTickCount64 = winwrap_GetTickCount64
     InitOnceExecuteOnce = winwrap_InitOnceExecuteOnce
+    CreateSymbolicLinkW = winwrap_CreateSymbolicLinkW
+    NeedCurrentDirectoryForExePathW = winwrap_NeedCurrentDirectoryForExePathW
     ConvertThreadToFiberEx = winwrap_ConvertThreadToFiberEx
     IsThreadAFiber = winwrap_IsThreadAFiber
     InitializeConditionVariable = winwrap_InitializeConditionVariable
