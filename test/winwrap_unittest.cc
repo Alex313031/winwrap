@@ -743,19 +743,56 @@ void TestErrorModeAndRestart() {
 
   const UINT original = ::GetErrorMode();
 
+  // Some bits are the system's to decide and cannot be cleared. On x86 and
+  // x64 the kernel always fixes alignment faults, so SEM_NOALIGNMENTFAULTEXCEPT
+  // reads back set whatever was asked for, and attempts to clear it are
+  // ignored. Which bits behave that way differs by Windows version -- XP
+  // reports none -- so rather than hard-code a list, ask: whatever survives
+  // setting zero is what the system insists on.
+  ::SetErrorMode(0);
+  const UINT sticky = ::GetErrorMode();
+  if (sticky != 0) {
+    ::printf("    the system holds %#x set regardless\n", sticky);
+  }
+
   // A round trip through SetErrorMode is what catches an inverted bit, which
   // is the one way this is easy to get wrong.
   const UINT wanted = SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX;
   ::SetErrorMode(wanted);
-  CHECK(::GetErrorMode() == wanted, "set %#x, read back %#x", wanted,
-        ::GetErrorMode());
+  CHECK(::GetErrorMode() == (wanted | sticky), "set %#x, read back %#x",
+        wanted, ::GetErrorMode());
 
   ::SetErrorMode(SEM_NOOPENFILEERRORBOX);
-  CHECK(::GetErrorMode() == SEM_NOOPENFILEERRORBOX, "set %#x, read back %#x",
-        SEM_NOOPENFILEERRORBOX, ::GetErrorMode());
+  CHECK(::GetErrorMode() == (SEM_NOOPENFILEERRORBOX | sticky),
+        "set %#x, read back %#x", SEM_NOOPENFILEERRORBOX, ::GetErrorMode());
 
   ::SetErrorMode(0);
-  CHECK(::GetErrorMode() == 0u, "set 0, read back %#x", ::GetErrorMode());
+  CHECK(::GetErrorMode() == sticky, "set 0, read back %#x", ::GetErrorMode());
+
+  // Where the system has its own GetErrorMode, ours must agree with it
+  // exactly. That is ground truth rather than an expectation written here,
+  // and it is the only check in this file that can say the emulation matches
+  // the thing it emulates. Absent before Vista, where it simply does not run.
+  using GetErrorModeFunction = UINT(WINAPI*)();
+  GetErrorModeFunction system_version = nullptr;
+  if (HMODULE kernel32 = ::GetModuleHandleW(L"kernel32.dll")) {
+    system_version = reinterpret_cast<GetErrorModeFunction>(
+        ::GetProcAddress(kernel32, "GetErrorMode"));
+  }
+  if (system_version) {
+    const UINT probes[] = {0, SEM_FAILCRITICALERRORS,
+                           SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX,
+                           wanted};
+    for (UINT probe : probes) {
+      ::SetErrorMode(probe);
+      CHECK(::GetErrorMode() == system_version(),
+            "after setting %#x winwrap says %#x, the system says %#x", probe,
+            ::GetErrorMode(), system_version());
+    }
+    ::printf("    agrees with the system's own GetErrorMode\n");
+  } else {
+    ::printf("    no system GetErrorMode to compare against\n");
+  }
 
   ::SetErrorMode(original);
 
@@ -823,7 +860,7 @@ void TestDirectories() {
 // --- Fibers ----------------------------------------------------------------
 
 DWORD WINAPI FiberBody(LPVOID) {
-  CHECK(!::IsThreadAFiber(), "a fresh thread claimed to be a fiber");
+  CHECK(!::IsThreadAFiber(), "a fresh worker thread claimed to be a fiber");
 
   LPVOID fiber = ::ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
   CHECK(fiber != nullptr, "ConvertThreadToFiberEx failed (%lu)",
@@ -838,6 +875,74 @@ DWORD WINAPI FiberBody(LPVOID) {
   CHECK(!::IsThreadAFiber(),
         "a thread converted back still reports as a fiber");
   return 0;
+}
+
+// The sequence Electron's wWinMain actually performs on 32-bit, reproduced
+// here because every step of it depends on IsThreadAFiber being right and the
+// consequence of being wrong is invisible.
+//
+// wWinMain asks IsThreadAFiber() on the main thread; a false "yes" makes it
+// skip enlarging the stack and run Chromium startup in the default 1 MiB,
+// which overflows somewhere inside initialisation with no window and no log.
+// A false "no" on the big fiber makes the recursive entry try to convert a
+// thread that is already a fiber.
+struct SwitchState {
+  LPVOID original;
+  bool reported_as_fiber;
+  bool ran;
+};
+
+VOID CALLBACK BigStackFiber(PVOID parameter) {
+  auto* state = static_cast<SwitchState*>(parameter);
+  state->ran = true;
+  // This is the check that matters: running on a fiber created by
+  // CreateFiberEx and entered by SwitchToFiber, not merely a converted thread.
+  state->reported_as_fiber = ::IsThreadAFiber() != FALSE;
+  ::SwitchToFiber(state->original);
+}
+
+void TestMainThreadFiberSequence() {
+  ::printf("  Fiber state on the main thread\n");
+
+  // Raw, because the answer is derived from it and the two systems disagreeing
+  // here is what any difference in behaviour would come down to.
+  ::printf("    GetCurrentFiber() on the main thread = %p\n",
+           ::GetCurrentFiber());
+  CHECK(!::IsThreadAFiber(),
+        "the main thread claimed to be a fiber before any conversion");
+
+  LPVOID original = ::ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
+  CHECK(original != nullptr,
+        "ConvertThreadToFiberEx failed on the main thread (%lu)",
+        ::GetLastError());
+  if (original == nullptr) {
+    return;
+  }
+  ::printf("    after conversion GetCurrentFiber() = %p\n",
+           ::GetCurrentFiber());
+  CHECK(::IsThreadAFiber(),
+        "the main thread did not report as a fiber after conversion");
+
+  // 4 MiB with float switching, exactly as wWinMain asks for it. If XP
+  // refuses either the size or the flag, Electron falls through to the small
+  // stack, so a failure here is the whole bug.
+  SwitchState state = {original, false, false};
+  LPVOID big = ::CreateFiberEx(0, 4 * 1024 * 1024, FIBER_FLAG_FLOAT_SWITCH,
+                               BigStackFiber, &state);
+  CHECK(big != nullptr, "CreateFiberEx(4 MiB, FLOAT_SWITCH) failed (%lu)",
+        ::GetLastError());
+  if (big != nullptr) {
+    ::SwitchToFiber(big);
+    CHECK(state.ran, "the big-stack fiber never ran");
+    CHECK(state.reported_as_fiber,
+          "code running on a created fiber did not report as a fiber");
+    ::DeleteFiber(big);
+  }
+
+  CHECK(::ConvertFiberToThread(), "ConvertFiberToThread failed (%lu)",
+        ::GetLastError());
+  CHECK(!::IsThreadAFiber(),
+        "the main thread still reports as a fiber after converting back");
 }
 
 void TestFibers() {
@@ -1010,6 +1115,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestErrorModeAndRestart();
   TestDirectories();
   TestFibers();
+  TestMainThreadFiberSequence();
   TestCriticalSectionEx();
   TestIoCancellation();
   TestCompletionPort();
