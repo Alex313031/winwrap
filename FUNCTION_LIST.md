@@ -10,11 +10,12 @@ exactly where the line falls.
 | Function | DLL | Native since | Notes |
 |---|---|---|---|
 | `GetTickCount64` | kernel32 | Vista | Built on the 32-bit counter plus a wrap extension |
+| `InitializeCriticalSectionEx` | kernel32 | Vista | Forwards to `InitializeCriticalSectionAndSpinCount`, flag folded into the spin count |
 | `InitOnceExecuteOnce` | kernel32 | Vista | Tagged-pointer state machine. libuv's `uv_once()` is built directly on this |
-| `InitializeSRWLock` | kernel32 | Vista | SRWLOCK on a lazily allocated `CRITICAL_SECTION` in the lock's `Ptr` field |
+| `InitializeSRWLock` | kernel32 | Vista | Real reader/writer lock; whole state is the one pointer, waiters park by address |
 | `AcquireSRWLockExclusive` | kernel32 | Vista | |
 | `ReleaseSRWLockExclusive` | kernel32 | Vista | |
-| `AcquireSRWLockShared` | kernel32 | Vista | Shared acquisition is exclusive here: correct, but not concurrent |
+| `AcquireSRWLockShared` | kernel32 | Vista | Genuinely concurrent with other readers; writers are preferred so they cannot starve |
 | `ReleaseSRWLockShared` | kernel32 | Vista | |
 | `TryAcquireSRWLockExclusive` | kernel32 | **Windows 7** | Vista has the rest of the family but not this |
 | `TryAcquireSRWLockShared` | kernel32 | **Windows 7** | Likewise |
@@ -58,9 +59,10 @@ observe.
 | Fibers | `ConvertThreadToFiberEx`, `IsThreadAFiber` |
 | Locale and string | `CompareStringOrdinal`, `GetLocaleInfoEx` |
 | Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |
-| Critical sections | `InitializeCriticalSectionEx` |
 | Misc | `GetCurrentProcessorNumber`, `GetErrorMode`, `CreateSymbolicLinkW`, `NeedCurrentDirectoryForExePathW`, `RegisterApplicationRestart` |
 
-`InitializeCriticalSectionEx`, like the `Fls*` set above it, is pulled in by the
-MSVC static CRT itself rather than by any application code, so an XP target
-needs it no matter what the program does.
+The `Fls*` set and `InitializeCriticalSectionEx`, both implemented above, are
+pulled in by the MSVC static CRT itself rather than by any application code. An
+XP target needs them whatever the program does -- including `winwrap.dll`,
+which links that same CRT and so cannot load on XP without redirecting its own
+calls into itself.

@@ -2,78 +2,132 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// SRWLOCK on top of CRITICAL_SECTION.
+// A real reader/writer lock, in one pointer, allocating nothing.
 //
-// SRWLOCK is one pointer wide (RTL_SRWLOCK is `struct { PVOID Ptr; }`) and a
-// CRITICAL_SECTION does not fit in it, so Ptr holds a pointer to a lazily
-// allocated one. SRWLOCK_INIT and InitializeSRWLock both leave Ptr null, which
-// is the "not yet allocated" state, so a lock initialised either way works.
+// This replaces an earlier version that put a lazily allocated
+// CRITICAL_SECTION behind SRWLOCK::Ptr and mapped shared acquisition onto
+// exclusive. That was correct in the narrow sense -- code written for a
+// reader/writer lock is always correct under a mutex -- but it cost every
+// reader its concurrency, and it could deadlock outright: two threads each
+// holding shared and waiting on the other is legal under real shared
+// semantics and a deadlock under a mutex. It also leaked a CRITICAL_SECTION
+// per lock, for process lifetime, because SRWLOCK has no destroy call to free
+// one from.
 //
-// Two deliberate semantic differences, both safe but worth knowing:
+// The whole state is the pointer:
 //
-//  - Shared acquisition is exclusive. A CRITICAL_SECTION has no shared mode,
-//    so readers serialise against each other. That costs concurrency and never
-//    correctness: code written for a reader/writer lock is always correct under
-//    a mutex.
-//  - CRITICAL_SECTION is recursive, SRWLOCK is not. Taking the same lock twice
-//    on one thread deadlocks on a real SRWLOCK and succeeds here. That turns a
-//    deadlock into forward progress, so it hides bugs rather than creating
-//    them, but it means this is not a conformance-grade replacement.
+//   bit 0        writer holds it
+//   bit 1        at least one writer is parked
+//   bit 2        at least one reader is parked
+//   bits 3..     count of threads currently holding it shared
 //
-// The allocation is never freed. That is not a leak that can be fixed: the
-// SRWLOCK API has no destroy call, so there is no hook to free it from. One
-// CRITICAL_SECTION per lock, for process lifetime.
+// SRWLOCK_INIT and InitializeSRWLock both leave it zero, which reads as
+// unheld with nobody waiting, so a lock initialised either way works. An
+// uncontended acquire of either kind is one compare-exchange. Waiters live in
+// parking_lot.cc, keyed on the lock's address, which is what keeps them out of
+// the one pointer there is to work with.
 //
-// Chromium's own base takes this same trade in
-// patches/chromium/base/0315-migrate-from-critical-section-to-srwlock.patch,
-// which reverts upstream's move to SRWLOCK and gets LockImpl back onto
-// critical sections.
+// Writers are preferred: a reader will not join an existing read while a
+// writer is parked. Without that, a steady stream of readers starves writers
+// indefinitely. The Try variants deliberately do not honour it -- a try is
+// permitted to barge, and the real SRWLOCK barges too.
+//
+// Still not recursive, and neither is the real one, so that is a match rather
+// than a compromise.
 
+#include "parking_lot.h"
 #include "winwrap.h"
 
 namespace {
 
-// Spin a little before sleeping, which is what the real SRWLOCK does and what
-// makes uncontended acquisition cheap.
-constexpr DWORD kSpinCount = 2000;
+using winwrap::Park;
+using winwrap::Queue;
+using winwrap::Unpark;
 
-CRITICAL_SECTION* EnsureSection(PSRWLOCK lock) {
-  PVOID volatile* slot = reinterpret_cast<PVOID volatile*>(&lock->Ptr);
+constexpr uintptr_t kWriterHeld = 1;
+constexpr uintptr_t kWritersWaiting = 2;
+constexpr uintptr_t kReadersWaiting = 4;
+constexpr uintptr_t kReaderShift = 3;
+constexpr uintptr_t kReaderUnit = static_cast<uintptr_t>(1) << kReaderShift;
+constexpr uintptr_t kReaderMask = ~static_cast<uintptr_t>(7);
 
-  // Fast path: already installed. A plain read would be enough on x86/x64 for
-  // a pointer-sized slot, but this keeps the atomicity explicit.
-  if (PVOID existing = ::InterlockedCompareExchangePointer(
-          const_cast<PVOID*>(slot), nullptr, nullptr)) {
-    return static_cast<CRITICAL_SECTION*>(existing);
+// Long enough to cover a handoff between two threads on different cores,
+// short enough that a lock held across real work reaches the kernel quickly.
+constexpr unsigned kSpinLimit = 40;
+
+inline uintptr_t Load(PSRWLOCK lock) {
+  return reinterpret_cast<uintptr_t>(
+      ::InterlockedCompareExchangePointer(&lock->Ptr, nullptr, nullptr));
+}
+
+inline bool Cas(PSRWLOCK lock, uintptr_t expected, uintptr_t desired) {
+  return ::InterlockedCompareExchangePointer(
+             &lock->Ptr, reinterpret_cast<PVOID>(desired),
+             reinterpret_cast<PVOID>(expected)) ==
+         reinterpret_cast<PVOID>(expected);
+}
+
+void ClearBit(PSRWLOCK lock, uintptr_t bit) {
+  for (;;) {
+    uintptr_t value = Load(lock);
+    if (!(value & bit) || Cas(lock, value, value & ~bit)) {
+      return;
+    }
+  }
+}
+
+// A writer sleeps only while the lock is taken and its own bit is still up.
+// If either stopped being true between deciding to wait and reaching the
+// bucket, there is something to retry and nothing to wait for.
+bool ValidateExclusive(void* context) {
+  uintptr_t value = Load(static_cast<PSRWLOCK>(context));
+  return (value & kWritersWaiting) && (value & (kWriterHeld | kReaderMask));
+}
+
+// A reader sleeps only while a writer holds it or is queued ahead.
+bool ValidateShared(void* context) {
+  uintptr_t value = Load(static_cast<PSRWLOCK>(context));
+  return (value & kReadersWaiting) && (value & (kWriterHeld | kWritersWaiting));
+}
+
+struct WakeContext {
+  PSRWLOCK lock;
+  uintptr_t bit;
+  size_t woken;
+};
+
+// Runs with the bucket locked, so clearing the bit here cannot disagree with
+// what is actually queued: a thread that set the bit on its way to parking has
+// not reached the bucket yet, and will re-validate once it does.
+void OnDequeued(void* context, size_t woken, bool any_left) {
+  auto* wake = static_cast<WakeContext*>(context);
+  wake->woken = woken;
+  if (!any_left) {
+    ClearBit(wake->lock, wake->bit);
+  }
+}
+
+// Hands the lock on. One writer if any is queued, otherwise every reader --
+// they can all run at once, which is the point of a shared lock.
+void WakeNext(PSRWLOCK lock) {
+  uintptr_t value = Load(lock);
+
+  if (value & kWritersWaiting) {
+    WakeContext wake = {lock, kWritersWaiting, 0};
+    Unpark(lock, Queue::kExclusive, &OnDequeued, &wake);
+    if (wake.woken) {
+      return;
+    }
+    // The bit outlived its queue: a waiter gave up in validation after
+    // setting it. OnDequeued has cleared it, so fall through rather than
+    // leave parked readers asleep with nobody left to wake them.
+    value = Load(lock);
   }
 
-  auto* fresh = static_cast<CRITICAL_SECTION*>(
-      ::HeapAlloc(::GetProcessHeap(), 0, sizeof(CRITICAL_SECTION)));
-  if (!fresh) {
-    // Nothing useful to return and no way to report failure through a void
-    // API. Failing loudly beats handing back a lock that does not lock.
-    ::RaiseException(STATUS_NO_MEMORY, EXCEPTION_NONCONTINUABLE, 0, nullptr);
-    return nullptr;
+  if (value & kReadersWaiting) {
+    WakeContext wake = {lock, kReadersWaiting, 0};
+    Unpark(lock, Queue::kShared, &OnDequeued, &wake);
   }
-
-  // The AndSpinCount form returns a BOOL instead of raising on low memory, and
-  // is available on XP.
-  if (!::InitializeCriticalSectionAndSpinCount(fresh, kSpinCount)) {
-    ::HeapFree(::GetProcessHeap(), 0, fresh);
-    ::RaiseException(STATUS_NO_MEMORY, EXCEPTION_NONCONTINUABLE, 0, nullptr);
-    return nullptr;
-  }
-
-  PVOID won = ::InterlockedCompareExchangePointer(const_cast<PVOID*>(slot),
-                                                  fresh, nullptr);
-  if (won == nullptr) {
-    return fresh;  // We installed ours.
-  }
-
-  // Another thread got there first; discard ours and use theirs.
-  ::DeleteCriticalSection(fresh);
-  ::HeapFree(::GetProcessHeap(), 0, fresh);
-  return static_cast<CRITICAL_SECTION*>(won);
 }
 
 }  // namespace
@@ -81,35 +135,118 @@ CRITICAL_SECTION* EnsureSection(PSRWLOCK lock) {
 extern "C" {
 
 VOID WINAPI winwrap_InitializeSRWLock(PSRWLOCK SRWLock) {
-  // Match SRWLOCK_INIT rather than allocating here, so a lock that was
-  // zero-initialised instead of initialised through this call behaves the
-  // same. The CRITICAL_SECTION appears on first acquisition.
   SRWLock->Ptr = nullptr;
 }
 
 VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
-  ::EnterCriticalSection(EnsureSection(SRWLock));
+  if (Cas(SRWLock, 0, kWriterHeld)) {
+    return;
+  }
+
+  for (unsigned spins = 0;;) {
+    uintptr_t value = Load(SRWLock);
+
+    if ((value & (kWriterHeld | kReaderMask)) == 0) {
+      if (Cas(SRWLock, value, value | kWriterHeld)) {
+        return;
+      }
+      continue;
+    }
+
+    // Only spin while nobody is parked. Once there is a queue, spinning just
+    // takes cycles from the thread holding the lock.
+    if (spins < kSpinLimit &&
+        (value & (kWritersWaiting | kReadersWaiting)) == 0) {
+      ++spins;
+      YieldProcessor();
+      continue;
+    }
+
+    if (!(value & kWritersWaiting) &&
+        !Cas(SRWLock, value, value | kWritersWaiting)) {
+      continue;
+    }
+
+    Park(SRWLock, Queue::kExclusive, &ValidateExclusive, SRWLock);
+    spins = 0;
+  }
 }
 
 VOID WINAPI winwrap_ReleaseSRWLockExclusive(PSRWLOCK SRWLock) {
-  ::LeaveCriticalSection(EnsureSection(SRWLock));
+  for (;;) {
+    uintptr_t value = Load(SRWLock);
+    uintptr_t next = value & ~kWriterHeld;
+    if (!Cas(SRWLock, value, next)) {
+      continue;
+    }
+    if (next & (kWritersWaiting | kReadersWaiting)) {
+      WakeNext(SRWLock);
+    }
+    return;
+  }
 }
 
-// Shared maps onto exclusive; see the note at the top of the file.
 VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
-  ::EnterCriticalSection(EnsureSection(SRWLock));
+  for (unsigned spins = 0;;) {
+    uintptr_t value = Load(SRWLock);
+
+    if ((value & (kWriterHeld | kWritersWaiting)) == 0) {
+      if (Cas(SRWLock, value, value + kReaderUnit)) {
+        return;
+      }
+      continue;
+    }
+
+    if (spins < kSpinLimit && !(value & kReadersWaiting)) {
+      ++spins;
+      YieldProcessor();
+      continue;
+    }
+
+    if (!(value & kReadersWaiting) &&
+        !Cas(SRWLock, value, value | kReadersWaiting)) {
+      continue;
+    }
+
+    Park(SRWLock, Queue::kShared, &ValidateShared, SRWLock);
+    spins = 0;
+  }
 }
 
 VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock) {
-  ::LeaveCriticalSection(EnsureSection(SRWLock));
+  for (;;) {
+    uintptr_t value = Load(SRWLock);
+    uintptr_t next = value - kReaderUnit;
+    if (!Cas(SRWLock, value, next)) {
+      continue;
+    }
+    // Only the reader that turns the count to zero owes anyone a wake.
+    if ((next & kReaderMask) == 0 &&
+        (next & (kWritersWaiting | kReadersWaiting))) {
+      WakeNext(SRWLock);
+    }
+    return;
+  }
 }
 
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock) {
-  return ::TryEnterCriticalSection(EnsureSection(SRWLock)) ? TRUE : FALSE;
+  uintptr_t value = Load(SRWLock);
+  if (value & (kWriterHeld | kReaderMask)) {
+    return FALSE;
+  }
+  return Cas(SRWLock, value, value | kWriterHeld) ? TRUE : FALSE;
 }
 
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock) {
-  return ::TryEnterCriticalSection(EnsureSection(SRWLock)) ? TRUE : FALSE;
+  for (;;) {
+    uintptr_t value = Load(SRWLock);
+    if (value & kWriterHeld) {
+      return FALSE;
+    }
+    if (Cas(SRWLock, value, value + kReaderUnit)) {
+      return TRUE;
+    }
+  }
 }
 
 }  // extern "C"

@@ -65,6 +65,8 @@ WINWRAP_REDIRECT(ReleaseSRWLockExclusive, 4);
 WINWRAP_REDIRECT(AcquireSRWLockShared, 4);
 WINWRAP_REDIRECT(ReleaseSRWLockShared, 4);
 
+WINWRAP_REDIRECT(InitializeCriticalSectionEx, 12);
+
 WINWRAP_REDIRECT(FlsAlloc, 4);
 WINWRAP_REDIRECT(FlsGetValue, 4);
 WINWRAP_REDIRECT(FlsSetValue, 8);

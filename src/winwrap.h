@@ -46,6 +46,17 @@ BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                         PVOID Parameter,
                                         LPVOID* Context);
 
+// --- Critical sections -----------------------------------------------------
+// InitializeCriticalSectionEx: Vista+. The SDK hides the flag below 0x0600.
+#if !defined(CRITICAL_SECTION_NO_DEBUG_INFO)
+#define CRITICAL_SECTION_NO_DEBUG_INFO 0x01000000
+#endif
+
+BOOL WINAPI winwrap_InitializeCriticalSectionEx(
+    LPCRITICAL_SECTION lpCriticalSection,
+    DWORD dwSpinCount,
+    DWORD Flags);
+
 // --- Fiber-local storage ---------------------------------------------------
 // kernel32, Server 2003 and Vista. The SDK hides the type and the sentinel
 // below _WIN32_WINNT 0x0600, which winwrap compiles under, so declare them.

@@ -20,6 +20,7 @@ EXPORTS
     ReleaseSRWLockShared = winwrap_ReleaseSRWLockShared
     TryAcquireSRWLockExclusive = winwrap_TryAcquireSRWLockExclusive
     TryAcquireSRWLockShared = winwrap_TryAcquireSRWLockShared
+    InitializeCriticalSectionEx = winwrap_InitializeCriticalSectionEx
     FlsAlloc = winwrap_FlsAlloc
     FlsGetValue = winwrap_FlsGetValue
     FlsSetValue = winwrap_FlsSetValue

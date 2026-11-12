@@ -6,13 +6,22 @@ import("//third_party/winwrap/winwrap.gni")
 
 assert(is_win || target_os == "win", "winwrap only has a reason to exist on Windows")
 
-# The implementations. Shared by both link modes; what differs is how calls are
-# steered into them (see static_redirects.cc for the static mode, winwrap.def
-# for the shared one).
+# The implementations, plus static_redirects.cc, which both link modes need.
+#
+# In the static mode it is the entire mechanism: it defines the __imp_<name>
+# slots the consumer's call sites load through. The shared mode steers the
+# consumer through winwrap.def instead -- but it still needs the redirects for
+# itself. winwrap.dll links the MSVC static CRT, and that CRT calls FlsAlloc
+# and InitializeCriticalSectionEx, so without redirecting its own calls the
+# DLL imports from kernel32 the very functions it exists to supply, and fails
+# to load on XP before any of this runs.
 _winwrap_sources = [
   "src/app_user_model_id.cc",
+  "src/critical_section.cc",
   "src/fls.cc",
   "src/init_once.cc",
+  "src/parking_lot.cc",
+  "src/parking_lot.h",
   "src/srwlock.cc",
   "src/tick_count.cc",
   "src/winwrap.h",
@@ -47,6 +56,7 @@ shared_library("winwrap_shared") {
   output_name = "winwrap"
   # winwrap_dll.cc contains functions only a DLL would want.
   sources = _winwrap_sources + [
+    "src/static_redirects.cc",
     "src/winwrap_dll.cc",
     "src/winwrap.rc",
   ]
@@ -71,9 +81,6 @@ shared_library("winwrap_shared") {
 static_library("winwrap_static") {
   output_name = "winwrap"
 
-  # static_redirects.cc is what makes the static mode work: it defines the
-  # __imp_<name> slots that dllimport call sites load through, so the linker
-  # resolves them here and never extracts kernel32.lib's member for them.
   sources = _winwrap_sources + [ "src/static_redirects.cc" ]
 
   configs += [ ":winwrap_internal_config" ]
