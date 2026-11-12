@@ -12,3 +12,13 @@ It is integrated into Chromium's [GN](https://gn.googlesource.com/gn/) build sys
 It can be compiled as a static lib `winwrap.lib` or shared library `winlib.dll`, the main thing is that it *must* be linked ahead of any other libraries or default libs, to make sure that the binary in question imports OUR functions, instead of the (missing in XP/Vista's case) system DLL functions.
 
 To see a list of the functions that this library shims/spoofs, see [FUNCTION_LIST.md](FUNCTION_LIST.md).
+
+## Credits
+
+[YY-Thunks](https://github.com/Chuyu-Team/YY-Thunks) (MIT) covers much of the same ground and has had
+far longer to find the edge cases. It was consulted while writing several of these functions, and is
+cited in the source comments where it mattered — both where it had already been caught out by
+something, and where winwrap deliberately went a different way.
+
+No YY-Thunks code is used here, so this is an acknowledgement of a useful reference rather than a
+license obligation; winwrap remains BSD-3-Clause.

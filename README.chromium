@@ -19,7 +19,17 @@ loads a pointer from __imp_<name>, so defining that symbol here is enough. The
 linker resolves it from winwrap and never extracts kernel32.lib's member for
 it. What makes winwrap win over kernel32.lib and shell32.lib, both of which GN
 names explicitly in `libs`, is that winwrap arrives as a link *input*, and the
-toolchain's response file lists inputs ahead of libs.
+response file lists inputs ahead of libs. That is true of the `link` tool as
+upstream writes it, but not of `solink`, which lists libs first -- so every DLL
+would keep its kernel32 import while executables bound here. Electron Legacy's
+winwrap patch gives DLLs the same order; a tree integrating winwrap some other
+way has to arrange the same thing.
+
+YY-Thunks (https://github.com/Chuyu-Team/YY-Thunks, MIT) covers much of the
+same ground and was consulted while writing several of these functions. It is
+cited in the source comments where it mattered. None of its code is used here,
+so this is an acknowledgement rather than a license obligation and the license
+above is unaffected.
 
 Local Modifications:
 None. Written as part of Electron Legacy
