@@ -65,6 +65,11 @@ WINWRAP_REDIRECT(ReleaseSRWLockExclusive, 4);
 WINWRAP_REDIRECT(AcquireSRWLockShared, 4);
 WINWRAP_REDIRECT(ReleaseSRWLockShared, 4);
 
+WINWRAP_REDIRECT(FlsAlloc, 4);
+WINWRAP_REDIRECT(FlsGetValue, 4);
+WINWRAP_REDIRECT(FlsSetValue, 8);
+WINWRAP_REDIRECT(FlsFree, 4);
+
 // --- Missing on XP and Vista alike -----------------------------------------
 WINWRAP_REDIRECT(TryAcquireSRWLockExclusive, 4);
 WINWRAP_REDIRECT(TryAcquireSRWLockShared, 4);

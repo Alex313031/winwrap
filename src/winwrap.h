@@ -46,6 +46,19 @@ BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                         PVOID Parameter,
                                         LPVOID* Context);
 
+// --- Fiber-local storage ---------------------------------------------------
+// kernel32, Server 2003 and Vista. The SDK hides the type and the sentinel
+// below _WIN32_WINNT 0x0600, which winwrap compiles under, so declare them.
+#if !defined(FLS_OUT_OF_INDEXES)
+#define FLS_OUT_OF_INDEXES ((DWORD)0xFFFFFFFF)
+typedef VOID(WINAPI* PFLS_CALLBACK_FUNCTION)(PVOID lpFlsData);
+#endif
+
+DWORD WINAPI winwrap_FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback);
+PVOID WINAPI winwrap_FlsGetValue(DWORD dwFlsIndex);
+BOOL WINAPI winwrap_FlsSetValue(DWORD dwFlsIndex, PVOID lpFlsData);
+BOOL WINAPI winwrap_FlsFree(DWORD dwFlsIndex);
+
 // --- Explicit Application User Model IDs -----------------------------------
 // shell32, Windows 7+, and the one part of winwrap's surface that is reached
 // through a delay import rather than a static one -- so the symptom is a crash

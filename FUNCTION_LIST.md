@@ -18,8 +18,19 @@ exactly where the line falls.
 | `ReleaseSRWLockShared` | kernel32 | Vista | |
 | `TryAcquireSRWLockExclusive` | kernel32 | **Windows 7** | Vista has the rest of the family but not this |
 | `TryAcquireSRWLockShared` | kernel32 | **Windows 7** | Likewise |
+| `FlsAlloc` | kernel32 | Server 2003 / Vista | FLS on TLS, with thread-exit callbacks driven by a PE TLS callback |
+| `FlsFree` | kernel32 | Server 2003 / Vista | Runs the callback for every thread holding a value, as Windows does per fiber |
+| `FlsGetValue` | kernel32 | Server 2003 / Vista | |
+| `FlsSetValue` | kernel32 | Server 2003 / Vista | |
 | `GetCurrentProcessExplicitAppUserModelID` | shell32 | Windows 7 | Reports no ID set; Vista has no AppUserModelID concept to report |
 | `SetCurrentProcessExplicitAppUserModelID` | shell32 | Windows 7 | Accepts and discards, but rejects a null ID like the real one |
+
+### FLS is per thread here, not per fiber
+
+The one semantic difference. A program that converts threads to fibers and
+expects each fiber to see its own FLS values will not get that. Neither
+Chromium nor the CRT does this, and faking it would mean intercepting the whole
+fiber API.
 
 ### The SRWLOCK family is all-or-nothing
 
@@ -42,7 +53,6 @@ observe.
 | Group | Functions |
 |---|---|
 | Condition variables | `InitializeConditionVariable`, `SleepConditionVariableCS`, `SleepConditionVariableSRW`, `WakeConditionVariable`, `WakeAllConditionVariable` |
-| Fiber-local storage | `FlsAlloc`, `FlsFree`, `FlsGetValue`, `FlsSetValue` |
 | File information | `GetFileInformationByHandleEx`, `SetFileInformationByHandle`, `GetFinalPathNameByHandleW`, `ReOpenFile` |
 | I/O | `CancelIoEx`, `CancelSynchronousIo`, `GetQueuedCompletionStatusEx`, `SetFileCompletionNotificationModes` |
 | Fibers | `ConvertThreadToFiberEx`, `IsThreadAFiber` |
@@ -51,6 +61,6 @@ observe.
 | Critical sections | `InitializeCriticalSectionEx` |
 | Misc | `GetCurrentProcessorNumber`, `GetErrorMode`, `CreateSymbolicLinkW`, `NeedCurrentDirectoryForExePathW`, `RegisterApplicationRestart` |
 
-The four `Fls*` functions and `InitializeCriticalSectionEx` are pulled in by the
+`InitializeCriticalSectionEx`, like the `Fls*` set above it, is pulled in by the
 MSVC static CRT itself rather than by any application code, so an XP target
-needs them no matter what the program does.
+needs it no matter what the program does.

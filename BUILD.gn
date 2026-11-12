@@ -11,6 +11,7 @@ assert(is_win || target_os == "win", "winwrap only has a reason to exist on Wind
 # for the shared one).
 _winwrap_sources = [
   "src/app_user_model_id.cc",
+  "src/fls.cc",
   "src/init_once.cc",
   "src/srwlock.cc",
   "src/tick_count.cc",
@@ -30,6 +31,14 @@ config("winwrap_internal_config") {
     "-U_WIN32_WINNT", # Must undef first to avoid redefinition errors.
     "-D_WIN32_WINNT=0x0501" # XP, for winwrap's own sources only.
   ]
+
+  # winwrap is a C++17 project. Chromium builds at a newer standard, and the
+  # last /std: on the command line is the one clang-cl honours, so appending
+  # here pins winwrap's own sources without touching anything else. This is
+  # meant to be consumable outside this tree, so it should not quietly come to
+  # depend on whichever standard Chromium has moved to.
+  cflags_cc = [ "/std:c++17" ]
+
   configs = []
 }
 
