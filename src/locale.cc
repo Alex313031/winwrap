@@ -45,15 +45,34 @@ CRITICAL_SECTION* EnsureLock() {
   return static_cast<CRITICAL_SECTION*>(won);
 }
 
-// Ordinal uppercasing, which is not the same as linguistic uppercasing: it is
-// a fixed per-code-unit mapping with no locale in it. ASCII is inline because
-// it is the overwhelming majority of what gets compared -- environment
-// variable names, in the only caller here -- and LOCALE_INVARIANT keeps the
-// rest off the user's locale.
+using RtlUpcaseUnicodeCharFn = WCHAR(NTAPI*)(WCHAR);
+
+// Ordinal uppercasing, which is not linguistic uppercasing: it is a fixed
+// per-code-unit mapping with no locale in it.
+//
+// RtlUpcaseUnicodeChar is that mapping -- it is the table NT itself uses for
+// case-insensitive ordinal comparison, so matching it is the difference
+// between "close" and "the same answer". LCMapStringW with LOCALE_INVARIANT is
+// the NLS uppercase, which is near-identical but not the same function, and is
+// only the fallback for the impossible case of ntdll not resolving.
+//
+// ASCII is handled inline: it is the overwhelming majority of what gets
+// compared, the two mappings agree there, and it avoids a call per character.
 wchar_t UpcaseOrdinal(wchar_t c) {
   if (c < 0x80) {
     return (c >= L'a' && c <= L'z') ? static_cast<wchar_t>(c - L'a' + L'A') : c;
   }
+
+  static const auto upcase = []() -> RtlUpcaseUnicodeCharFn {
+    HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+    return ntdll ? reinterpret_cast<RtlUpcaseUnicodeCharFn>(
+                       ::GetProcAddress(ntdll, "RtlUpcaseUnicodeChar"))
+                 : nullptr;
+  }();
+  if (upcase) {
+    return upcase(c);
+  }
+
   wchar_t upper = c;
   if (::LCMapStringW(LOCALE_INVARIANT, LCMAP_UPPERCASE, &c, 1, &upper, 1) != 1) {
     return c;
@@ -88,8 +107,15 @@ bool NamesEqual(const wchar_t* a, const wchar_t* b) {
 
 // Rebuilds a locale's BCP 47-ish name from the pieces XP does expose, which is
 // how a name is matched without LocaleNameToLCID: "en" plus "US" is "en-US".
-// Locales XP cannot express -- anything needing a script subtag, say sr-Latn-RS
-// -- do not exist on XP to be matched in the first place.
+//
+// The alternative, which YY-Thunks takes, is a static table of every name and
+// LCID taken from the NLS reference. That resolves names this cannot --
+// anything whose Windows name is not language plus country, such as the
+// script-tagged zh-Hans or sr-Latn-RS -- at the cost of a few hundred lines of
+// data that has to be right and stay right. Asking the running system instead
+// cannot go stale and cannot disagree with it, and covers every locale the
+// machine actually has. Worth revisiting if a consumer needs the script-tagged
+// names, which neither Electron nor ICU's Windows formatters request.
 bool NameForLcid(LCID lcid, wchar_t* out, int out_chars) {
   wchar_t language[16] = {};
   if (::GetLocaleInfoW(lcid, LOCALE_SISO639LANGNAME, language,
@@ -190,7 +216,12 @@ int WINAPI winwrap_CompareStringOrdinal(LPCWCH lpString1,
                                         LPCWCH lpString2,
                                         int cchCount2,
                                         BOOL bIgnoreCase) {
-  if (!lpString1 || !lpString2) {
+  // The real function validates all three of these and returns 0. A count
+  // below -1 is meaningless, and bIgnoreCase is specified as a boolean rather
+  // than "anything non-zero" -- a caller passing 2 has a bug, and hiding it
+  // would make winwrap more permissive than what it stands in for.
+  if (!lpString1 || !lpString2 || cchCount1 < -1 || cchCount2 < -1 ||
+      (bIgnoreCase != TRUE && bIgnoreCase != FALSE)) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return 0;
   }
