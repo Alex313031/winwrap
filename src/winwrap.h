@@ -1,0 +1,62 @@
+// Copyright 2026 Alex313031. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef WINWRAP_WINWRAP_H_
+#define WINWRAP_WINWRAP_H_
+
+// winwrap provides implementations of Win32 functions that do not exist on the
+// older Windows versions this fork targets, so a binary compiled against a
+// current SDK still loads there. A statically imported symbol the target OS
+// does not export is fatal at load, before any of our code runs, which is why
+// per-call-site workarounds cannot solve it.
+//
+// Nothing here calls the function it replaces, and nothing here uses an API
+// newer than Windows XP -- winwrap has to run on the oldest target itself.
+//
+// Each implementation is named winwrap_<Win32Name> and keeps the exact
+// signature of the function it stands in for, so the redirect in
+// static_redirects.cc is a plain assignment with no casting.
+
+#include <windows.h>
+
+#include "winwrap_version.h"
+
+extern "C" {
+
+// --- Tick count ------------------------------------------------------------
+// GetTickCount64: Vista+.
+ULONGLONG WINAPI winwrap_GetTickCount64(void);
+
+// --- Slim reader/writer locks ----------------------------------------------
+// The whole SRWLOCK family is Vista+, so XP needs all of it; Vista has
+// everything except the two TryAcquire variants.
+VOID WINAPI winwrap_InitializeSRWLock(PSRWLOCK SRWLock);
+VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock);
+VOID WINAPI winwrap_ReleaseSRWLockExclusive(PSRWLOCK SRWLock);
+VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock);
+VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock);
+BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
+BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock);
+
+// --- One-time initialisation -----------------------------------------------
+// InitOnceExecuteOnce: Vista+. libuv's uv_once() is built directly on this.
+BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
+                                        PINIT_ONCE_FN InitFn,
+                                        PVOID Parameter,
+                                        LPVOID* Context);
+
+// --- Explicit Application User Model IDs -----------------------------------
+// shell32, Windows 7+, and the one part of winwrap's surface that is reached
+// through a delay import rather than a static one -- so the symptom is a crash
+// on first call rather than a failure to load. Electron calls both
+// unconditionally from shell/common/application_info_win.cc.
+//
+// These are declared here rather than taken from shobjidl.h because winwrap's
+// own sources compile at _WIN32_WINNT=0x0501, where the SDK hides them.
+HRESULT WINAPI winwrap_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID);
+HRESULT WINAPI winwrap_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID);
+
+}  // extern "C"
+
+#endif  // WINWRAP_WINWRAP_H_

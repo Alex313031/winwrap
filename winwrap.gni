@@ -1,0 +1,25 @@
+# Copyright 2026 Alex313031. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+declare_args() {
+  # Link winwrap, which supplies Win32 functions that pre-Win7 Windows does not
+  # export so a binary built against a current SDK still loads there.
+  #
+  # Off by default, and deliberately not implied by target_os == "win": the
+  # redirects capture every call in the binary, so an ordinary build would get
+  # a CRITICAL_SECTION in place of a real SRWLOCK for no reason. Turn it on for
+  # a build that actually has to run on XP.
+  use_winwrap = false
+
+  # Build winwrap as winwrap.dll instead of linking winwrap.lib into every
+  # binary.
+  #
+  # Static is the default on purpose. It ships nothing extra, so there is no
+  # separate binary for anyone to have to trust or audit -- which is the whole
+  # reason this exists rather than consuming someone else's prebuilt wrapper
+  # DLL. The shared form is here for the case where several binaries should
+  # share one copy, or where you want to swap the implementation without
+  # relinking.
+  is_component_winwrap = false
+}

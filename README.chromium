@@ -1,0 +1,29 @@
+Name: winwrap
+Short Name: winwrap
+URL: https://github.com/Alex313031/winwrap
+Version: N/A
+Revision: See the winwrap entry in src/DEPS
+License: BSD-3-Clause
+License File: LICENSE
+Security Critical: yes
+Shipped: yes
+
+Description:
+Implementations of Win32 functions that older Windows releases do not export,
+so a binary compiled against a current SDK still loads on them. A statically
+imported symbol the target OS does not export is fatal at load, before any
+process code runs, so this cannot be solved at the call site.
+
+Calls are captured without touching call sites: a __declspec(dllimport) call
+loads a pointer from __imp_<name>, so defining that symbol here is enough. The
+linker resolves it from winwrap and never extracts kernel32.lib's member for
+it. What makes winwrap win over kernel32.lib and shell32.lib, both of which GN
+names explicitly in `libs`, is that winwrap arrives as a link *input*, and the
+toolchain's response file lists inputs ahead of libs.
+
+Local Modifications:
+None. Written as part of Electron Legacy
+(https://github.com/Alex313031/electron-legacy) and split out so it can be
+worked on without regenerating a patch for every change, and used by projects
+that are not Chromium-based. The GN build here is one integration, not the only
+intended one.

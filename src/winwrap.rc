@@ -1,0 +1,90 @@
+#define APSTUDIO_READONLY_SYMBOLS
+
+#include "winwrap_version.h"
+
+// Version block only: no dialogs or controls, so no <commctrl.h> here.
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include <windows.h>
+#undef APSTUDIO_HIDDEN_SYMBOLS
+
+#include <winres.h>
+
+#undef APSTUDIO_READONLY_SYMBOLS
+
+// US English, to match the "040904B0" string block and the Translation below.
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#endif
+
+#ifdef APSTUDIO_INVOKED
+
+// No "1 TEXTINCLUDE": that names the header the resource editor writes
+// symbol IDs to, and the lib has no resource IDs (no resource.h).
+
+2 TEXTINCLUDE
+BEGIN
+    "#ifndef APSTUDIO_INVOKED\r\n"
+    "#include ""version.h""\r\n"
+    "#endif\r\n"
+    "#define APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "#include ""windows.h""\r\n"
+    "#undef APSTUDIO_HIDDEN_SYMBOLS\r\n"
+    "#include ""winres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif // APSTUDIO_INVOKED
+
+// Version Information
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION
+ PRODUCTVERSION WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK // 0x0000003F
+// VS_FF_PRERELEASE marks a pre-1.0 build (version tools show it); it drops
+// off by itself once WINWRAP_MAJOR_VERSION reaches 1.
+#if WINWRAP_MAJOR_VERSION == 0
+ #define PRERELEASE_FLAG VS_FF_PRERELEASE // 0x00000002L
+#else
+ #define PRERELEASE_FLAG 0
+#endif
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG | PRERELEASE_FLAG // 0x00000001L // Debug build
+#else
+ FILEFLAGS VS_FF_RELEASE | PRERELEASE_FLAG // 0x00000000L // Release build
+#endif  // _DEBUG
+ FILEOS VOS_NT_WINDOWS32 // 0x00040004L (Windows NT and later)
+#ifdef WINWRAP_DLL
+ FILETYPE VFT_DLL // 0x00000002L
+#else
+ FILETYPE VFT_STATIC_LIB // 0x00000007L
+#endif
+ FILESUBTYPE VFT2_UNKNOWN // 0x00000000L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0" // 0x0409 = US English, 0x04B0 = Unicode (1200)
+        BEGIN
+            VALUE "Comments",         COMMENTS
+            VALUE "CompanyName",      COMPANYNAME
+            VALUE "FileDescription",  FILE_DESCRIPT
+            VALUE "FileVersion",      WINWRAP_VERSION_STRING
+            VALUE "InternalName",     INTERNAL_NAME
+            VALUE "LegalCopyright",   LEGAL_COPYRIGHT
+            VALUE "LegalTrademarks",  TRADEMARKS
+            VALUE "OriginalFilename", ORIG_FILENAME
+            VALUE "ProductName",      PRODUCT_NAME
+            VALUE "ProductVersion",   WINWRAP_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        // Must match the language/codepage of the StringFileInfo block above.
+        VALUE "Translation", 0x0409, 1200
+    END
+END

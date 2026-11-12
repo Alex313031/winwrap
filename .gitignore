@@ -1,0 +1,31 @@
+# OS Stuff
+.DS_Store
+.eslintcache
+.directory
+Thumbs.db
+__pycache__/
+
+# MSVS Stuff
+*.vcxproj.user
+*.tlog
+*.vs/
+/.vs/
+/.idea/
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build stuff
+build.log
+*.lib
+*.dll
+*.exp
+*.obj
+*.o
+*.a
+*.res
+*.pdb
+*.ilk
+out/

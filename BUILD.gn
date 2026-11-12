@@ -1,0 +1,94 @@
+# Copyright 2026 Alex313031. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//third_party/winwrap/winwrap.gni")
+
+assert(is_win || target_os == "win", "winwrap only has a reason to exist on Windows")
+
+# The implementations. Shared by both link modes; what differs is how calls are
+# steered into them (see static_redirects.cc for the static mode, winwrap.def
+# for the shared one).
+_winwrap_sources = [
+  "src/app_user_model_id.cc",
+  "src/init_once.cc",
+  "src/srwlock.cc",
+  "src/tick_count.cc",
+  "src/winwrap.h",
+  "src/winwrap_version.h",
+]
+
+config("winwrap_public_config") {
+  include_dirs = [ "src" ]
+}
+
+# winwrap has to run on the oldest target itself, so it gets none of the
+# toolchain's newer-Windows assumptions and may not be instrumented with
+# anything that pulls in a post-XP import of its own.
+config("winwrap_internal_config") {
+  cflags = [
+    "-U_WIN32_WINNT", # Must undef first to avoid redefinition errors.
+    "-D_WIN32_WINNT=0x0501" # XP, for winwrap's own sources only.
+  ]
+  configs = []
+}
+
+shared_library("winwrap_shared") {
+  defines = [ "WINWRAP_DLL" ]
+  output_name = "winwrap"
+  # winwrap_dll.cc contains functions only a DLL would want.
+  sources = _winwrap_sources + [
+    "src/winwrap_dll.cc",
+    "src/winwrap.rc",
+  ]
+
+  # //build/config:common_deps depends on winwrap_lib, and every
+  # shared_library picks common_deps up by default -- which would make
+  # winwrap depend on itself. Opting out breaks that cycle. The static form
+  # does not need this, because static_library targets never get
+  # common_deps in the first place.
+  no_default_deps = true
+
+  # Exports the public Win32 names, aliased onto the winwrap_ implementations,
+  # so the generated import library satisfies __imp_<name> and the linker
+  # binds to winwrap.dll instead of kernel32.
+  inputs = [ "src/winwrap.def" ]
+  ldflags = [ "/DEF:" + rebase_path("src/winwrap.def", root_build_dir) ]
+
+  configs += [ ":winwrap_internal_config" ]
+  public_configs = [ ":winwrap_public_config" ]
+}
+
+static_library("winwrap_static") {
+  output_name = "winwrap"
+
+  # static_redirects.cc is what makes the static mode work: it defines the
+  # __imp_<name> slots that dllimport call sites load through, so the linker
+  # resolves them here and never extracts kernel32.lib's member for them.
+  sources = _winwrap_sources + [ "src/static_redirects.cc" ]
+
+  configs += [ ":winwrap_internal_config" ]
+  public_configs = [ ":winwrap_public_config" ]
+}
+
+# Depend on this rather than on ":winwrap" directly, so a build with
+# use_winwrap = false links nothing at all and the dependency can stay
+# unconditional at the call site.
+group("winwrap_lib") {
+  if (use_winwrap) {
+    if (is_component_winwrap) {
+      public_deps = [ ":winwrap_shared" ]
+    } else {
+      public_deps = [ ":winwrap_static" ]
+    }
+  }
+}
+
+group("winwrap_all") {
+  testonly = true
+  # Build both static and shared versions of the lib
+  deps = [
+    ":winwrap_static",
+    ":winwrap_shared"
+  ]
+}

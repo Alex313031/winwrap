@@ -1,0 +1,24 @@
+; Shared-library mode: export the public Win32 names, aliased onto the
+; winwrap_ implementations, so the generated import library provides
+; __imp_<name> and the linker binds there instead of kernel32.
+;
+; Undecorated alias targets work on both architectures: lld-link matches
+; winwrap_GetTickCount64 against the decorated _winwrap_GetTickCount64@0 that
+; __stdcall actually emits. Confirmed on x86 -- the 32-bit winwrap.dll exports
+; all ten names below, and electron.exe binds GetTickCount64,
+; InitOnceExecuteOnce and the SRWLOCK family to winwrap.dll with no remaining
+; kernel32 import for any of them.
+LIBRARY winwrap
+EXPORTS
+    DllGetVersion
+    GetTickCount64 = winwrap_GetTickCount64
+    InitOnceExecuteOnce = winwrap_InitOnceExecuteOnce
+    InitializeSRWLock = winwrap_InitializeSRWLock
+    AcquireSRWLockExclusive = winwrap_AcquireSRWLockExclusive
+    ReleaseSRWLockExclusive = winwrap_ReleaseSRWLockExclusive
+    AcquireSRWLockShared = winwrap_AcquireSRWLockShared
+    ReleaseSRWLockShared = winwrap_ReleaseSRWLockShared
+    TryAcquireSRWLockExclusive = winwrap_TryAcquireSRWLockExclusive
+    TryAcquireSRWLockShared = winwrap_TryAcquireSRWLockShared
+    SetCurrentProcessExplicitAppUserModelID = winwrap_SetCurrentProcessExplicitAppUserModelID
+    GetCurrentProcessExplicitAppUserModelID = winwrap_GetCurrentProcessExplicitAppUserModelID
