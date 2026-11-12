@@ -46,6 +46,22 @@ BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                         PVOID Parameter,
                                         LPVOID* Context);
 
+// --- Locale and string -----------------------------------------------------
+// Both Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
+#if !defined(LOCALE_NAME_MAX_LENGTH)
+#define LOCALE_NAME_MAX_LENGTH 85
+#endif
+
+int WINAPI winwrap_CompareStringOrdinal(LPCWCH lpString1,
+                                        int cchCount1,
+                                        LPCWCH lpString2,
+                                        int cchCount2,
+                                        BOOL bIgnoreCase);
+int WINAPI winwrap_GetLocaleInfoEx(LPCWSTR lpLocaleName,
+                                   LCTYPE LCType,
+                                   LPWSTR lpLCData,
+                                   int cchData);
+
 // --- I/O completion ports --------------------------------------------------
 // Both Vista+. OVERLAPPED_ENTRY needs no declaration here: minwinbase.h
 // defines it next to OVERLAPPED with no version gate at all, so it is present

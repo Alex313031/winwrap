@@ -20,6 +20,8 @@ EXPORTS
     ReleaseSRWLockShared = winwrap_ReleaseSRWLockShared
     TryAcquireSRWLockExclusive = winwrap_TryAcquireSRWLockExclusive
     TryAcquireSRWLockShared = winwrap_TryAcquireSRWLockShared
+    CompareStringOrdinal = winwrap_CompareStringOrdinal
+    GetLocaleInfoEx = winwrap_GetLocaleInfoEx
     GetQueuedCompletionStatusEx = winwrap_GetQueuedCompletionStatusEx
     SetFileCompletionNotificationModes = winwrap_SetFileCompletionNotificationModes
     CancelIoEx = winwrap_CancelIoEx

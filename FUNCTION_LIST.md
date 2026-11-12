@@ -9,6 +9,8 @@ exactly where the line falls.
 
 | Function | DLL | Native since | Notes |
 |---|---|---|---|
+| `CompareStringOrdinal` | kernel32 | Vista | Written out; binary comparison is not something `CompareStringW` can be asked for |
+| `GetLocaleInfoEx` | kernel32 | Vista | Resolves the locale name to an LCID by enumeration, then `GetLocaleInfoW` |
 | `CancelIoEx` | kernel32 | Vista | Best effort via `CancelIo`: same-thread only, and cannot target one request |
 | `CancelSynchronousIo` | kernel32 | Vista | Always fails with `ERROR_NOT_FOUND`; cross-thread by definition, impossible on XP |
 | `GetQueuedCompletionStatusEx` | kernel32 | Vista | `GetQueuedCompletionStatus` in a loop; `fAlertable` ignored, no alertable form exists |
@@ -72,7 +74,6 @@ observe.
 | Condition variables | `InitializeConditionVariable`, `SleepConditionVariableCS`, `SleepConditionVariableSRW`, `WakeConditionVariable`, `WakeAllConditionVariable` |
 | File information | `GetFileInformationByHandleEx`, `SetFileInformationByHandle`, `GetFinalPathNameByHandleW`, `ReOpenFile` |
 | Fibers | `ConvertThreadToFiberEx`, `IsThreadAFiber` |
-| Locale and string | `CompareStringOrdinal`, `GetLocaleInfoEx` |
 | Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |
 | Misc | `GetCurrentProcessorNumber`, `GetErrorMode`, `CreateSymbolicLinkW`, `NeedCurrentDirectoryForExePathW`, `RegisterApplicationRestart` |
 

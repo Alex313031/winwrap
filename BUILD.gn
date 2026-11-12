@@ -22,6 +22,7 @@ _winwrap_sources = [
   "src/fls.cc",
   "src/init_once.cc",
   "src/io_completion.cc",
+  "src/locale.cc",
   "src/parking_lot.cc",
   "src/parking_lot.h",
   "src/srwlock.cc",
