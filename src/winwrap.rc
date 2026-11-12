@@ -1,3 +1,7 @@
+#if defined(__clang__) && defined(_UNICODE)
+ #pragma code_page(65001) // UTF-8
+#endif
+
 #define APSTUDIO_READONLY_SYMBOLS
 
 #include "winwrap_version.h"

@@ -13,10 +13,6 @@
  #define _UNICODE
 #endif
 
-#if defined(__clang__) && defined(_UNICODE)
- #pragma code_page(65001) // UTF-8
-#endif
-
 // Macro to convert to string
 #if !defined(_STRINGIZER_)
  #define _STRINGIZER_
