@@ -20,6 +20,7 @@ _winwrap_sources = [
   "src/cancel_io.cc",
   "src/condition_variable.cc",
   "src/critical_section.cc",
+  "src/fiber.cc",
   "src/fls.cc",
   "src/init_once.cc",
   "src/io_completion.cc",
@@ -34,6 +35,7 @@ _winwrap_sources = [
 
 config("winwrap_public_config") {
   include_dirs = [ "src" ]
+  defines = [ "USING_WINWRAP" ]
 }
 
 # winwrap has to run on the oldest target itself, so it gets none of the
@@ -118,4 +120,5 @@ group("winwrap_all") {
     ":winwrap_static",
     ":winwrap_shared"
   ]
+  public_deps = [ "test:winwrap_test" ]
 }

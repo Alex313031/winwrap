@@ -9,6 +9,8 @@ exactly where the line falls.
 
 | Function | DLL | Native since | Notes |
 |---|---|---|---|
+| `ConvertThreadToFiberEx` | kernel32 | Vista | Forwards to `ConvertThreadToFiber`; `FIBER_FLAG_FLOAT_SWITCH` is accepted and ignored |
+| `IsThreadAFiber` | kernel32 | Vista | Tests the TEB field `GetCurrentFiber()` reads against the 0x1E00 non-fiber sentinel |
 | `InitializeConditionVariable` | kernel32 | Vista | No state: the variable's address is the parking-lot key, so the word stays zero |
 | `SleepConditionVariableCS` | kernel32 | Vista | Queues before releasing the lock, which is what makes the wake-up unlosable |
 | `SleepConditionVariableSRW` | kernel32 | Vista | Honours `CONDITION_VARIABLE_LOCKMODE_SHARED`; re-acquires in the same mode |
@@ -77,7 +79,6 @@ observe.
 | Group | Functions |
 |---|---|
 | File information | `GetFileInformationByHandleEx`, `SetFileInformationByHandle`, `GetFinalPathNameByHandleW`, `ReOpenFile` |
-| Fibers | `ConvertThreadToFiberEx`, `IsThreadAFiber` |
 | Named pipes | `GetNamedPipeClientProcessId`, `GetNamedPipeServerProcessId` |
 | Misc | `GetCurrentProcessorNumber`, `GetErrorMode`, `CreateSymbolicLinkW`, `NeedCurrentDirectoryForExePathW`, `RegisterApplicationRestart` |
 

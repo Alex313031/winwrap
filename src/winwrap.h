@@ -39,6 +39,11 @@ VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
+// --- Fibers ----------------------------------------------------------------
+// Vista+. XP has fibers, just not these two on top of them.
+LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags);
+BOOL WINAPI winwrap_IsThreadAFiber(void);
+
 // --- Condition variables ---------------------------------------------------
 // Vista+. CONDITION_VARIABLE and the lockmode flag are not version-gated --
 // only the functions are -- so only these declarations are needed.

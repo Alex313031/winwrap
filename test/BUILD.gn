@@ -1,0 +1,30 @@
+# Stress tests winwrap library functions
+
+group("winwrap_test") {
+  testonly = true
+  public_deps = [ ":winwrap_unit_test" ]
+}
+
+executable("winwrap_unit_test") {
+  configs += [ ":winwrap_unit_test_config" ]
+
+  sources = [
+    "winwrap_unittest.cc",
+    "winwrap_unittest.h",
+  ]
+
+  deps = [ "../:winwrap_lib" ]
+
+  output_name = "winwrap_unittests"
+
+  # No /SUBSYSTEM ldflags here. //build/config/win:console already appends the
+  # minimum OS version, and in a tree carrying electron-legacy's patch series
+  # that is 5.01 on x86 and 5.02 on x64 -- the reverted
+  # "set subsystem version to 10.0 across the board" puts it back. Outside such
+  # a tree this will link against whatever the host Chromium uses, and will
+  # need the flag.
+}
+
+config("winwrap_unit_test_config") {
+  include_dirs = [ "." ]
+}
