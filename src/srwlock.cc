@@ -35,6 +35,7 @@
 // Still not recursive, and neither is the real one, so that is a match rather
 // than a compromise.
 
+#include "lock_family.h"
 #include "parking_lot.h"
 #include "winwrap.h"
 
@@ -135,10 +136,18 @@ namespace {
 extern "C" {
 
 VOID WINAPI winwrap_InitializeSRWLock(PSRWLOCK SRWLock) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->InitializeSRWLock(SRWLock);
+    return;
+  }
   SRWLock->Ptr = nullptr;
 }
 
 VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->AcquireSRWLockExclusive(SRWLock);
+    return;
+  }
   if (Cas(SRWLock, 0, kWriterHeld)) {
     return;
   }
@@ -171,6 +180,10 @@ VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
 }
 
 VOID WINAPI winwrap_ReleaseSRWLockExclusive(PSRWLOCK SRWLock) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->ReleaseSRWLockExclusive(SRWLock);
+    return;
+  }
   for (;;) {
     uintptr_t value = Load(SRWLock);
     uintptr_t next  = value & ~kWriterHeld;
@@ -185,6 +198,10 @@ VOID WINAPI winwrap_ReleaseSRWLockExclusive(PSRWLOCK SRWLock) {
 }
 
 VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->AcquireSRWLockShared(SRWLock);
+    return;
+  }
   for (unsigned spins = 0;;) {
     uintptr_t value = Load(SRWLock);
 
@@ -211,6 +228,10 @@ VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
 }
 
 VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->ReleaseSRWLockShared(SRWLock);
+    return;
+  }
   for (;;) {
     uintptr_t value = Load(SRWLock);
     uintptr_t next  = value - kReaderUnit;
@@ -226,6 +247,9 @@ VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock) {
 }
 
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    return system->TryAcquireSRWLockExclusive(SRWLock);
+  }
   uintptr_t value = Load(SRWLock);
   if (value & (kWriterHeld | kReaderMask)) {
     return FALSE;
@@ -234,6 +258,9 @@ BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock) {
 }
 
 BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    return system->TryAcquireSRWLockShared(SRWLock);
+  }
   for (;;) {
     uintptr_t value = Load(SRWLock);
     if (value & kWriterHeld) {

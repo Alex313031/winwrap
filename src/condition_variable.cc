@@ -29,6 +29,7 @@
 // including the timeout, because the caller is entitled to hold it on return
 // whatever the result was.
 
+#include "lock_family.h"
 #include "parking_lot.h"
 #include "winwrap.h"
 
@@ -73,6 +74,10 @@ namespace {
 extern "C" {
 
 VOID WINAPI winwrap_InitializeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->InitializeConditionVariable(ConditionVariable);
+    return;
+  }
   // Match CONDITION_VARIABLE_INIT exactly. Nothing reads this word; it is
   // zeroed only so that a caller who inspects it, or who copies a freshly
   // initialised variable, sees what Windows would have left.
@@ -82,6 +87,9 @@ VOID WINAPI winwrap_InitializeConditionVariable(PCONDITION_VARIABLE ConditionVar
 BOOL WINAPI winwrap_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable,
                                              PCRITICAL_SECTION CriticalSection,
                                              DWORD dwMilliseconds) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    return system->SleepConditionVariableCS(ConditionVariable, CriticalSection, dwMilliseconds);
+  }
   CriticalSectionWait wait = {CriticalSection};
   ParkResult result        = Park(ConditionVariable, kWaiters, /*validate=*/nullptr,
                                   &ReleaseCriticalSection, &wait, dwMilliseconds);
@@ -99,6 +107,9 @@ BOOL WINAPI winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVaria
                                               PSRWLOCK SRWLock,
                                               DWORD dwMilliseconds,
                                               ULONG Flags) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    return system->SleepConditionVariableSRW(ConditionVariable, SRWLock, dwMilliseconds, Flags);
+  }
   SRWLockWait wait  = {SRWLock, (Flags & CONDITION_VARIABLE_LOCKMODE_SHARED) != 0};
   ParkResult result = Park(ConditionVariable, kWaiters, /*validate=*/nullptr, &ReleaseSRWLock,
                            &wait, dwMilliseconds);
@@ -117,6 +128,10 @@ BOOL WINAPI winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVaria
 }
 
 VOID WINAPI winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->WakeConditionVariable(ConditionVariable);
+    return;
+  }
   // Waking nobody is not a failure. "If no threads are waiting, the function
   // does nothing" -- there is no signal to store for a future waiter, which is
   // exactly why callers re-test a predicate rather than trusting the wake.
@@ -125,6 +140,10 @@ VOID WINAPI winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable)
 }
 
 VOID WINAPI winwrap_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+  if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
+    system->WakeAllConditionVariable(ConditionVariable);
+    return;
+  }
   Unpark(ConditionVariable, kWaiters, kWakeAll, /*on_dequeued=*/nullptr,
          /*context=*/nullptr);
 }

@@ -33,11 +33,11 @@
 
 // Adhere to semver -> semver.org
 #define WINWRAP_MAJOR_VERSION 0
-#define WINWRAP_MINOR_VERSION 2
-#define WINWRAP_BUILD_VERSION 4
+#define WINWRAP_MINOR_VERSION 3
+#define WINWRAP_BUILD_VERSION 0
 
 #define WINWRAP_VERSION_STRING \
-  _VERSION(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION) // e.g. L"0.2.3"
+  _VERSION(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION) // e.g. L"0.3.0"
 
 // Base name as a BARE token (not a "..." literal) so STRINGIZE can fold it
 // into the composite literals below.

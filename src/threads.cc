@@ -7,6 +7,7 @@
 
 #include <intrin.h> // __cpuid
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 extern "C" {
@@ -35,6 +36,11 @@ extern "C" {
 // is x86-only; it can afford that, because its x64 target is Server 2003 and
 // already has the real function.
 DWORD WINAPI winwrap_GetCurrentProcessorNumber(void) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetCurrentProcessorNumber)) {
+    return system_fn();
+  }
   int registers[4] = {};
   __cpuid(registers, 1);
   // registers[1] is EBX; bits 31..24 hold the initial APIC ID.

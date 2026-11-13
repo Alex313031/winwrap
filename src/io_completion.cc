@@ -8,6 +8,7 @@
 // One of these can be emulated faithfully and the other cannot, which is worth
 // stating plainly because the difference decides what callers have to do.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -113,6 +114,12 @@ BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(HANDLE CompletionPort,
                                                 PULONG ulNumEntriesRemoved,
                                                 DWORD dwMilliseconds,
                                                 BOOL fAlertable) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetQueuedCompletionStatusEx)) {
+    return system_fn(CompletionPort, lpCompletionPortEntries, ulCount, ulNumEntriesRemoved,
+                     dwMilliseconds, fAlertable);
+  }
   if (!lpCompletionPortEntries || !ulNumEntriesRemoved || ulCount == 0) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;
@@ -186,6 +193,11 @@ BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(HANDLE CompletionPort,
 // the optimisation" and carries on without it (deps/uv/src/win/udp.c). Its TCP
 // path has no such tolerance and still needs a patch of its own.
 BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle, UCHAR Flags) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, SetFileCompletionNotificationModes)) {
+    return system_fn(FileHandle, Flags);
+  }
   UNREFERENCED_PARAMETER(FileHandle);
 
   if ((Flags & ~FILE_SKIP_SET_EVENT_ON_HANDLE) == 0) {

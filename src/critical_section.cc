@@ -14,6 +14,7 @@
 // this, so winwrap.dll cannot load on XP without it, no matter what else
 // winwrap provides.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 extern "C" {
@@ -21,6 +22,11 @@ extern "C" {
 BOOL WINAPI winwrap_InitializeCriticalSectionEx(LPCRITICAL_SECTION lpCriticalSection,
                                                 DWORD dwSpinCount,
                                                 DWORD Flags) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, InitializeCriticalSectionEx)) {
+    return system_fn(lpCriticalSection, dwSpinCount, Flags);
+  }
   // The spin count field is 24 bits of count plus flag bits above it, so the
   // flag rides along rather than replacing anything.
   if (Flags & CRITICAL_SECTION_NO_DEBUG_INFO) {

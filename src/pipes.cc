@@ -43,6 +43,7 @@
 // The session-ID and client-computer-name siblings are absent for the same
 // reason and are not imported by anything here.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -80,6 +81,11 @@ namespace {
 extern "C" {
 
 BOOL WINAPI winwrap_GetNamedPipeClientProcessId(HANDLE Pipe, PULONG ClientProcessId) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetNamedPipeClientProcessId)) {
+    return system_fn(Pipe, ClientProcessId);
+  }
   if (!ClientProcessId) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;
@@ -113,6 +119,11 @@ BOOL WINAPI winwrap_GetNamedPipeClientProcessId(HANDLE Pipe, PULONG ClientProces
 }
 
 BOOL WINAPI winwrap_GetNamedPipeServerProcessId(HANDLE Pipe, PULONG ServerProcessId) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetNamedPipeServerProcessId)) {
+    return system_fn(Pipe, ServerProcessId);
+  }
   if (!ServerProcessId) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;

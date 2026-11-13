@@ -20,11 +20,17 @@
 // generated for it. winwrap.dll.lib is a link input, which the toolchain lists
 // ahead of `libs`, so it is reached before the explicit shell32.lib.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 extern "C" {
 
 HRESULT WINAPI winwrap_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hShell32, SetCurrentProcessExplicitAppUserModelID)) {
+    return system_fn(AppID);
+  }
   // Reject a null ID the way the real function does, rather than reporting
   // success for a call that could not have meant anything. There is no ID to
   // store here, so the argument is otherwise unused -- but a shim that answers
@@ -44,6 +50,11 @@ HRESULT WINAPI winwrap_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) {
 }
 
 HRESULT WINAPI winwrap_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hShell32, GetCurrentProcessExplicitAppUserModelID)) {
+    return system_fn(AppID);
+  }
   // E_FAIL is what Windows itself returns for a process that never called Set,
   // so every caller already handles it -- Electron's GetRawAppUserModelID()
   // takes that branch and derives an ID from the application name instead

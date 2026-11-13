@@ -41,6 +41,7 @@
 
 #include <string.h> // wcschr
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 #if !defined(SYMBOLIC_LINK_FLAG_DIRECTORY)
@@ -55,6 +56,10 @@ extern "C" {
 BOOLEAN WINAPI winwrap_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
                                            LPCWSTR lpTargetFileName,
                                            DWORD dwFlags) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, CreateSymbolicLinkW)) {
+    return system_fn(lpSymlinkFileName, lpTargetFileName, dwFlags);
+  }
   UNREFERENCED_PARAMETER(lpSymlinkFileName);
   UNREFERENCED_PARAMETER(lpTargetFileName);
   UNREFERENCED_PARAMETER(dwFlags);
@@ -83,6 +88,11 @@ BOOLEAN WINAPI winwrap_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
 // Only a backslash counts as "has a path", matching the real implementation.
 // A forward slash does not, even though much of Win32 accepts one.
 BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, NeedCurrentDirectoryForExePathW)) {
+    return system_fn(ExeName);
+  }
   if (ExeName != nullptr && ::wcschr(ExeName, L'\\') != nullptr) {
     return TRUE;
   }

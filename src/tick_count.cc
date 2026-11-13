@@ -15,6 +15,7 @@
 // A process that sleeps for more than 49.7 days between calls would miss a
 // wrap -- the same caveat every implementation of this shim has.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -26,6 +27,10 @@ namespace {
 } // namespace
 
 extern "C" ULONGLONG WINAPI winwrap_GetTickCount64(void) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetTickCount64)) {
+    return system_fn();
+  }
   const ULONGLONG now32 = ::GetTickCount();
 
   for (;;) {

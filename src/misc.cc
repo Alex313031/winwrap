@@ -4,6 +4,7 @@
 
 // Functions with no better home. Process-wide state lives in process.cc.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 extern "C" {
@@ -20,6 +21,11 @@ extern "C" {
 // caller in Chromium resolves this through GetProcAddress and simply does not
 // register when it is absent (chrome/browser/chrome_browser_main_win.cc).
 HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline, DWORD dwFlags) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, RegisterApplicationRestart)) {
+    return system_fn(pwzCommandline, dwFlags);
+  }
   UNREFERENCED_PARAMETER(pwzCommandline);
   UNREFERENCED_PARAMETER(dwFlags);
   return E_NOTIMPL;
@@ -38,6 +44,11 @@ HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline, DWORD d
 // implements one half of a pair and not the other is a worse library, and this
 // half costs a line.
 HRESULT WINAPI winwrap_UnregisterApplicationRestart(void) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, UnregisterApplicationRestart)) {
+    return system_fn();
+  }
   return E_NOTIMPL;
 }
 

@@ -1055,6 +1055,22 @@ int wmain(int argc, WCHAR* argv[]) {
   std::wcout << L"Winwrap Stress Tests" << std::endl;
   std::wcout << L"Built against winwrap v" << kWinWrapVer << std::endl;
 
+  // Which OS the dispatch in dispatch.h is actually deciding against. Printed
+  // rather than asserted: the right answer differs per machine, and a test run
+  // whose results depend on the OS should say which one it was.
+  const uint32_t nt = GetRealNTVersion();
+  std::wcout << L"Real NT version " << Hex(nt);
+  if (nt == 0) {
+    std::wcout << L" (could not be determined)";
+  }
+  std::wcout << std::endl;
+
+  const char* wine_version = nullptr;
+  if (IsRunningOnWine(&wine_version)) {
+    std::wcout << L"Running on Wine " << (wine_version ? wine_version : "?")
+               << L" -- failures below may be Wine's, not winwrap's" << std::endl;
+  }
+
   TestExclusive();
   TestShared();
   TestTryAcquire();

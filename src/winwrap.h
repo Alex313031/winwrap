@@ -19,6 +19,7 @@
 // static_redirects.cc is a plain assignment with no casting.
 
 #include "framework.h"
+#include "sys.h"
 #include "winwrap_version.h"
 
 extern "C" {

@@ -9,7 +9,9 @@ It was originally created as a component of [Electron Legacy](https://github.com
 It is integrated into Chromium's [GN](https://gn.googlesource.com/gn/) build systen, although support for other build systems so that one may integrate it into their own project is planned.
 
 ## About
-It can be compiled as a static lib `winwrap.lib` or shared library `winlib.dll`, the main thing is that it *must* be linked ahead of any other libraries or default libs, to make sure that the binary in question imports OUR functions, instead of the (missing in XP/Vista's case) system DLL functions.
+It can be compiled as a static lib `winwrap.lib` or shared library `winlib.dll`, the main thing is that it *must* be linked ahead of any other libraries or default libs, to make sure that the binary in question routes these calls through winwrap rather than binding straight to the system DLL.
+
+Routing through it does not mean replacing it. Each function asks the running Windows for the real one first and only falls back to its own implementation where there isn't one, so a binary with winwrap linked in uses the system's code on Windows 7 and the emulation on XP, with no separate build for either. The cost on a modern OS is a cached pointer load and a jump.
 
 To see a list of the functions that this library shims/spoofs, see [FUNCTION_LIST.md](FUNCTION_LIST.md).
 

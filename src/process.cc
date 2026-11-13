@@ -4,6 +4,7 @@
 
 // Process-wide state: the error mode, and DPI awareness.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -34,6 +35,10 @@ extern "C" {
 // production, which is the kind of detail worth taking from someone who has
 // already been through it -- YY-Thunks does the same inversion.
 UINT WINAPI winwrap_GetErrorMode(void) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetErrorMode)) {
+    return system_fn();
+  }
   static const auto query = []() -> NtQueryInformationProcessFn {
     HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
     return ntdll ? reinterpret_cast<NtQueryInformationProcessFn>(
@@ -74,6 +79,10 @@ UINT WINAPI winwrap_GetErrorMode(void) {
 // not happened. The distinction is whether the postcondition holds, not
 // whether any work was done.
 BOOL WINAPI winwrap_SetProcessDPIAware(void) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hUser32, SetProcessDPIAware)) {
+    return system_fn();
+  }
   // Where the system has its own, use it: on Vista and later this genuinely
   // changes process behaviour and must not be skipped.
   static const auto real = []() -> SetProcessDPIAwareFn {

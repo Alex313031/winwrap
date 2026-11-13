@@ -32,11 +32,22 @@
 #include "sdkddkver.h"
 
 // clang-format off
-#include <windows.h>
+#ifdef _MSC_VER
+ #define WIN32_NO_STATUS
+#endif
+#include <windows.h> // Main Windows header
+#ifdef _MSC_VER
+ #undef WIN32_NO_STATUS
+#endif
+#include <winnt.h>
 #include <winternl.h>
+#include <ntstatus.h> // Full NTSTATUS codes (e.g. STATUS_SUCCESS)
 // clang-format on
 
 #include <stdlib.h> // wcstoul
-#include <string.h> // wcslen, wcsncmp
+
+#include <cstdint> // uint32_t, uint64_t
+#include <cwchar>  // wcslen, wcsncmp
+#include <string>  // string, wstring
 
 #endif // WINWRAP_FRAMEWORK_H_

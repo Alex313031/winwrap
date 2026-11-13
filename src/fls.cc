@@ -27,6 +27,9 @@
 // matches. Later Windows raised it to 4080; a program that needs more than 128
 // is not a program that was going to run on XP.
 
+#include <atomic>
+
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -183,9 +186,49 @@ extern "C" __declspec(allocate(".CRT$XLB")) PIMAGE_TLS_CALLBACK winwrap_fls_tls_
  #pragma comment(linker, "/INCLUDE:winwrap_fls_tls_callback")
 #endif
 
+namespace {
+
+  // The four resolved together, for the same reason the SRWLOCK group is: an
+  // index means something different to each implementation. A slot handed out by
+  // winwrap's allocator is an index into its own table, and the system's
+  // FlsGetValue would read it as an index into the TEB's -- so taking the
+  // system's getter while keeping winwrap's allocator does not degrade anything,
+  // it reads the wrong memory. All four are Vista, so in practice this is
+  // present or absent as a set; the gate is here to make that a guarantee rather
+  // than an observation.
+  struct FlsFamily {
+    decltype(&winwrap_FlsAlloc) FlsAlloc;
+    decltype(&winwrap_FlsFree) FlsFree;
+    decltype(&winwrap_FlsGetValue) FlsGetValue;
+    decltype(&winwrap_FlsSetValue) FlsSetValue;
+  };
+
+  const FlsFamily* SystemFls() noexcept {
+    static std::atomic<void*> state{nullptr};
+    static FlsFamily family;
+
+    void* resolved = state.load(std::memory_order_acquire);
+    if (resolved == nullptr) {
+      family.FlsAlloc    = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsAlloc);
+      family.FlsFree     = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsFree);
+      family.FlsGetValue = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsGetValue);
+      family.FlsSetValue = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsSetValue);
+      const bool complete =
+          family.FlsAlloc && family.FlsFree && family.FlsGetValue && family.FlsSetValue;
+      resolved = complete ? static_cast<void*>(&family) : ::winwrap::kAbsent;
+      state.store(resolved, std::memory_order_release);
+    }
+    return resolved == ::winwrap::kAbsent ? nullptr : static_cast<const FlsFamily*>(resolved);
+  }
+
+} // namespace
+
 extern "C" {
 
 DWORD WINAPI winwrap_FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback) {
+  if (const FlsFamily* system = SystemFls()) {
+    return system->FlsAlloc(lpCallback);
+  }
   CRITICAL_SECTION* lock = EnsureLock();
   ::EnterCriticalSection(lock);
 
@@ -218,6 +261,9 @@ DWORD WINAPI winwrap_FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback) {
 }
 
 PVOID WINAPI winwrap_FlsGetValue(DWORD dwFlsIndex) {
+  if (const FlsFamily* system = SystemFls()) {
+    return system->FlsGetValue(dwFlsIndex);
+  }
   if (dwFlsIndex >= kSlotCount) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return nullptr;
@@ -233,6 +279,9 @@ PVOID WINAPI winwrap_FlsGetValue(DWORD dwFlsIndex) {
 }
 
 BOOL WINAPI winwrap_FlsSetValue(DWORD dwFlsIndex, PVOID lpFlsData) {
+  if (const FlsFamily* system = SystemFls()) {
+    return system->FlsSetValue(dwFlsIndex, lpFlsData);
+  }
   if (dwFlsIndex >= kSlotCount) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;
@@ -249,6 +298,9 @@ BOOL WINAPI winwrap_FlsSetValue(DWORD dwFlsIndex, PVOID lpFlsData) {
 }
 
 BOOL WINAPI winwrap_FlsFree(DWORD dwFlsIndex) {
+  if (const FlsFamily* system = SystemFls()) {
+    return system->FlsFree(dwFlsIndex);
+  }
   if (dwFlsIndex >= kSlotCount) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;

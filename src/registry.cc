@@ -24,6 +24,7 @@
 // Only the wide form is provided; nothing imports RegGetValueA, and an ANSI
 // variant would be a conversion wrapper over this.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -104,6 +105,10 @@ LSTATUS APIENTRY winwrap_RegGetValueW(HKEY hkey,
                                       LPDWORD pdwType,
                                       PVOID pvData,
                                       LPDWORD pcbData) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hAdvapi32, RegGetValueW)) {
+    return system_fn(hkey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
+  }
   static const auto real = []() -> RegGetValueWFn {
     HMODULE advapi32 = ::GetModuleHandleW(L"advapi32.dll");
     return advapi32 ? reinterpret_cast<RegGetValueWFn>(::GetProcAddress(advapi32, "RegGetValueW"))

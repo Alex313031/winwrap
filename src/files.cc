@@ -29,6 +29,7 @@
 // windows.h, and winternl.h pulls winnt.h without the target-architecture
 // macros windows.h establishes, so the other way round fails to compile with
 // "No Target Architecture".
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -349,6 +350,11 @@ BOOL WINAPI winwrap_GetFileInformationByHandleEx(HANDLE hFile,
                                                  int FileInformationClass,
                                                  LPVOID lpFileInformation,
                                                  DWORD dwBufferSize) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetFileInformationByHandleEx)) {
+    return system_fn(hFile, FileInformationClass, lpFileInformation, dwBufferSize);
+  }
   if (!lpFileInformation) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;
@@ -456,6 +462,11 @@ BOOL WINAPI winwrap_SetFileInformationByHandle(HANDLE hFile,
                                                int FileInformationClass,
                                                LPVOID lpFileInformation,
                                                DWORD dwBufferSize) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, SetFileInformationByHandle)) {
+    return system_fn(hFile, FileInformationClass, lpFileInformation, dwBufferSize);
+  }
   if (!lpFileInformation) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;
@@ -565,6 +576,11 @@ DWORD WINAPI winwrap_GetFinalPathNameByHandleW(HANDLE hFile,
                                                LPWSTR lpszFilePath,
                                                DWORD cchFilePath,
                                                DWORD dwFlags) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetFinalPathNameByHandleW)) {
+    return system_fn(hFile, lpszFilePath, cchFilePath, dwFlags);
+  }
   if (hFile == INVALID_HANDLE_VALUE) {
     ::SetLastError(ERROR_INVALID_HANDLE);
     return 0;
@@ -671,6 +687,10 @@ HANDLE WINAPI winwrap_ReOpenFile(HANDLE hOriginalFile,
                                  DWORD dwDesiredAccess,
                                  DWORD dwShareMode,
                                  DWORD dwFlagsAndAttributes) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, ReOpenFile)) {
+    return system_fn(hOriginalFile, dwDesiredAccess, dwShareMode, dwFlagsAndAttributes);
+  }
   static const auto create = reinterpret_cast<NtCreateFileFn>(NtdllProc("NtCreateFile"));
   if (!create) {
     ::SetLastError(ERROR_INVALID_FUNCTION);

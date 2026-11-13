@@ -5,6 +5,15 @@ it natively. winwrap is only needed below that version — on anything newer the
 system's implementation is the better one, and the point of the table is to say
 exactly where the line falls.
 
+Since 0.3.0 the library acts on this column itself: each function asks for the
+real one and only runs its own code if the answer is no, so the same binary is
+correct from XP to 11 and no build flag selects between them. Two groups resolve
+all-or-nothing rather than one function at a time, because their arguments mean
+different things to each implementation — the SRWLOCK and CONDITION_VARIABLE
+functions together, which therefore only defer from Windows 7 (Vista has no
+`TryAcquireSRWLock*`, and no `RtlTryAcquireSRWLock*` under it either), and the
+`Fls*` four.
+
 ## Implemented
 
 | Function | DLL | Native since | Notes |

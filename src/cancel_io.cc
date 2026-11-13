@@ -33,11 +33,16 @@
 // XP it is a hang in everything but name. Queuing an APC does not help: a
 // thread blocked in a synchronous ReadFile is not in an alertable wait.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 extern "C" {
 
 BOOL WINAPI winwrap_CancelIoEx(HANDLE hFile, LPOVERLAPPED lpOverlapped) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, CancelIoEx)) {
+    return system_fn(hFile, lpOverlapped);
+  }
   // lpOverlapped is ignored. CancelIo has no way to name one request, so a
   // caller asking for a single operation gets every operation this thread has
   // outstanding on the handle. For the callers that exist that is the same
@@ -60,6 +65,10 @@ BOOL WINAPI winwrap_CancelIoEx(HANDLE hFile, LPOVERLAPPED lpOverlapped) {
 }
 
 BOOL WINAPI winwrap_CancelSynchronousIo(HANDLE hThread) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, CancelSynchronousIo)) {
+    return system_fn(hThread);
+  }
   UNREFERENCED_PARAMETER(hThread);
 
   // Cancelling a synchronous operation on another thread needs

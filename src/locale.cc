@@ -11,6 +11,7 @@
 // rather than LCID, so the work is turning one into the other, and XP has no
 // LocaleNameToLCID to do it with.
 
+#include "dispatch.h"
 #include "winwrap.h"
 
 namespace {
@@ -211,6 +212,10 @@ int WINAPI winwrap_CompareStringOrdinal(LPCWCH lpString1,
                                         LPCWCH lpString2,
                                         int cchCount2,
                                         BOOL bIgnoreCase) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, CompareStringOrdinal)) {
+    return system_fn(lpString1, cchCount1, lpString2, cchCount2, bIgnoreCase);
+  }
   // The real function validates all three of these and returns 0. A count
   // below -1 is meaningless, and bIgnoreCase is specified as a boolean rather
   // than "anything non-zero" -- a caller passing 2 has a bug, and hiding it
@@ -251,6 +256,10 @@ int WINAPI winwrap_GetLocaleInfoEx(LPCWSTR lpLocaleName,
                                    LCTYPE LCType,
                                    LPWSTR lpLCData,
                                    int cchData) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetLocaleInfoEx)) {
+    return system_fn(lpLocaleName, LCType, lpLCData, cchData);
+  }
   LCID lcid = 0;
   if (!LcidForName(lpLocaleName, &lcid)) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
