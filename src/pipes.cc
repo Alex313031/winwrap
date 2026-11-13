@@ -58,24 +58,6 @@ namespace {
 
   using NtFsControlFileFn = NTSTATUS(
       NTAPI*)(HANDLE, HANDLE, PVOID, PVOID, PIO_STATUS_BLOCK, ULONG, PVOID, ULONG, PVOID, ULONG);
-  using PipeProcessIdFn = BOOL(WINAPI*)(HANDLE, PULONG);
-
-  // Calls the real kernel32 export when the running system has one.
-  //
-  // This is the only place in winwrap that defers to the system rather than
-  // replacing it, and it is deliberate. Everywhere else, winwrap either
-  // implements the function properly or the substitution is required for
-  // consistency -- the SRWLOCK family has to be all ours or all the system's,
-  // for instance. Here there is nothing to implement and nothing to keep
-  // consistent: a winwrap-linked binary on Vista would otherwise lose a function
-  // that works, purely because it also wants to run on XP. Whether this should
-  // become winwrap's general behaviour is an open question, recorded in
-  // electron-legacy's TODO; for now it is one exception with a reason.
-  PipeProcessIdFn RealExport(const char* name) {
-    HMODULE kernel32 = ::GetModuleHandleW(L"kernel32.dll");
-    return kernel32 ? reinterpret_cast<PipeProcessIdFn>(::GetProcAddress(kernel32, name)) : nullptr;
-  }
-
 } // namespace
 
 extern "C" {
@@ -91,16 +73,8 @@ BOOL WINAPI ww_GetNamedPipeClientProcessId(HANDLE Pipe, PULONG ClientProcessId) 
     return FALSE;
   }
 
-  static const PipeProcessIdFn real = RealExport("GetNamedPipeClientProcessId");
-  if (real) {
-    return real(Pipe, ClientProcessId);
-  }
-
-  static const auto control = []() -> NtFsControlFileFn {
-    HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
-    return ntdll ? reinterpret_cast<NtFsControlFileFn>(::GetProcAddress(ntdll, "NtFsControlFile"))
-                 : nullptr;
-  }();
+  const auto control =
+      WW_TRYFUNC_AS(NtFsControlFileFn, ::winwrap::Module::hNtDll, "NtFsControlFile");
   if (control) {
     PipeClientProcessBuffer buffer = {};
     IO_STATUS_BLOCK iosb           = {};
@@ -127,11 +101,6 @@ BOOL WINAPI ww_GetNamedPipeServerProcessId(HANDLE Pipe, PULONG ServerProcessId) 
   if (!ServerProcessId) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;
-  }
-
-  static const PipeProcessIdFn real = RealExport("GetNamedPipeServerProcessId");
-  if (real) {
-    return real(Pipe, ServerProcessId);
   }
 
   // No equivalent of the client control code exists for the server end: npfs

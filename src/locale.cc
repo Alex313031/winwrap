@@ -60,12 +60,8 @@ namespace {
       return (c >= L'a' && c <= L'z') ? static_cast<wchar_t>(c - L'a' + L'A') : c;
     }
 
-    static const auto upcase = []() -> RtlUpcaseUnicodeCharFn {
-      HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
-      return ntdll ? reinterpret_cast<RtlUpcaseUnicodeCharFn>(
-                         ::GetProcAddress(ntdll, "RtlUpcaseUnicodeChar"))
-                   : nullptr;
-    }();
+    const auto upcase =
+        WW_TRYFUNC_AS(RtlUpcaseUnicodeCharFn, ::winwrap::Module::hNtDll, "RtlUpcaseUnicodeChar");
     if (upcase) {
       return upcase(c);
     }

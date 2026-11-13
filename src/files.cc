@@ -155,18 +155,11 @@ namespace {
 
   constexpr NTSTATUS kStatusPending = 0x00000103L;
 
-  FARPROC NtdllProc(const char* name) {
-    // ntdll is mapped into every process before anything of ours runs, so a
-    // module handle is always enough and nothing is ever loaded here.
-    static const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
-    return ntdll ? ::GetProcAddress(ntdll, name) : nullptr;
-  }
-
   // Turns an NT status into the Win32 error a caller expects to read back from
   // GetLastError, which is what kernel32 does at this boundary.
   void SetLastErrorFromStatus(NTSTATUS status) {
-    static const auto translate =
-        reinterpret_cast<RtlNtStatusToDosErrorFn>(NtdllProc("RtlNtStatusToDosError"));
+    const auto translate =
+        WW_TRYFUNC_AS(RtlNtStatusToDosErrorFn, ::winwrap::Module::hNtDll, "RtlNtStatusToDosError");
     ::SetLastError(translate ? translate(status) : ERROR_GEN_FAILURE);
   }
 
@@ -264,7 +257,7 @@ namespace {
   // The object's NT path, e.g. \Device\HarddiskVolume2\Windows\notepad.exe.
   // Returns a heap block the caller frees, or null on failure (last error set).
   NameInformation* QueryNtName(HANDLE file) {
-    static const auto query = reinterpret_cast<NtQueryObjectFn>(NtdllProc("NtQueryObject"));
+    const auto query = WW_TRYFUNC_AS(NtQueryObjectFn, ::winwrap::Module::hNtDll, "NtQueryObject");
     if (!query) {
       ::SetLastError(ERROR_INVALID_FUNCTION);
       return nullptr;
@@ -364,8 +357,8 @@ BOOL WINAPI ww_GetFileInformationByHandleEx(HANDLE hFile,
   ULONG nt_class       = 0;
 
   if (NtClassForQuery(FileInformationClass, &nt_class)) {
-    static const auto query =
-        reinterpret_cast<NtQueryInformationFileFn>(NtdllProc("NtQueryInformationFile"));
+    const auto query = WW_TRYFUNC_AS(NtQueryInformationFileFn, ::winwrap::Module::hNtDll,
+                                     "NtQueryInformationFile");
     if (!query) {
       ::SetLastError(ERROR_INVALID_FUNCTION);
       return FALSE;
@@ -380,8 +373,8 @@ BOOL WINAPI ww_GetFileInformationByHandleEx(HANDLE hFile,
 
   BOOLEAN restart = FALSE;
   if (NtClassForDirectory(FileInformationClass, &nt_class, &restart)) {
-    static const auto enumerate =
-        reinterpret_cast<NtQueryDirectoryFileFn>(NtdllProc("NtQueryDirectoryFile"));
+    const auto enumerate =
+        WW_TRYFUNC_AS(NtQueryDirectoryFileFn, ::winwrap::Module::hNtDll, "NtQueryDirectoryFile");
     if (!enumerate) {
       ::SetLastError(ERROR_INVALID_FUNCTION);
       return FALSE;
@@ -411,10 +404,10 @@ BOOL WINAPI ww_GetFileInformationByHandleEx(HANDLE hFile,
       ::SetLastError(ERROR_BAD_LENGTH);
       return FALSE;
     }
-    static const auto query =
-        reinterpret_cast<NtQueryInformationFileFn>(NtdllProc("NtQueryInformationFile"));
-    static const auto query_volume =
-        reinterpret_cast<NtQueryVolumeInformationFileFn>(NtdllProc("NtQueryVolumeInformationFile"));
+    const auto query        = WW_TRYFUNC_AS(NtQueryInformationFileFn, ::winwrap::Module::hNtDll,
+                                            "NtQueryInformationFile");
+    const auto query_volume = WW_TRYFUNC_AS(
+        NtQueryVolumeInformationFileFn, ::winwrap::Module::hNtDll, "NtQueryVolumeInformationFile");
     if (!query || !query_volume) {
       ::SetLastError(ERROR_INVALID_FUNCTION);
       return FALSE;
@@ -471,8 +464,8 @@ BOOL WINAPI ww_SetFileInformationByHandle(HANDLE hFile,
     return FALSE;
   }
 
-  static const auto set =
-      reinterpret_cast<NtSetInformationFileFn>(NtdllProc("NtSetInformationFile"));
+  const auto set =
+      WW_TRYFUNC_AS(NtSetInformationFileFn, ::winwrap::Module::hNtDll, "NtSetInformationFile");
   if (!set) {
     ::SetLastError(ERROR_INVALID_FUNCTION);
     return FALSE;
@@ -501,10 +494,10 @@ BOOL WINAPI ww_SetFileInformationByHandle(HANDLE hFile,
       return TRUE;
     }
 
-    static const auto to_nt_path =
-        reinterpret_cast<RtlDosPathNameToNtPathNameFn>(NtdllProc("RtlDosPathNameToNtPathName_U"));
-    static const auto free_string =
-        reinterpret_cast<RtlFreeUnicodeStringFn>(NtdllProc("RtlFreeUnicodeString"));
+    const auto to_nt_path = WW_TRYFUNC_AS(RtlDosPathNameToNtPathNameFn, ::winwrap::Module::hNtDll,
+                                          "RtlDosPathNameToNtPathName_U");
+    const auto free_string =
+        WW_TRYFUNC_AS(RtlFreeUnicodeStringFn, ::winwrap::Module::hNtDll, "RtlFreeUnicodeString");
     if (!to_nt_path || !free_string) {
       ::SetLastError(ERROR_INVALID_FUNCTION);
       return FALSE;
@@ -689,7 +682,7 @@ HANDLE WINAPI ww_ReOpenFile(HANDLE hOriginalFile,
   if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, ReOpenFile)) {
     return system_fn(hOriginalFile, dwDesiredAccess, dwShareMode, dwFlagsAndAttributes);
   }
-  static const auto create = reinterpret_cast<NtCreateFileFn>(NtdllProc("NtCreateFile"));
+  const auto create = WW_TRYFUNC_AS(NtCreateFileFn, ::winwrap::Module::hNtDll, "NtCreateFile");
   if (!create) {
     ::SetLastError(ERROR_INVALID_FUNCTION);
     return INVALID_HANDLE_VALUE;

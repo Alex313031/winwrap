@@ -15,8 +15,6 @@ namespace {
 
   using NtQueryInformationProcessFn = NTSTATUS(NTAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
 
-  using SetProcessDPIAwareFn = BOOL(WINAPI*)(void);
-
 } // namespace
 
 extern "C" {
@@ -39,12 +37,8 @@ UINT WINAPI ww_GetErrorMode(void) {
   if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, GetErrorMode)) {
     return system_fn();
   }
-  static const auto query = []() -> NtQueryInformationProcessFn {
-    HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
-    return ntdll ? reinterpret_cast<NtQueryInformationProcessFn>(
-                       ::GetProcAddress(ntdll, "NtQueryInformationProcess"))
-                 : nullptr;
-  }();
+  const auto query = WW_TRYFUNC_AS(NtQueryInformationProcessFn, ::winwrap::Module::hNtDll,
+                                   "NtQueryInformationProcess");
 
   if (query) {
     DWORD hard_error_mode = 0;
@@ -82,17 +76,6 @@ BOOL WINAPI ww_SetProcessDPIAware(void) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hUser32, SetProcessDPIAware)) {
     return system_fn();
-  }
-  // Where the system has its own, use it: on Vista and later this genuinely
-  // changes process behaviour and must not be skipped.
-  static const auto real = []() -> SetProcessDPIAwareFn {
-    HMODULE user32 = ::GetModuleHandleW(L"user32.dll");
-    return user32 ? reinterpret_cast<SetProcessDPIAwareFn>(
-                        ::GetProcAddress(user32, "SetProcessDPIAware"))
-                  : nullptr;
-  }();
-  if (real) {
-    return real();
   }
   return TRUE;
 }

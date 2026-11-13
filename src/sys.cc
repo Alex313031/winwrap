@@ -32,17 +32,12 @@ namespace {
        2000, which has neither a compat tab nor RtlGetNtVersionNumbers by
        name (only by ordinal), and where it is therefore exact. */
   uint32_t QueryRealNTVersion() {
-    HMODULE ntdll = ::GetModuleHandleW(::winwrap::kNtDll);
-    if (ntdll == nullptr) {
-      return 0;
-    }
-
     // RtlGetNtVersionNumbers first, per the comment above: the only one that
     // defeats both lies. Its build number carries flag bits in the top nibble,
     // which is why only major and minor are read out of it.
     typedef void(NTAPI * RtlGetNtVersionNumbers_t)(LPDWORD, LPDWORD, LPDWORD);
-    const auto pversion_numbers = reinterpret_cast<RtlGetNtVersionNumbers_t>(
-        ::GetProcAddress(ntdll, "RtlGetNtVersionNumbers"));
+    const auto pversion_numbers = WW_TRYFUNC_AS(RtlGetNtVersionNumbers_t, ::winwrap::Module::hNtDll,
+                                                "RtlGetNtVersionNumbers");
     if (pversion_numbers != nullptr) {
       DWORD major = 0;
       DWORD minor = 0;
@@ -57,7 +52,7 @@ namespace {
     // which is 2000, where it is exact.
     typedef LONG(NTAPI * RtlGetVersion_t)(PRTL_OSVERSIONINFOW);
     const auto pget_version =
-        reinterpret_cast<RtlGetVersion_t>(::GetProcAddress(ntdll, "RtlGetVersion"));
+        WW_TRYFUNC_AS(RtlGetVersion_t, ::winwrap::Module::hNtDll, "RtlGetVersion");
     if (pget_version != nullptr) {
       RTL_OSVERSIONINFOW info  = {};
       info.dwOSVersionInfoSize = sizeof(info);
@@ -94,15 +89,11 @@ uint32_t GetRealNTVersion() {
 }
 
 bool IsRunningOnWine(const char** outWineVer) {
-  HMODULE ntdll = ::GetModuleHandleW(::winwrap::kNtDll);
-  if (ntdll == nullptr) {
-    return false;
-  }
   // Cleaner one-liner via a typedef than splitting the function-pointer
   // declaration and the assignment across two lines.
   typedef const char*(CDECL * WineGetVersion_t)(void);
   const WineGetVersion_t pwine_get_version =
-      reinterpret_cast<WineGetVersion_t>(::GetProcAddress(ntdll, "wine_get_version"));
+      WW_TRYFUNC_AS(WineGetVersion_t, ::winwrap::Module::hNtDll, "wine_get_version");
   if (pwine_get_version == nullptr) {
     return false;
   }

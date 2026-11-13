@@ -69,31 +69,41 @@ namespace winwrap {
 
 } // namespace winwrap
 
-// Yields the system's `name` from `module` as a pointer of the same type, or
-// nullptr if this Windows does not export it.
+// The system's `name` from `module`, with the type given explicitly and the
+// name as a string. WW_TRYFUNC below is this with the type inferred.
 //
-// The type comes from winwrap's own shim rather than from the real
-// declaration, because the real one is not visible here: these sources compile
-// with _WIN32_WINNT set to XP, which is the entire point of the library, and
-// the SDK hides every function newer than that behind a version guard. So
-// decltype(&RegGetValueW) does not compile -- there is no such declaration --
-// while decltype(&ww_RegGetValueW) is the same signature by construction,
-// since a shim that did not match the function it substitutes would be wrong
-// anyway. It also means a signature that drifts is a compile error here rather
-// than a corrupt stack at runtime.
+// For the ntdll entry points winwrap builds on -- NtQueryInformationFile,
+// RtlGetNtVersionNumbers and the rest. Those have no ww_ shim to borrow a
+// signature from, and no declaration here either, since winternl.h exposes
+// only a fraction of them.
 //
-// The slot is a static local of a lambda, so each use gets its own cache
-// without the file having to declare one, and it reads at the call site as an
-// expression.
-#define WW_TRYFUNC(module, name)                                                              \
-  ([]() noexcept -> decltype(&ww_##name) {                                                    \
-    static std::atomic<void*> slot{nullptr};                                                  \
-    void* resolved = slot.load(std::memory_order_relaxed);                                    \
-    if (resolved == nullptr) {                                                                \
-      resolved = ::winwrap::ResolveSlot(slot, module, #name);                                 \
-    }                                                                                         \
-    return resolved == ::winwrap::kAbsent ? nullptr                                           \
-                                          : reinterpret_cast<decltype(&ww_##name)>(resolved); \
+// Worth using in preference to a function-local static holding the result of
+// a GetProcAddress lambda, which is the shape this replaced. That shape is
+// not merely slower -- its guard goes through the CRT's thread-safe-statics
+// machinery, and winwrap is called *by* the CRT while the CRT is still
+// starting up. Resolving through a relaxed atomic owes the CRT nothing.
+#define WW_TRYFUNC_AS(type, module, name)                                               \
+  ([]() noexcept -> type {                                                              \
+    static std::atomic<void*> slot{nullptr};                                            \
+    void* resolved = slot.load(std::memory_order_relaxed);                              \
+    if (resolved == nullptr) {                                                          \
+      resolved = ::winwrap::ResolveSlot(slot, module, name);                            \
+    }                                                                                   \
+    return resolved == ::winwrap::kAbsent ? nullptr : reinterpret_cast<type>(resolved); \
   }())
+
+// The system's `name` from `module`, typed from winwrap's own shim, or nullptr
+// if this Windows does not export it.
+//
+// The type comes from the shim rather than the real declaration because the
+// real one is not visible here: these sources compile with _WIN32_WINNT set to
+// XP, which is the entire point of the library, and the SDK hides every
+// function newer than that behind a version guard. So decltype(&RegGetValueW)
+// does not compile -- there is no such declaration -- while
+// decltype(&ww_RegGetValueW) is the same signature by construction, since a
+// shim that did not match the function it substitutes would be wrong anyway.
+// It also means a signature that drifts is a compile error here rather than a
+// corrupt stack at runtime.
+#define WW_TRYFUNC(module, name) WW_TRYFUNC_AS(decltype(&ww_##name), module, #name)
 
 #endif // WINWRAP_DISPATCH_H_

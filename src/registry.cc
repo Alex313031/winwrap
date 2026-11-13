@@ -43,8 +43,6 @@ namespace {
  #define RRF_ZEROONFAILURE    0x20000000
 #endif
 
-  using RegGetValueWFn = LSTATUS(APIENTRY*)(HKEY, LPCWSTR, LPCWSTR, DWORD, LPDWORD, PVOID, LPDWORD);
-
   // Whether a stored type satisfies the caller's filter.
   bool TypeIsAllowed(DWORD type, DWORD flags) {
     DWORD bit = 0;
@@ -109,15 +107,6 @@ LSTATUS APIENTRY ww_RegGetValueW(HKEY hkey,
   if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hAdvapi32, RegGetValueW)) {
     return system_fn(hkey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
   }
-  static const auto real = []() -> RegGetValueWFn {
-    HMODULE advapi32 = ::GetModuleHandleW(L"advapi32.dll");
-    return advapi32 ? reinterpret_cast<RegGetValueWFn>(::GetProcAddress(advapi32, "RegGetValueW"))
-                    : nullptr;
-  }();
-  if (real) {
-    return real(hkey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
-  }
-
   // A buffer with no size is unusable, and a filter that permits no type at
   // all can never succeed.
   if ((pvData != nullptr && pcbData == nullptr) || (dwFlags & RRF_RT_ANY) == 0) {
