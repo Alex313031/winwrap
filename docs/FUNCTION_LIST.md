@@ -65,56 +65,20 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 
 ### Not everything here succeeds
 
-Four of these cannot do what their name says on XP, and say so rather than
-pretending: `CreateSymbolicLinkW` (no symbolic links exist),
-`CancelSynchronousIo` (no way to reach another thread's synchronous I/O),
-`RegisterApplicationRestart` and `UnregisterApplicationRestart` (no Restart
-Manager), and
-`SetFileCompletionNotificationModes` for `FILE_SKIP_COMPLETION_PORT_ON_SUCCESS`
-(claiming success there invites a use-after-free), and the named-pipe process
-IDs (XP's npfs does not record who connected). Each returns the error code its
-callers already test for, which is not the same as returning any error.
-
-The named-pipe pair is the clearest case of why that matters. Mojo uses it to
-check that the process at the other end of an IPC channel is at least as
-privileged as itself; a confident wrong answer there does not degrade a
-feature, it defeats a security check.
-
-### FLS is per thread here, not per fiber
-
-The one semantic difference. A program that converts threads to fibers and
-expects each fiber to see its own FLS values will not get that. Neither
-Chromium nor the CRT does this, and faking it would mean intercepting the whole
-fiber API.
-
-### SetFileCompletionNotificationModes needs a libuv patch
-
-Reporting success would be far worse than failing. libuv would set
-`UV_HANDLE_SYNC_BYPASS_IOCP` and stop expecting a completion packet for a
-synchronous read, while XP keeps posting one, so every such read is processed
-twice. Failing is the honest answer.
-
-libuv's UDP path already tolerates it, skipping the optimisation when the error
-is `ERROR_INVALID_FUNCTION` -- which is why that is the code returned. Its TCP
-path does not: `uv__tcp_set_socket()` returns the error and fails socket
-creation outright, so it needs a patch to behave like the UDP path.
-
-### The SRWLOCK family is all-or-nothing
-
-Do not redirect part of it. Vista exports everything except the two
-`TryAcquire` variants, and redirecting only those would point a
-`CRITICAL_SECTION`-based `TryAcquire` at a lock whose `Ptr` field the real Vista
-implementation owns, reading its internals as if they were our pointer. Either
-the whole family is winwrap's or all of it is the system's.
-
-That is why a Vista target is better served by teaching the caller that the
-`TryAcquire` variants can be absent than by linking winwrap for them.
+Most of the above is a full implementation and a caller cannot tell the
+difference. Some of it cannot be, either because XP has nothing to build on or
+because the honest answer is an error. Those are listed separately, with what
+each one does instead and what it costs, in
+[INCOMPLETE_FUNCS.md](INCOMPLETE_FUNCS.md) — read it before relying on
+`CancelIoEx`, `CancelSynchronousIo`, the `Fls*` family's scope, or
+`GetQueuedCompletionStatusEx` with `fAlertable`.
 
 ## Not yet implemented
 
 Nothing, for Windows XP. The 29 functions a Chromium-based binary statically
 imports and XP SP3 does not export are all present above, measured against a
-real XP SP3 x86 `kernel32.dll` with `tools/check_win_imports.py`.
+real XP SP3 x86 `kernel32.dll` with Electron Legacy's
+`tools/check_win_imports.py`, which lives in that repo rather than this one.
 
 That is a statement about one binary's needs, not about Win32. A different
 consumer will import functions this list has never heard of, and adding one is

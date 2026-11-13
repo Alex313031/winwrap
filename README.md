@@ -13,7 +13,9 @@ It can be compiled as a static lib `winwrap.lib` or shared library `winlib.dll`,
 
 Routing through it does not mean replacing it. Each function asks the running Windows for the real one first and only falls back to its own implementation where there isn't one, so a binary with winwrap linked in uses the system's code on Windows 7 and the emulation on XP, with no separate build for either. The cost on a modern OS is a cached pointer load and a jump.
 
-To see a list of the functions that this library shims/spoofs, see [FUNCTION_LIST.md](FUNCTION_LIST.md).
+To see a list of the functions that this library shims/spoofs, see [FUNCTION_LIST.md](docs/FUNCTION_LIST.md).
+Most of them are complete; the ones that cannot be, and what they do instead, are in
+[INCOMPLETE_FUNCS.md](docs/INCOMPLETE_FUNCS.md).
 
 ## Credits
 
