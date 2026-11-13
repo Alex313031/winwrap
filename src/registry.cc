@@ -98,15 +98,15 @@ namespace {
 
 extern "C" {
 
-LSTATUS APIENTRY winwrap_RegGetValueW(HKEY hkey,
-                                      LPCWSTR lpSubKey,
-                                      LPCWSTR lpValue,
-                                      DWORD dwFlags,
-                                      LPDWORD pdwType,
-                                      PVOID pvData,
-                                      LPDWORD pcbData) {
+LSTATUS APIENTRY ww_RegGetValueW(HKEY hkey,
+                                 LPCWSTR lpSubKey,
+                                 LPCWSTR lpValue,
+                                 DWORD dwFlags,
+                                 LPDWORD pdwType,
+                                 PVOID pvData,
+                                 LPDWORD pcbData) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hAdvapi32, RegGetValueW)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hAdvapi32, RegGetValueW)) {
     return system_fn(hkey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
   }
   static const auto real = []() -> RegGetValueWFn {

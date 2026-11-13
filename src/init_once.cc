@@ -47,12 +47,12 @@ namespace {
 
 } // namespace
 
-extern "C" BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
-                                                   PINIT_ONCE_FN InitFn,
-                                                   PVOID Parameter,
-                                                   LPVOID* Context) {
+extern "C" BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
+                                              PINIT_ONCE_FN InitFn,
+                                              PVOID Parameter,
+                                              LPVOID* Context) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, InitOnceExecuteOnce)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, InitOnceExecuteOnce)) {
     return system_fn(InitOnce, InitFn, Parameter, Context);
   }
   if (!InitOnce || !InitFn) {

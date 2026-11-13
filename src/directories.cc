@@ -53,11 +53,11 @@ extern "C" {
 // BOOLEAN, not BOOL: this one returns a byte. Worth stating because every
 // neighbouring function in winbase.h returns BOOL, and on x86 the difference
 // is invisible until a caller tests the full register.
-BOOLEAN WINAPI winwrap_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
-                                           LPCWSTR lpTargetFileName,
-                                           DWORD dwFlags) {
+BOOLEAN WINAPI ww_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
+                                      LPCWSTR lpTargetFileName,
+                                      DWORD dwFlags) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, CreateSymbolicLinkW)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, CreateSymbolicLinkW)) {
     return system_fn(lpSymlinkFileName, lpTargetFileName, dwFlags);
   }
   UNREFERENCED_PARAMETER(lpSymlinkFileName);
@@ -87,10 +87,10 @@ BOOLEAN WINAPI winwrap_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
 //
 // Only a backslash counts as "has a path", matching the real implementation.
 // A forward slash does not, even though much of Win32 accepts one.
-BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName) {
+BOOL WINAPI ww_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, NeedCurrentDirectoryForExePathW)) {
+          WW_TRYFUNC(::winwrap::Module::hKernel32, NeedCurrentDirectoryForExePathW)) {
     return system_fn(ExeName);
   }
   if (ExeName != nullptr && ::wcschr(ExeName, L'\\') != nullptr) {

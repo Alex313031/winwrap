@@ -35,10 +35,9 @@ extern "C" {
 // implementation for both architectures. YY-Thunks uses inline asm here and so
 // is x86-only; it can afford that, because its x64 target is Server 2003 and
 // already has the real function.
-DWORD WINAPI winwrap_GetCurrentProcessorNumber(void) {
+DWORD WINAPI ww_GetCurrentProcessorNumber(void) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetCurrentProcessorNumber)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, GetCurrentProcessorNumber)) {
     return system_fn();
   }
   int registers[4] = {};

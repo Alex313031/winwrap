@@ -135,7 +135,7 @@ namespace {
 
 extern "C" {
 
-VOID WINAPI winwrap_InitializeSRWLock(PSRWLOCK SRWLock) {
+VOID WINAPI ww_InitializeSRWLock(PSRWLOCK SRWLock) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->InitializeSRWLock(SRWLock);
     return;
@@ -143,7 +143,7 @@ VOID WINAPI winwrap_InitializeSRWLock(PSRWLOCK SRWLock) {
   SRWLock->Ptr = nullptr;
 }
 
-VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
+VOID WINAPI ww_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->AcquireSRWLockExclusive(SRWLock);
     return;
@@ -179,7 +179,7 @@ VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
   }
 }
 
-VOID WINAPI winwrap_ReleaseSRWLockExclusive(PSRWLOCK SRWLock) {
+VOID WINAPI ww_ReleaseSRWLockExclusive(PSRWLOCK SRWLock) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->ReleaseSRWLockExclusive(SRWLock);
     return;
@@ -197,7 +197,7 @@ VOID WINAPI winwrap_ReleaseSRWLockExclusive(PSRWLOCK SRWLock) {
   }
 }
 
-VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
+VOID WINAPI ww_AcquireSRWLockShared(PSRWLOCK SRWLock) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->AcquireSRWLockShared(SRWLock);
     return;
@@ -227,7 +227,7 @@ VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
   }
 }
 
-VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock) {
+VOID WINAPI ww_ReleaseSRWLockShared(PSRWLOCK SRWLock) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->ReleaseSRWLockShared(SRWLock);
     return;
@@ -246,7 +246,7 @@ VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock) {
   }
 }
 
-BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock) {
+BOOLEAN WINAPI ww_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     return system->TryAcquireSRWLockExclusive(SRWLock);
   }
@@ -257,7 +257,7 @@ BOOLEAN WINAPI winwrap_TryAcquireSRWLockExclusive(PSRWLOCK SRWLock) {
   return Cas(SRWLock, value, value | kWriterHeld) ? TRUE : FALSE;
 }
 
-BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock) {
+BOOLEAN WINAPI ww_TryAcquireSRWLockShared(PSRWLOCK SRWLock) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     return system->TryAcquireSRWLockShared(SRWLock);
   }

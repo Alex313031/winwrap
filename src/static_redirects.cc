@@ -51,9 +51,9 @@
 // linkage in C++, which would let the definition be discarded despite the asm
 // label, and the reference it is meant to satisfy would fall through to
 // kernel32 again.
-#define WINWRAP_REDIRECT(name, bytes)                              \
-  extern "C" decltype(&winwrap_##name) winwrap_imp_##name __asm__( \
-      WINWRAP_IMP_SYMBOL(name, bytes)) = &winwrap_##name
+#define WINWRAP_REDIRECT(name, bytes)                                                           \
+  extern "C" decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = \
+      &ww_##name
 
 // --- Available on Vista and later, missing on XP ---------------------------
 WINWRAP_REDIRECT(GetTickCount64, 0);

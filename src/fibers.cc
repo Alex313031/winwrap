@@ -58,7 +58,7 @@ extern "C" {
 //
 // A caller that genuinely depends on float switching cannot be satisfied on
 // XP by any means, so there is no answer here that is both honest and useful.
-LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags) {
+LPVOID WINAPI ww_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags) {
   using ConvertFunction = LPVOID(WINAPI*)(LPVOID, DWORD);
   static const auto real =
       reinterpret_cast<ConvertFunction>(Kernel32Proc("ConvertThreadToFiberEx"));
@@ -81,11 +81,11 @@ LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags) 
 // Only retried on ERROR_INVALID_PARAMETER, and only when the flag was set. A
 // failure for any other reason -- out of memory, a bad start address -- is the
 // caller's to see, and retrying it would just fail twice.
-LPVOID WINAPI winwrap_CreateFiberEx(SIZE_T dwStackCommitSize,
-                                    SIZE_T dwStackReserveSize,
-                                    DWORD dwFlags,
-                                    LPFIBER_START_ROUTINE lpStartAddress,
-                                    LPVOID lpParameter) {
+LPVOID WINAPI ww_CreateFiberEx(SIZE_T dwStackCommitSize,
+                               SIZE_T dwStackReserveSize,
+                               DWORD dwFlags,
+                               LPFIBER_START_ROUTINE lpStartAddress,
+                               LPVOID lpParameter) {
   using CreateFunction   = LPVOID(WINAPI*)(SIZE_T, SIZE_T, DWORD, LPFIBER_START_ROUTINE, LPVOID);
   static const auto real = reinterpret_cast<CreateFunction>(Kernel32Proc("CreateFiberEx"));
 
@@ -117,7 +117,7 @@ LPVOID WINAPI winwrap_CreateFiberEx(SIZE_T dwStackCommitSize,
 // falls back to where this function is absent -- chrome/app/chrome_exe_main_win.cc
 // does exactly this comparison after GetProcAddress fails -- so a build using
 // winwrap and one not using it agree on the answer.
-BOOL WINAPI winwrap_IsThreadAFiber(void) {
+BOOL WINAPI ww_IsThreadAFiber(void) {
   PVOID fiber_data = ::GetCurrentFiber();
   if (fiber_data == nullptr ||
       fiber_data == reinterpret_cast<PVOID>(static_cast<uintptr_t>(0x1E00))) {

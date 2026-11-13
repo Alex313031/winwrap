@@ -26,9 +26,9 @@ namespace {
 
 } // namespace
 
-extern "C" ULONGLONG WINAPI winwrap_GetTickCount64(void) {
+extern "C" ULONGLONG WINAPI ww_GetTickCount64(void) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetTickCount64)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, GetTickCount64)) {
     return system_fn();
   }
   const ULONGLONG now32 = ::GetTickCount();

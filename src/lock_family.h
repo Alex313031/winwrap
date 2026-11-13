@@ -43,20 +43,20 @@ namespace winwrap {
   // call site reads the same as the call it replaces.
   // Members are typed from winwrap's own shims: these sources compile against
   // XP headers, where none of the twelve are declared at all. See
-  // WINWRAP_SYSTEM in dispatch.h.
+  // WW_TRYFUNC in dispatch.h.
   struct LockFamily {
-    decltype(&winwrap_InitializeSRWLock) InitializeSRWLock;
-    decltype(&winwrap_AcquireSRWLockExclusive) AcquireSRWLockExclusive;
-    decltype(&winwrap_AcquireSRWLockShared) AcquireSRWLockShared;
-    decltype(&winwrap_ReleaseSRWLockExclusive) ReleaseSRWLockExclusive;
-    decltype(&winwrap_ReleaseSRWLockShared) ReleaseSRWLockShared;
-    decltype(&winwrap_TryAcquireSRWLockExclusive) TryAcquireSRWLockExclusive;
-    decltype(&winwrap_TryAcquireSRWLockShared) TryAcquireSRWLockShared;
-    decltype(&winwrap_InitializeConditionVariable) InitializeConditionVariable;
-    decltype(&winwrap_SleepConditionVariableCS) SleepConditionVariableCS;
-    decltype(&winwrap_SleepConditionVariableSRW) SleepConditionVariableSRW;
-    decltype(&winwrap_WakeConditionVariable) WakeConditionVariable;
-    decltype(&winwrap_WakeAllConditionVariable) WakeAllConditionVariable;
+    decltype(&ww_InitializeSRWLock) InitializeSRWLock;
+    decltype(&ww_AcquireSRWLockExclusive) AcquireSRWLockExclusive;
+    decltype(&ww_AcquireSRWLockShared) AcquireSRWLockShared;
+    decltype(&ww_ReleaseSRWLockExclusive) ReleaseSRWLockExclusive;
+    decltype(&ww_ReleaseSRWLockShared) ReleaseSRWLockShared;
+    decltype(&ww_TryAcquireSRWLockExclusive) TryAcquireSRWLockExclusive;
+    decltype(&ww_TryAcquireSRWLockShared) TryAcquireSRWLockShared;
+    decltype(&ww_InitializeConditionVariable) InitializeConditionVariable;
+    decltype(&ww_SleepConditionVariableCS) SleepConditionVariableCS;
+    decltype(&ww_SleepConditionVariableSRW) SleepConditionVariableSRW;
+    decltype(&ww_WakeConditionVariable) WakeConditionVariable;
+    decltype(&ww_WakeAllConditionVariable) WakeAllConditionVariable;
   };
 
   // Returns the system's set, or nullptr if this Windows is missing any part of

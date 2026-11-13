@@ -108,15 +108,15 @@ extern "C" {
 // The cost is that a packet arriving mid-slice waits out the remainder, so the
 // alertable path trades a few milliseconds of latency for the ability to
 // deliver APCs at all. Both callers in Electron pass FALSE and never reach it.
-BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(HANDLE CompletionPort,
-                                                LPOVERLAPPED_ENTRY lpCompletionPortEntries,
-                                                ULONG ulCount,
-                                                PULONG ulNumEntriesRemoved,
-                                                DWORD dwMilliseconds,
-                                                BOOL fAlertable) {
+BOOL WINAPI ww_GetQueuedCompletionStatusEx(HANDLE CompletionPort,
+                                           LPOVERLAPPED_ENTRY lpCompletionPortEntries,
+                                           ULONG ulCount,
+                                           PULONG ulNumEntriesRemoved,
+                                           DWORD dwMilliseconds,
+                                           BOOL fAlertable) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetQueuedCompletionStatusEx)) {
+          WW_TRYFUNC(::winwrap::Module::hKernel32, GetQueuedCompletionStatusEx)) {
     return system_fn(CompletionPort, lpCompletionPortEntries, ulCount, ulNumEntriesRemoved,
                      dwMilliseconds, fAlertable);
   }
@@ -192,10 +192,10 @@ BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(HANDLE CompletionPort,
 // libuv's UDP path treats exactly that code as "this handle does not support
 // the optimisation" and carries on without it (deps/uv/src/win/udp.c). Its TCP
 // path has no such tolerance and still needs a patch of its own.
-BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle, UCHAR Flags) {
+BOOL WINAPI ww_SetFileCompletionNotificationModes(HANDLE FileHandle, UCHAR Flags) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, SetFileCompletionNotificationModes)) {
+          WW_TRYFUNC(::winwrap::Module::hKernel32, SetFileCompletionNotificationModes)) {
     return system_fn(FileHandle, Flags);
   }
   UNREFERENCED_PARAMETER(FileHandle);

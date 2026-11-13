@@ -207,13 +207,13 @@ namespace {
 
 extern "C" {
 
-int WINAPI winwrap_CompareStringOrdinal(LPCWCH lpString1,
-                                        int cchCount1,
-                                        LPCWCH lpString2,
-                                        int cchCount2,
-                                        BOOL bIgnoreCase) {
+int WINAPI ww_CompareStringOrdinal(LPCWCH lpString1,
+                                   int cchCount1,
+                                   LPCWCH lpString2,
+                                   int cchCount2,
+                                   BOOL bIgnoreCase) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, CompareStringOrdinal)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, CompareStringOrdinal)) {
     return system_fn(lpString1, cchCount1, lpString2, cchCount2, bIgnoreCase);
   }
   // The real function validates all three of these and returns 0. A count
@@ -252,12 +252,9 @@ int WINAPI winwrap_CompareStringOrdinal(LPCWCH lpString1,
   return length1 < length2 ? CSTR_LESS_THAN : CSTR_GREATER_THAN;
 }
 
-int WINAPI winwrap_GetLocaleInfoEx(LPCWSTR lpLocaleName,
-                                   LCTYPE LCType,
-                                   LPWSTR lpLCData,
-                                   int cchData) {
+int WINAPI ww_GetLocaleInfoEx(LPCWSTR lpLocaleName, LCTYPE LCType, LPWSTR lpLCData, int cchData) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetLocaleInfoEx)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, GetLocaleInfoEx)) {
     return system_fn(lpLocaleName, LCType, lpLCData, cchData);
   }
   LCID lcid = 0;

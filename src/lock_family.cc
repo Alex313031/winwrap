@@ -22,24 +22,21 @@ namespace winwrap {
     // it again -- harmlessly, since the result is the same -- or sees the pointer,
     // and the release store below orders the struct's contents ahead of it.
     bool Populate() {
-      g_family.InitializeSRWLock       = WINWRAP_SYSTEM(Module::hKernel32, InitializeSRWLock);
-      g_family.AcquireSRWLockExclusive = WINWRAP_SYSTEM(Module::hKernel32, AcquireSRWLockExclusive);
-      g_family.AcquireSRWLockShared    = WINWRAP_SYSTEM(Module::hKernel32, AcquireSRWLockShared);
-      g_family.ReleaseSRWLockExclusive = WINWRAP_SYSTEM(Module::hKernel32, ReleaseSRWLockExclusive);
-      g_family.ReleaseSRWLockShared    = WINWRAP_SYSTEM(Module::hKernel32, ReleaseSRWLockShared);
+      g_family.InitializeSRWLock       = WW_TRYFUNC(Module::hKernel32, InitializeSRWLock);
+      g_family.AcquireSRWLockExclusive = WW_TRYFUNC(Module::hKernel32, AcquireSRWLockExclusive);
+      g_family.AcquireSRWLockShared    = WW_TRYFUNC(Module::hKernel32, AcquireSRWLockShared);
+      g_family.ReleaseSRWLockExclusive = WW_TRYFUNC(Module::hKernel32, ReleaseSRWLockExclusive);
+      g_family.ReleaseSRWLockShared    = WW_TRYFUNC(Module::hKernel32, ReleaseSRWLockShared);
       // The two that Vista does not have, and the reason the line is at Windows 7.
       g_family.TryAcquireSRWLockExclusive =
-          WINWRAP_SYSTEM(Module::hKernel32, TryAcquireSRWLockExclusive);
-      g_family.TryAcquireSRWLockShared = WINWRAP_SYSTEM(Module::hKernel32, TryAcquireSRWLockShared);
+          WW_TRYFUNC(Module::hKernel32, TryAcquireSRWLockExclusive);
+      g_family.TryAcquireSRWLockShared = WW_TRYFUNC(Module::hKernel32, TryAcquireSRWLockShared);
       g_family.InitializeConditionVariable =
-          WINWRAP_SYSTEM(Module::hKernel32, InitializeConditionVariable);
-      g_family.SleepConditionVariableCS =
-          WINWRAP_SYSTEM(Module::hKernel32, SleepConditionVariableCS);
-      g_family.SleepConditionVariableSRW =
-          WINWRAP_SYSTEM(Module::hKernel32, SleepConditionVariableSRW);
-      g_family.WakeConditionVariable = WINWRAP_SYSTEM(Module::hKernel32, WakeConditionVariable);
-      g_family.WakeAllConditionVariable =
-          WINWRAP_SYSTEM(Module::hKernel32, WakeAllConditionVariable);
+          WW_TRYFUNC(Module::hKernel32, InitializeConditionVariable);
+      g_family.SleepConditionVariableCS  = WW_TRYFUNC(Module::hKernel32, SleepConditionVariableCS);
+      g_family.SleepConditionVariableSRW = WW_TRYFUNC(Module::hKernel32, SleepConditionVariableSRW);
+      g_family.WakeConditionVariable     = WW_TRYFUNC(Module::hKernel32, WakeConditionVariable);
+      g_family.WakeAllConditionVariable  = WW_TRYFUNC(Module::hKernel32, WakeAllConditionVariable);
 
       return g_family.InitializeSRWLock && g_family.AcquireSRWLockExclusive &&
              g_family.AcquireSRWLockShared && g_family.ReleaseSRWLockExclusive &&

@@ -77,7 +77,7 @@ namespace winwrap {
 // with _WIN32_WINNT set to XP, which is the entire point of the library, and
 // the SDK hides every function newer than that behind a version guard. So
 // decltype(&RegGetValueW) does not compile -- there is no such declaration --
-// while decltype(&winwrap_RegGetValueW) is the same signature by construction,
+// while decltype(&ww_RegGetValueW) is the same signature by construction,
 // since a shim that did not match the function it substitutes would be wrong
 // anyway. It also means a signature that drifts is a compile error here rather
 // than a corrupt stack at runtime.
@@ -85,15 +85,15 @@ namespace winwrap {
 // The slot is a static local of a lambda, so each use gets its own cache
 // without the file having to declare one, and it reads at the call site as an
 // expression.
-#define WINWRAP_SYSTEM(module, name)                                                               \
-  ([]() noexcept -> decltype(&winwrap_##name) {                                                    \
-    static std::atomic<void*> slot{nullptr};                                                       \
-    void* resolved = slot.load(std::memory_order_relaxed);                                         \
-    if (resolved == nullptr) {                                                                     \
-      resolved = ::winwrap::ResolveSlot(slot, module, #name);                                      \
-    }                                                                                              \
-    return resolved == ::winwrap::kAbsent ? nullptr                                                \
-                                          : reinterpret_cast<decltype(&winwrap_##name)>(resolved); \
+#define WW_TRYFUNC(module, name)                                                              \
+  ([]() noexcept -> decltype(&ww_##name) {                                                    \
+    static std::atomic<void*> slot{nullptr};                                                  \
+    void* resolved = slot.load(std::memory_order_relaxed);                                    \
+    if (resolved == nullptr) {                                                                \
+      resolved = ::winwrap::ResolveSlot(slot, module, #name);                                 \
+    }                                                                                         \
+    return resolved == ::winwrap::kAbsent ? nullptr                                           \
+                                          : reinterpret_cast<decltype(&ww_##name)>(resolved); \
   }())
 
 #endif // WINWRAP_DISPATCH_H_

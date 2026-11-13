@@ -25,10 +25,10 @@
 
 extern "C" {
 
-HRESULT WINAPI winwrap_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) {
+HRESULT WINAPI ww_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hShell32, SetCurrentProcessExplicitAppUserModelID)) {
+          WW_TRYFUNC(::winwrap::Module::hShell32, SetCurrentProcessExplicitAppUserModelID)) {
     return system_fn(AppID);
   }
   // Reject a null ID the way the real function does, rather than reporting
@@ -49,10 +49,10 @@ HRESULT WINAPI winwrap_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) {
   return S_OK;
 }
 
-HRESULT WINAPI winwrap_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID) {
+HRESULT WINAPI ww_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hShell32, GetCurrentProcessExplicitAppUserModelID)) {
+          WW_TRYFUNC(::winwrap::Module::hShell32, GetCurrentProcessExplicitAppUserModelID)) {
     return system_fn(AppID);
   }
   // E_FAIL is what Windows itself returns for a process that never called Set,

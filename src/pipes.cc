@@ -80,10 +80,10 @@ namespace {
 
 extern "C" {
 
-BOOL WINAPI winwrap_GetNamedPipeClientProcessId(HANDLE Pipe, PULONG ClientProcessId) {
+BOOL WINAPI ww_GetNamedPipeClientProcessId(HANDLE Pipe, PULONG ClientProcessId) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetNamedPipeClientProcessId)) {
+          WW_TRYFUNC(::winwrap::Module::hKernel32, GetNamedPipeClientProcessId)) {
     return system_fn(Pipe, ClientProcessId);
   }
   if (!ClientProcessId) {
@@ -118,10 +118,10 @@ BOOL WINAPI winwrap_GetNamedPipeClientProcessId(HANDLE Pipe, PULONG ClientProces
   return FALSE;
 }
 
-BOOL WINAPI winwrap_GetNamedPipeServerProcessId(HANDLE Pipe, PULONG ServerProcessId) {
+BOOL WINAPI ww_GetNamedPipeServerProcessId(HANDLE Pipe, PULONG ServerProcessId) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetNamedPipeServerProcessId)) {
+          WW_TRYFUNC(::winwrap::Module::hKernel32, GetNamedPipeServerProcessId)) {
     return system_fn(Pipe, ServerProcessId);
   }
   if (!ServerProcessId) {

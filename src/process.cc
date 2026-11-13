@@ -34,9 +34,9 @@ extern "C" {
 // that backwards would be invisible in testing and exactly wrong in
 // production, which is the kind of detail worth taking from someone who has
 // already been through it -- YY-Thunks does the same inversion.
-UINT WINAPI winwrap_GetErrorMode(void) {
+UINT WINAPI ww_GetErrorMode(void) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetErrorMode)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, GetErrorMode)) {
     return system_fn();
   }
   static const auto query = []() -> NtQueryInformationProcessFn {
@@ -78,9 +78,9 @@ UINT WINAPI winwrap_GetErrorMode(void) {
 // process IDs, where success would have been a lie about something that had
 // not happened. The distinction is whether the postcondition holds, not
 // whether any work was done.
-BOOL WINAPI winwrap_SetProcessDPIAware(void) {
+BOOL WINAPI ww_SetProcessDPIAware(void) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hUser32, SetProcessDPIAware)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hUser32, SetProcessDPIAware)) {
     return system_fn();
   }
   // Where the system has its own, use it: on Vista and later this genuinely

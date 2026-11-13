@@ -20,10 +20,9 @@ extern "C" {
 // statement of the situation and callers test only for failure. The sole
 // caller in Chromium resolves this through GetProcAddress and simply does not
 // register when it is absent (chrome/browser/chrome_browser_main_win.cc).
-HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline, DWORD dwFlags) {
+HRESULT WINAPI ww_RegisterApplicationRestart(PCWSTR pwzCommandline, DWORD dwFlags) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, RegisterApplicationRestart)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, RegisterApplicationRestart)) {
     return system_fn(pwzCommandline, dwFlags);
   }
   UNREFERENCED_PARAMETER(pwzCommandline);
@@ -43,10 +42,10 @@ HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline, DWORD d
 // Nothing in Electron imports this. It is here because a library that
 // implements one half of a pair and not the other is a worse library, and this
 // half costs a line.
-HRESULT WINAPI winwrap_UnregisterApplicationRestart(void) {
+HRESULT WINAPI ww_UnregisterApplicationRestart(void) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, UnregisterApplicationRestart)) {
+          WW_TRYFUNC(::winwrap::Module::hKernel32, UnregisterApplicationRestart)) {
     return system_fn();
   }
   return E_NOTIMPL;

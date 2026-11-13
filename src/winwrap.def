@@ -3,7 +3,7 @@
 ; __imp_<name> and the linker binds there instead of kernel32.
 ;
 ; Undecorated alias targets work on both architectures: lld-link matches
-; winwrap_GetTickCount64 against the decorated _winwrap_GetTickCount64@0 that
+; ww_GetTickCount64 against the decorated _ww_GetTickCount64@0 that
 ; __stdcall actually emits. Confirmed on x86 -- the 32-bit winwrap.dll exports
 ; every name below, and electron.exe binds GetTickCount64, InitOnceExecuteOnce
 ; and the SRWLOCK family to winwrap.dll with no remaining kernel32 import for
@@ -14,50 +14,50 @@
 ; with nothing to alias.
 LIBRARY winwrap
 EXPORTS
-    AcquireSRWLockExclusive = winwrap_AcquireSRWLockExclusive
-    AcquireSRWLockShared = winwrap_AcquireSRWLockShared
-    CancelIoEx = winwrap_CancelIoEx
-    CancelSynchronousIo = winwrap_CancelSynchronousIo
-    CompareStringOrdinal = winwrap_CompareStringOrdinal
-    ConvertThreadToFiberEx = winwrap_ConvertThreadToFiberEx
-    CreateFiberEx = winwrap_CreateFiberEx
-    CreateSymbolicLinkW = winwrap_CreateSymbolicLinkW
+    AcquireSRWLockExclusive = ww_AcquireSRWLockExclusive
+    AcquireSRWLockShared = ww_AcquireSRWLockShared
+    CancelIoEx = ww_CancelIoEx
+    CancelSynchronousIo = ww_CancelSynchronousIo
+    CompareStringOrdinal = ww_CompareStringOrdinal
+    ConvertThreadToFiberEx = ww_ConvertThreadToFiberEx
+    CreateFiberEx = ww_CreateFiberEx
+    CreateSymbolicLinkW = ww_CreateSymbolicLinkW
     DllGetVersion
-    FlsAlloc = winwrap_FlsAlloc
-    FlsFree = winwrap_FlsFree
-    FlsGetValue = winwrap_FlsGetValue
-    FlsSetValue = winwrap_FlsSetValue
-    GetCurrentProcessExplicitAppUserModelID = winwrap_GetCurrentProcessExplicitAppUserModelID
-    GetCurrentProcessorNumber = winwrap_GetCurrentProcessorNumber
-    GetErrorMode = winwrap_GetErrorMode
-    GetFileInformationByHandleEx = winwrap_GetFileInformationByHandleEx
-    GetFinalPathNameByHandleW = winwrap_GetFinalPathNameByHandleW
-    GetLocaleInfoEx = winwrap_GetLocaleInfoEx
-    GetNamedPipeClientProcessId = winwrap_GetNamedPipeClientProcessId
-    GetNamedPipeServerProcessId = winwrap_GetNamedPipeServerProcessId
-    GetQueuedCompletionStatusEx = winwrap_GetQueuedCompletionStatusEx
+    FlsAlloc = ww_FlsAlloc
+    FlsFree = ww_FlsFree
+    FlsGetValue = ww_FlsGetValue
+    FlsSetValue = ww_FlsSetValue
+    GetCurrentProcessExplicitAppUserModelID = ww_GetCurrentProcessExplicitAppUserModelID
+    GetCurrentProcessorNumber = ww_GetCurrentProcessorNumber
+    GetErrorMode = ww_GetErrorMode
+    GetFileInformationByHandleEx = ww_GetFileInformationByHandleEx
+    GetFinalPathNameByHandleW = ww_GetFinalPathNameByHandleW
+    GetLocaleInfoEx = ww_GetLocaleInfoEx
+    GetNamedPipeClientProcessId = ww_GetNamedPipeClientProcessId
+    GetNamedPipeServerProcessId = ww_GetNamedPipeServerProcessId
+    GetQueuedCompletionStatusEx = ww_GetQueuedCompletionStatusEx
     GetRealNTVersion
-    GetTickCount64 = winwrap_GetTickCount64
-    InitializeConditionVariable = winwrap_InitializeConditionVariable
-    InitializeCriticalSectionEx = winwrap_InitializeCriticalSectionEx
-    InitializeSRWLock = winwrap_InitializeSRWLock
-    InitOnceExecuteOnce = winwrap_InitOnceExecuteOnce
+    GetTickCount64 = ww_GetTickCount64
+    InitializeConditionVariable = ww_InitializeConditionVariable
+    InitializeCriticalSectionEx = ww_InitializeCriticalSectionEx
+    InitializeSRWLock = ww_InitializeSRWLock
+    InitOnceExecuteOnce = ww_InitOnceExecuteOnce
     IsRunningOnWine
-    IsThreadAFiber = winwrap_IsThreadAFiber
-    NeedCurrentDirectoryForExePathW = winwrap_NeedCurrentDirectoryForExePathW
-    RegGetValueW = winwrap_RegGetValueW
-    RegisterApplicationRestart = winwrap_RegisterApplicationRestart
-    ReleaseSRWLockExclusive = winwrap_ReleaseSRWLockExclusive
-    ReleaseSRWLockShared = winwrap_ReleaseSRWLockShared
-    ReOpenFile = winwrap_ReOpenFile
-    SetCurrentProcessExplicitAppUserModelID = winwrap_SetCurrentProcessExplicitAppUserModelID
-    SetFileCompletionNotificationModes = winwrap_SetFileCompletionNotificationModes
-    SetFileInformationByHandle = winwrap_SetFileInformationByHandle
-    SetProcessDPIAware = winwrap_SetProcessDPIAware
-    SleepConditionVariableCS = winwrap_SleepConditionVariableCS
-    SleepConditionVariableSRW = winwrap_SleepConditionVariableSRW
-    TryAcquireSRWLockExclusive = winwrap_TryAcquireSRWLockExclusive
-    TryAcquireSRWLockShared = winwrap_TryAcquireSRWLockShared
-    UnregisterApplicationRestart = winwrap_UnregisterApplicationRestart
-    WakeAllConditionVariable = winwrap_WakeAllConditionVariable
-    WakeConditionVariable = winwrap_WakeConditionVariable
+    IsThreadAFiber = ww_IsThreadAFiber
+    NeedCurrentDirectoryForExePathW = ww_NeedCurrentDirectoryForExePathW
+    RegGetValueW = ww_RegGetValueW
+    RegisterApplicationRestart = ww_RegisterApplicationRestart
+    ReleaseSRWLockExclusive = ww_ReleaseSRWLockExclusive
+    ReleaseSRWLockShared = ww_ReleaseSRWLockShared
+    ReOpenFile = ww_ReOpenFile
+    SetCurrentProcessExplicitAppUserModelID = ww_SetCurrentProcessExplicitAppUserModelID
+    SetFileCompletionNotificationModes = ww_SetFileCompletionNotificationModes
+    SetFileInformationByHandle = ww_SetFileInformationByHandle
+    SetProcessDPIAware = ww_SetProcessDPIAware
+    SleepConditionVariableCS = ww_SleepConditionVariableCS
+    SleepConditionVariableSRW = ww_SleepConditionVariableSRW
+    TryAcquireSRWLockExclusive = ww_TryAcquireSRWLockExclusive
+    TryAcquireSRWLockShared = ww_TryAcquireSRWLockShared
+    UnregisterApplicationRestart = ww_UnregisterApplicationRestart
+    WakeAllConditionVariable = ww_WakeAllConditionVariable
+    WakeConditionVariable = ww_WakeConditionVariable

@@ -63,9 +63,9 @@ namespace {
     // implementation, whose state layout is its own; the system's release would
     // be reading a different structure, where it exists at all.
     if (wait->shared) {
-      winwrap_ReleaseSRWLockShared(wait->lock);
+      ww_ReleaseSRWLockShared(wait->lock);
     } else {
-      winwrap_ReleaseSRWLockExclusive(wait->lock);
+      ww_ReleaseSRWLockExclusive(wait->lock);
     }
   }
 
@@ -73,7 +73,7 @@ namespace {
 
 extern "C" {
 
-VOID WINAPI winwrap_InitializeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+VOID WINAPI ww_InitializeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->InitializeConditionVariable(ConditionVariable);
     return;
@@ -84,9 +84,9 @@ VOID WINAPI winwrap_InitializeConditionVariable(PCONDITION_VARIABLE ConditionVar
   ConditionVariable->Ptr = nullptr;
 }
 
-BOOL WINAPI winwrap_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable,
-                                             PCRITICAL_SECTION CriticalSection,
-                                             DWORD dwMilliseconds) {
+BOOL WINAPI ww_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable,
+                                        PCRITICAL_SECTION CriticalSection,
+                                        DWORD dwMilliseconds) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     return system->SleepConditionVariableCS(ConditionVariable, CriticalSection, dwMilliseconds);
   }
@@ -103,10 +103,10 @@ BOOL WINAPI winwrap_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariab
   return TRUE;
 }
 
-BOOL WINAPI winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable,
-                                              PSRWLOCK SRWLock,
-                                              DWORD dwMilliseconds,
-                                              ULONG Flags) {
+BOOL WINAPI ww_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable,
+                                         PSRWLOCK SRWLock,
+                                         DWORD dwMilliseconds,
+                                         ULONG Flags) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     return system->SleepConditionVariableSRW(ConditionVariable, SRWLock, dwMilliseconds, Flags);
   }
@@ -115,9 +115,9 @@ BOOL WINAPI winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVaria
                            &wait, dwMilliseconds);
 
   if (wait.shared) {
-    winwrap_AcquireSRWLockShared(SRWLock);
+    ww_AcquireSRWLockShared(SRWLock);
   } else {
-    winwrap_AcquireSRWLockExclusive(SRWLock);
+    ww_AcquireSRWLockExclusive(SRWLock);
   }
 
   if (result == ParkResult::kTimedOut) {
@@ -127,7 +127,7 @@ BOOL WINAPI winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVaria
   return TRUE;
 }
 
-VOID WINAPI winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+VOID WINAPI ww_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->WakeConditionVariable(ConditionVariable);
     return;
@@ -139,7 +139,7 @@ VOID WINAPI winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable)
          /*context=*/nullptr);
 }
 
-VOID WINAPI winwrap_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+VOID WINAPI ww_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
   if (const ::winwrap::LockFamily* system = ::winwrap::SystemLockFamily()) {
     system->WakeAllConditionVariable(ConditionVariable);
     return;

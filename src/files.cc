@@ -346,13 +346,13 @@ namespace {
 
 extern "C" {
 
-BOOL WINAPI winwrap_GetFileInformationByHandleEx(HANDLE hFile,
-                                                 int FileInformationClass,
-                                                 LPVOID lpFileInformation,
-                                                 DWORD dwBufferSize) {
+BOOL WINAPI ww_GetFileInformationByHandleEx(HANDLE hFile,
+                                            int FileInformationClass,
+                                            LPVOID lpFileInformation,
+                                            DWORD dwBufferSize) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetFileInformationByHandleEx)) {
+          WW_TRYFUNC(::winwrap::Module::hKernel32, GetFileInformationByHandleEx)) {
     return system_fn(hFile, FileInformationClass, lpFileInformation, dwBufferSize);
   }
   if (!lpFileInformation) {
@@ -458,13 +458,12 @@ BOOL WINAPI winwrap_GetFileInformationByHandleEx(HANDLE hFile,
   return FALSE;
 }
 
-BOOL WINAPI winwrap_SetFileInformationByHandle(HANDLE hFile,
-                                               int FileInformationClass,
-                                               LPVOID lpFileInformation,
-                                               DWORD dwBufferSize) {
+BOOL WINAPI ww_SetFileInformationByHandle(HANDLE hFile,
+                                          int FileInformationClass,
+                                          LPVOID lpFileInformation,
+                                          DWORD dwBufferSize) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, SetFileInformationByHandle)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, SetFileInformationByHandle)) {
     return system_fn(hFile, FileInformationClass, lpFileInformation, dwBufferSize);
   }
   if (!lpFileInformation) {
@@ -572,13 +571,12 @@ BOOL WINAPI winwrap_SetFileInformationByHandle(HANDLE hFile,
   return TRUE;
 }
 
-DWORD WINAPI winwrap_GetFinalPathNameByHandleW(HANDLE hFile,
-                                               LPWSTR lpszFilePath,
-                                               DWORD cchFilePath,
-                                               DWORD dwFlags) {
+DWORD WINAPI ww_GetFinalPathNameByHandleW(HANDLE hFile,
+                                          LPWSTR lpszFilePath,
+                                          DWORD cchFilePath,
+                                          DWORD dwFlags) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn =
-          WINWRAP_SYSTEM(::winwrap::Module::hKernel32, GetFinalPathNameByHandleW)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, GetFinalPathNameByHandleW)) {
     return system_fn(hFile, lpszFilePath, cchFilePath, dwFlags);
   }
   if (hFile == INVALID_HANDLE_VALUE) {
@@ -683,12 +681,12 @@ DWORD WINAPI winwrap_GetFinalPathNameByHandleW(HANDLE hFile,
   return result;
 }
 
-HANDLE WINAPI winwrap_ReOpenFile(HANDLE hOriginalFile,
-                                 DWORD dwDesiredAccess,
-                                 DWORD dwShareMode,
-                                 DWORD dwFlagsAndAttributes) {
+HANDLE WINAPI ww_ReOpenFile(HANDLE hOriginalFile,
+                            DWORD dwDesiredAccess,
+                            DWORD dwShareMode,
+                            DWORD dwFlagsAndAttributes) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, ReOpenFile)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, ReOpenFile)) {
     return system_fn(hOriginalFile, dwDesiredAccess, dwShareMode, dwFlagsAndAttributes);
   }
   static const auto create = reinterpret_cast<NtCreateFileFn>(NtdllProc("NtCreateFile"));

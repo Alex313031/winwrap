@@ -197,10 +197,10 @@ namespace {
   // present or absent as a set; the gate is here to make that a guarantee rather
   // than an observation.
   struct FlsFamily {
-    decltype(&winwrap_FlsAlloc) FlsAlloc;
-    decltype(&winwrap_FlsFree) FlsFree;
-    decltype(&winwrap_FlsGetValue) FlsGetValue;
-    decltype(&winwrap_FlsSetValue) FlsSetValue;
+    decltype(&ww_FlsAlloc) FlsAlloc;
+    decltype(&ww_FlsFree) FlsFree;
+    decltype(&ww_FlsGetValue) FlsGetValue;
+    decltype(&ww_FlsSetValue) FlsSetValue;
   };
 
   const FlsFamily* SystemFls() noexcept {
@@ -209,10 +209,10 @@ namespace {
 
     void* resolved = state.load(std::memory_order_acquire);
     if (resolved == nullptr) {
-      family.FlsAlloc    = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsAlloc);
-      family.FlsFree     = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsFree);
-      family.FlsGetValue = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsGetValue);
-      family.FlsSetValue = WINWRAP_SYSTEM(::winwrap::Module::hKernel32, FlsSetValue);
+      family.FlsAlloc    = WW_TRYFUNC(::winwrap::Module::hKernel32, FlsAlloc);
+      family.FlsFree     = WW_TRYFUNC(::winwrap::Module::hKernel32, FlsFree);
+      family.FlsGetValue = WW_TRYFUNC(::winwrap::Module::hKernel32, FlsGetValue);
+      family.FlsSetValue = WW_TRYFUNC(::winwrap::Module::hKernel32, FlsSetValue);
       const bool complete =
           family.FlsAlloc && family.FlsFree && family.FlsGetValue && family.FlsSetValue;
       resolved = complete ? static_cast<void*>(&family) : ::winwrap::kAbsent;
@@ -225,7 +225,7 @@ namespace {
 
 extern "C" {
 
-DWORD WINAPI winwrap_FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback) {
+DWORD WINAPI ww_FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback) {
   if (const FlsFamily* system = SystemFls()) {
     return system->FlsAlloc(lpCallback);
   }
@@ -260,7 +260,7 @@ DWORD WINAPI winwrap_FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback) {
   return FLS_OUT_OF_INDEXES;
 }
 
-PVOID WINAPI winwrap_FlsGetValue(DWORD dwFlsIndex) {
+PVOID WINAPI ww_FlsGetValue(DWORD dwFlsIndex) {
   if (const FlsFamily* system = SystemFls()) {
     return system->FlsGetValue(dwFlsIndex);
   }
@@ -278,7 +278,7 @@ PVOID WINAPI winwrap_FlsGetValue(DWORD dwFlsIndex) {
   return value;
 }
 
-BOOL WINAPI winwrap_FlsSetValue(DWORD dwFlsIndex, PVOID lpFlsData) {
+BOOL WINAPI ww_FlsSetValue(DWORD dwFlsIndex, PVOID lpFlsData) {
   if (const FlsFamily* system = SystemFls()) {
     return system->FlsSetValue(dwFlsIndex, lpFlsData);
   }
@@ -297,7 +297,7 @@ BOOL WINAPI winwrap_FlsSetValue(DWORD dwFlsIndex, PVOID lpFlsData) {
   return TRUE;
 }
 
-BOOL WINAPI winwrap_FlsFree(DWORD dwFlsIndex) {
+BOOL WINAPI ww_FlsFree(DWORD dwFlsIndex) {
   if (const FlsFamily* system = SystemFls()) {
     return system->FlsFree(dwFlsIndex);
   }
