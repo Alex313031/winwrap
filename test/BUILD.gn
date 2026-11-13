@@ -6,7 +6,10 @@ group("winwrap_test") {
 }
 
 executable("winwrap_unit_test") {
-  configs += [ ":winwrap_unit_test_config" ]
+  configs += [
+    ":winwrap_unit_test_config",
+    "../:winwrap_public_config",
+  ]
 
   sources = [
     "winwrap_unittest.cc",

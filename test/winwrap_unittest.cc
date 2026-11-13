@@ -40,7 +40,7 @@ void RunThreads(LPTHREAD_START_ROUTINE body, DWORD count) {
                                 0, nullptr);
     if (!threads[i]) {
       ++g_failures;
-      ::printf("    FAIL could not create thread %lu\n", i);
+      std::wcout << L"    FAIL could not create thread " << i << std::endl;
       count = i;
       break;
     }
@@ -65,7 +65,7 @@ DWORD WINAPI ExclusiveBody(LPVOID) {
   for (int i = 0; i < kLockIterations; ++i) {
     ::AcquireSRWLockExclusive(&g_exclusive_lock);
     LONG inside = ::InterlockedIncrement(&g_inside);
-    CHECK(inside == 1, "%ld threads inside an exclusive lock", inside);
+    CHECK(inside == 1, inside << L" threads inside an exclusive lock");
     ++g_plain_counter;
     ::InterlockedDecrement(&g_inside);
     ::ReleaseSRWLockExclusive(&g_exclusive_lock);
@@ -74,15 +74,15 @@ DWORD WINAPI ExclusiveBody(LPVOID) {
 }
 
 void TestExclusive() {
-  ::printf("  SRWLOCK exclusive\n");
+  std::wcout << L"  SRWLOCK exclusive" << std::endl;
   ::InitializeSRWLock(&g_exclusive_lock);
   g_plain_counter = 0;
   RunThreads(ExclusiveBody, kThreads);
 
   unsigned long long expected =
       static_cast<unsigned long long>(kThreads) * kLockIterations;
-  CHECK(g_plain_counter == expected, "counter is %llu, expected %llu",
-        g_plain_counter, expected);
+  CHECK(g_plain_counter == expected,
+        L"counter is " << g_plain_counter << L", expected " << expected);
 }
 
 // --- SRWLOCK, shared vs exclusive ------------------------------------------
@@ -100,8 +100,8 @@ DWORD WINAPI SharedBody(LPVOID) {
   for (int i = 0; i < kLockIterations; ++i) {
     if ((i & 7) == 0) {
       ::AcquireSRWLockExclusive(&g_shared_lock);
-      CHECK(::InterlockedIncrement(&g_writers) == 1, "two writers at once");
-      CHECK(g_readers == 0, "%ld readers inside an exclusive lock", g_readers);
+      CHECK(::InterlockedIncrement(&g_writers) == 1, L"two writers at once");
+      CHECK(g_readers == 0, g_readers << L" readers inside an exclusive lock");
       LONG value = g_left + 1;
       g_left = value;
       ::Sleep(0);  // Widen the window a torn read could fall into.
@@ -114,9 +114,10 @@ DWORD WINAPI SharedBody(LPVOID) {
       if (now > g_max_readers) {
         g_max_readers = now;  // Racy, but only ever used as a lower bound.
       }
-      CHECK(g_writers == 0, "a writer is inside while %ld readers are", now);
-      CHECK(g_left == g_right, "reader saw a torn update: %ld vs %ld", g_left,
-            g_right);
+      CHECK(g_writers == 0,
+            L"a writer is inside while " << now << L" readers are");
+      CHECK(g_left == g_right,
+            L"reader saw a torn update: " << g_left << L" vs " << g_right);
       ::InterlockedDecrement(&g_readers);
       ::ReleaseSRWLockShared(&g_shared_lock);
     }
@@ -125,7 +126,7 @@ DWORD WINAPI SharedBody(LPVOID) {
 }
 
 void TestShared() {
-  ::printf("  SRWLOCK shared\n");
+  std::wcout << L"  SRWLOCK shared" << std::endl;
   ::InitializeSRWLock(&g_shared_lock);
   g_max_readers = 0;
   RunThreads(SharedBody, kThreads);
@@ -133,30 +134,31 @@ void TestShared() {
   // The old CRITICAL_SECTION implementation serialised readers, so this is
   // the assertion that distinguishes a real reader/writer lock from a mutex
   // wearing its name.
-  CHECK(g_max_readers > 1, "readers never overlapped (max %ld); shared is "
-                           "behaving like exclusive",
-        g_max_readers);
-  ::printf("    peak concurrent readers: %ld\n", g_max_readers);
+  CHECK(g_max_readers > 1, L"readers never overlapped (max "
+                               << g_max_readers
+                               << L"); shared is behaving like exclusive");
+  std::wcout << L"    peak concurrent readers: " << g_max_readers << std::endl;
 }
 
 void TestTryAcquire() {
-  ::printf("  SRWLOCK try variants\n");
+  std::wcout << L"  SRWLOCK try variants" << std::endl;
   SRWLOCK lock;
   ::InitializeSRWLock(&lock);
 
-  CHECK(::TryAcquireSRWLockExclusive(&lock), "try-exclusive failed when free");
+  CHECK(::TryAcquireSRWLockExclusive(&lock), L"try-exclusive failed when free");
   ::ReleaseSRWLockExclusive(&lock);
 
   ::AcquireSRWLockShared(&lock);
   CHECK(!::TryAcquireSRWLockExclusive(&lock),
-        "try-exclusive succeeded while held shared");
-  CHECK(::TryAcquireSRWLockShared(&lock), "try-shared failed while held shared");
+        L"try-exclusive succeeded while held shared");
+  CHECK(::TryAcquireSRWLockShared(&lock),
+        L"try-shared failed while held shared");
   ::ReleaseSRWLockShared(&lock);
   ::ReleaseSRWLockShared(&lock);
 
   ::AcquireSRWLockExclusive(&lock);
   CHECK(!::TryAcquireSRWLockShared(&lock),
-        "try-shared succeeded while held exclusive");
+        L"try-shared succeeded while held exclusive");
   ::ReleaseSRWLockExclusive(&lock);
 }
 
@@ -216,7 +218,7 @@ DWORD WINAPI ConsumerBody(LPVOID) {
 }
 
 void TestConditionVariableQueue() {
-  ::printf("  CONDITION_VARIABLE producer/consumer\n");
+  std::wcout << L"  CONDITION_VARIABLE producer/consumer" << std::endl;
   ::InitializeCriticalSection(&g_queue_lock);
   ::InitializeConditionVariable(&g_not_empty);
   ::InitializeConditionVariable(&g_not_full);
@@ -240,17 +242,17 @@ void TestConditionVariableQueue() {
   ::WakeAllConditionVariable(&g_not_empty);
 
   DWORD wait = ::WaitForMultipleObjects(kConsumers, threads, TRUE, 30000);
-  CHECK(wait != WAIT_TIMEOUT, "consumers never woke up -- lost wake-up");
+  CHECK(wait != WAIT_TIMEOUT, L"consumers never woke up -- lost wake-up");
 
   for (DWORD i = 0; i < n; ++i) {
     ::CloseHandle(threads[i]);
   }
 
   int expected = static_cast<int>(kProducers) * kItemsPerProducer;
-  CHECK(g_produced == expected, "produced %d, expected %d", g_produced,
-        expected);
-  CHECK(g_consumed_count == expected, "consumed %d, expected %d",
-        g_consumed_count, expected);
+  CHECK(g_produced == expected,
+        L"produced " << g_produced << L", expected " << expected);
+  CHECK(g_consumed_count == expected,
+        L"consumed " << g_consumed_count << L", expected " << expected);
   ::DeleteCriticalSection(&g_queue_lock);
 }
 
@@ -267,7 +269,7 @@ DWORD WINAPI TryEnterBody(LPVOID held) {
 }
 
 void TestConditionVariableTimeout() {
-  ::printf("  CONDITION_VARIABLE timed wait\n");
+  std::wcout << L"  CONDITION_VARIABLE timed wait" << std::endl;
   ::InitializeCriticalSection(&g_timeout_cs);
   ::InitializeConditionVariable(&g_timeout_cv);
 
@@ -277,11 +279,12 @@ void TestConditionVariableTimeout() {
   DWORD elapsed = ::GetTickCount() - start;
   DWORD error = ::GetLastError();
 
-  CHECK(!result, "a timed wait with no wake-up returned success");
-  CHECK(error == ERROR_TIMEOUT, "last error is %lu, expected ERROR_TIMEOUT",
-        error);
+  CHECK(!result, L"a timed wait with no wake-up returned success");
+  CHECK(error == ERROR_TIMEOUT,
+        L"last error is " << error << L", expected ERROR_TIMEOUT");
   // Timer granularity on these systems is ~15ms, so allow slack below.
-  CHECK(elapsed >= 150, "returned after %lums, asked for 200ms", elapsed);
+  CHECK(elapsed >= 150,
+        L"returned after " << elapsed << L"ms, asked for 200ms");
 
   // The caller must hold the lock again on return, including after a timeout.
   BOOL still_held = FALSE;
@@ -289,7 +292,7 @@ void TestConditionVariableTimeout() {
       ::CreateThread(nullptr, 0, TryEnterBody, &still_held, 0, nullptr);
   ::WaitForSingleObject(prober, INFINITE);
   ::CloseHandle(prober);
-  CHECK(still_held, "lock was not re-acquired after a timed wait");
+  CHECK(still_held, L"lock was not re-acquired after a timed wait");
 
   ::LeaveCriticalSection(&g_timeout_cs);
   ::DeleteCriticalSection(&g_timeout_cs);
@@ -311,7 +314,7 @@ DWORD WINAPI BroadcastBody(LPVOID) {
 }
 
 void TestConditionVariableBroadcast() {
-  ::printf("  CONDITION_VARIABLE broadcast over SRWLOCK\n");
+  std::wcout << L"  CONDITION_VARIABLE broadcast over SRWLOCK" << std::endl;
   ::InitializeSRWLock(&g_broadcast_lock);
   ::InitializeConditionVariable(&g_broadcast_cv);
   g_broadcast_go = false;
@@ -330,8 +333,9 @@ void TestConditionVariableBroadcast() {
   ::WakeAllConditionVariable(&g_broadcast_cv);
 
   DWORD wait = ::WaitForMultipleObjects(kThreads, threads, TRUE, 30000);
-  CHECK(wait != WAIT_TIMEOUT, "only %ld of %lu waiters woke from a broadcast",
-        g_broadcast_woken, kThreads);
+  CHECK(wait != WAIT_TIMEOUT, L"only " << g_broadcast_woken << L" of "
+                                       << kThreads
+                                       << L" waiters woke from a broadcast");
   for (DWORD i = 0; i < kThreads; ++i) {
     ::CloseHandle(threads[i]);
   }
@@ -348,20 +352,21 @@ void WINAPI FlsCallback(PVOID) {
 
 DWORD WINAPI FlsBody(LPVOID id) {
   CHECK(::FlsGetValue(g_fls_index) == nullptr,
-        "a fresh thread already had an FLS value");
+        L"a fresh thread already had an FLS value");
   PVOID mine = reinterpret_cast<PVOID>(
       static_cast<ULONG_PTR>(reinterpret_cast<ULONG_PTR>(id) + 1));
-  CHECK(::FlsSetValue(g_fls_index, mine), "FlsSetValue failed");
+  CHECK(::FlsSetValue(g_fls_index, mine), L"FlsSetValue failed");
   ::Sleep(5);  // Let every other thread store its own value first.
-  CHECK(::FlsGetValue(g_fls_index) == mine, "another thread's FLS value leaked in");
+  CHECK(::FlsGetValue(g_fls_index) == mine,
+        L"another thread's FLS value leaked in");
   return 0;
 }
 
 void TestFls() {
-  ::printf("  Fiber-local storage\n");
+  std::wcout << L"  Fiber-local storage" << std::endl;
   g_fls_callbacks = 0;
   g_fls_index = ::FlsAlloc(FlsCallback);
-  CHECK(g_fls_index != FLS_OUT_OF_INDEXES, "FlsAlloc failed");
+  CHECK(g_fls_index != FLS_OUT_OF_INDEXES, L"FlsAlloc failed");
   if (g_fls_index == FLS_OUT_OF_INDEXES) {
     return;
   }
@@ -371,10 +376,10 @@ void TestFls() {
   // The callback fires from a TLS callback at thread exit, which is the part
   // of this that XP does not do by itself.
   CHECK(g_fls_callbacks == static_cast<LONG>(kThreads),
-        "%ld thread-exit callbacks, expected %lu", g_fls_callbacks, kThreads);
+        g_fls_callbacks << L" thread-exit callbacks, expected " << kThreads);
 
-  CHECK(::FlsFree(g_fls_index), "FlsFree failed");
-  CHECK(!::FlsFree(g_fls_index), "freeing an index twice succeeded");
+  CHECK(::FlsFree(g_fls_index), L"FlsFree failed");
+  CHECK(!::FlsFree(g_fls_index), L"freeing an index twice succeeded");
 }
 
 // --- Odds and ends ---------------------------------------------------------
@@ -390,44 +395,49 @@ BOOL CALLBACK OnceBody(PINIT_ONCE, PVOID, PVOID*) {
 
 DWORD WINAPI OnceCaller(LPVOID) {
   CHECK(::InitOnceExecuteOnce(&g_once, OnceBody, nullptr, nullptr),
-        "InitOnceExecuteOnce failed");
+        L"InitOnceExecuteOnce failed");
   return 0;
 }
 
 void TestMisc() {
-  ::printf("  InitOnceExecuteOnce, GetTickCount64, CompareStringOrdinal\n");
+  std::wcout << L"  InitOnceExecuteOnce, GetTickCount64, CompareStringOrdinal"
+             << std::endl;
 
   g_once_runs = 0;
   RunThreads(OnceCaller, kThreads);
-  CHECK(g_once_runs == 1, "the once-callback ran %ld times", g_once_runs);
+  CHECK(g_once_runs == 1,
+        L"the once-callback ran " << g_once_runs << L" times");
 
   ULONGLONG first = ::GetTickCount64();
   ::Sleep(50);
   ULONGLONG second = ::GetTickCount64();
-  CHECK(second >= first, "GetTickCount64 went backwards");
-  CHECK(second - first >= 30, "GetTickCount64 advanced only %llu ms over 50",
-        second - first);
+  CHECK(second >= first, L"GetTickCount64 went backwards");
+  CHECK(second - first >= 30,
+        L"GetTickCount64 advanced only " << (second - first) << L" ms over 50");
 
   CHECK(::CompareStringOrdinal(L"abc", -1, L"abc", -1, FALSE) == CSTR_EQUAL,
-        "equal strings did not compare equal");
+        L"equal strings did not compare equal");
   CHECK(::CompareStringOrdinal(L"abc", -1, L"ABC", -1, TRUE) == CSTR_EQUAL,
-        "case-insensitive compare failed");
+        L"case-insensitive compare failed");
   CHECK(::CompareStringOrdinal(L"abc", -1, L"ABC", -1, FALSE) ==
             CSTR_GREATER_THAN,
-        "lowercase did not sort after uppercase ordinally");
-  CHECK(::CompareStringOrdinal(L"abc", -1, L"abcd", -1, FALSE) == CSTR_LESS_THAN,
-        "a prefix did not sort before the longer string");
+        L"lowercase did not sort after uppercase ordinally");
+  CHECK(
+      ::CompareStringOrdinal(L"abc", -1, L"abcd", -1, FALSE) == CSTR_LESS_THAN,
+      L"a prefix did not sort before the longer string");
   CHECK(::CompareStringOrdinal(L"abcd", 3, L"abc", -1, FALSE) == CSTR_EQUAL,
-        "an explicit length was not honoured");
+        L"an explicit length was not honoured");
 
   // Not every system has this locale; only check the shape of the answer.
   wchar_t buffer[64] = {};
   int written = ::GetLocaleInfoEx(L"en-US", LOCALE_SENGLANGUAGE, buffer,
                                   ARRAYSIZE(buffer));
   if (written > 0) {
-    ::printf("    GetLocaleInfoEx(en-US) -> \"%ls\"\n", buffer);
+    std::wcout << L"    GetLocaleInfoEx(en-US) -> \"" << buffer << L"\""
+               << std::endl;
   } else {
-    ::printf("    GetLocaleInfoEx(en-US) unavailable on this system\n");
+    std::wcout << L"    GetLocaleInfoEx(en-US) unavailable on this system"
+               << std::endl;
   }
 }
 
@@ -464,12 +474,12 @@ HANDLE MakeTempFile(wchar_t* path_out, DWORD bytes) {
 }
 
 void TestFileInformationQuery() {
-  ::printf("  GetFileInformationByHandleEx\n");
+  std::wcout << L"  GetFileInformationByHandleEx" << std::endl;
 
   wchar_t path[MAX_PATH] = {};
   HANDLE file = MakeTempFile(path, 123);
-  CHECK(file != INVALID_HANDLE_VALUE, "could not create a temp file (%lu)",
-        ::GetLastError());
+  CHECK(file != INVALID_HANDLE_VALUE,
+        L"could not create a temp file (" << ::GetLastError() << L")");
   if (file == INVALID_HANDLE_VALUE) {
     return;
   }
@@ -477,46 +487,47 @@ void TestFileInformationQuery() {
   FILE_STANDARD_INFO standard = {};
   CHECK(::GetFileInformationByHandleEx(file, FileStandardInfo, &standard,
                                        sizeof(standard)),
-        "FileStandardInfo failed (%lu)", ::GetLastError());
-  CHECK(standard.EndOfFile.QuadPart == 123, "size is %lld, expected 123",
-        standard.EndOfFile.QuadPart);
-  CHECK(!standard.Directory, "a file reported itself as a directory");
+        L"FileStandardInfo failed (" << ::GetLastError() << L")");
+  CHECK(standard.EndOfFile.QuadPart == 123,
+        L"size is " << (standard.EndOfFile.QuadPart) << L", expected 123");
+  CHECK(!standard.Directory, L"a file reported itself as a directory");
 
   FILE_BASIC_INFO basic = {};
   CHECK(::GetFileInformationByHandleEx(file, FileBasicInfo, &basic,
                                        sizeof(basic)),
-        "FileBasicInfo failed (%lu)", ::GetLastError());
-  CHECK(basic.FileAttributes != 0, "no attributes reported");
-  CHECK(basic.LastWriteTime.QuadPart != 0, "no write time reported");
+        L"FileBasicInfo failed (" << ::GetLastError() << L")");
+  CHECK(basic.FileAttributes != 0, L"no attributes reported");
+  CHECK(basic.LastWriteTime.QuadPart != 0, L"no write time reported");
 
   // FileNameInfo is variable length and needs more than the bare struct.
   BYTE name_buffer[sizeof(FILE_NAME_INFO) + MAX_PATH * sizeof(WCHAR)] = {};
   auto* name = reinterpret_cast<FILE_NAME_INFO*>(name_buffer);
   CHECK(::GetFileInformationByHandleEx(file, FileNameInfo, name,
                                        sizeof(name_buffer)),
-        "FileNameInfo failed (%lu)", ::GetLastError());
-  CHECK(name->FileNameLength > 0, "an empty name came back");
+        L"FileNameInfo failed (" << ::GetLastError() << L")");
+  CHECK(name->FileNameLength > 0, L"an empty name came back");
 
   FILE_ATTRIBUTE_TAG_INFO tag = {};
   CHECK(::GetFileInformationByHandleEx(file, FileAttributeTagInfo, &tag,
                                        sizeof(tag)),
-        "FileAttributeTagInfo failed (%lu)", ::GetLastError());
+        L"FileAttributeTagInfo failed (" << ::GetLastError() << L")");
   CHECK(tag.FileAttributes == basic.FileAttributes,
-        "attributes disagree between classes: %lu vs %lu", tag.FileAttributes,
-        basic.FileAttributes);
+        L"attributes disagree between classes: "
+            << (tag.FileAttributes) << L" vs " << (basic.FileAttributes));
 
   // Windows 8 added this one; below that it is assembled from the volume
   // serial number and the index number, both of which must be populated.
   FILE_ID_INFO id = {};
   if (::GetFileInformationByHandleEx(file, FileIdInfo, &id, sizeof(id))) {
-    CHECK(id.VolumeSerialNumber != 0, "a zero volume serial number");
+    CHECK(id.VolumeSerialNumber != 0, L"a zero volume serial number");
     bool any = false;
     for (size_t i = 0; i < sizeof(id.FileId.Identifier); ++i) {
       any = any || id.FileId.Identifier[i] != 0;
     }
-    CHECK(any, "an all-zero file ID");
+    CHECK(any, L"an all-zero file ID");
   } else {
-    ::printf("    FileIdInfo unavailable (%lu)\n", ::GetLastError());
+    std::wcout << L"    FileIdInfo unavailable (" << ::GetLastError() << L")"
+               << std::endl;
   }
 
   // A buffer too small to hold the answer, and a class that does not exist.
@@ -524,51 +535,51 @@ void TestFileInformationQuery() {
   BYTE tiny[2] = {};
   CHECK(!::GetFileInformationByHandleEx(file, FileStandardInfo, tiny,
                                         sizeof(tiny)),
-        "an undersized buffer was accepted");
+        L"an undersized buffer was accepted");
   CHECK(!::GetFileInformationByHandleEx(
             file, static_cast<FILE_INFO_BY_HANDLE_CLASS>(99), &standard,
             sizeof(standard)),
-        "an unknown information class was accepted");
+        L"an unknown information class was accepted");
   CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
-        "unknown class gave error %lu, expected ERROR_INVALID_PARAMETER",
-        ::GetLastError());
+        L"unknown class gave error " << ::GetLastError()
+                                     << L", expected ERROR_INVALID_PARAMETER");
 
   ::CloseHandle(file);
   ::DeleteFileW(path);
 }
 
 void TestFileInformationSet() {
-  ::printf("  SetFileInformationByHandle\n");
+  std::wcout << L"  SetFileInformationByHandle" << std::endl;
 
   wchar_t path[MAX_PATH] = {};
   HANDLE file = MakeTempFile(path, 500);
   if (file == INVALID_HANDLE_VALUE) {
-    CHECK(false, "could not create a temp file (%lu)", ::GetLastError());
+    CHECK(false, L"could not create a temp file (" << ::GetLastError() << L")");
     return;
   }
 
   FILE_END_OF_FILE_INFO eof = {};
   eof.EndOfFile.QuadPart = 10;
-  CHECK(::SetFileInformationByHandle(file, FileEndOfFileInfo, &eof,
-                                     sizeof(eof)),
-        "FileEndOfFileInfo failed (%lu)", ::GetLastError());
+  CHECK(
+      ::SetFileInformationByHandle(file, FileEndOfFileInfo, &eof, sizeof(eof)),
+      L"FileEndOfFileInfo failed (" << ::GetLastError() << L")");
   FILE_STANDARD_INFO standard = {};
   ::GetFileInformationByHandleEx(file, FileStandardInfo, &standard,
                                  sizeof(standard));
-  CHECK(standard.EndOfFile.QuadPart == 10, "truncation left %lld bytes",
-        standard.EndOfFile.QuadPart);
+  CHECK(standard.EndOfFile.QuadPart == 10,
+        L"truncation left " << (standard.EndOfFile.QuadPart) << L" bytes");
 
   FILE_BASIC_INFO basic = {};
   ::GetFileInformationByHandleEx(file, FileBasicInfo, &basic, sizeof(basic));
   basic.FileAttributes = FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_TEMPORARY;
-  CHECK(::SetFileInformationByHandle(file, FileBasicInfo, &basic,
-                                     sizeof(basic)),
-        "FileBasicInfo set failed (%lu)", ::GetLastError());
+  CHECK(
+      ::SetFileInformationByHandle(file, FileBasicInfo, &basic, sizeof(basic)),
+      L"FileBasicInfo set failed (" << ::GetLastError() << L")");
 
   CHECK(!::SetFileInformationByHandle(
             file, static_cast<FILE_INFO_BY_HANDLE_CLASS>(99), &basic,
             sizeof(basic)),
-        "an unknown set class was accepted");
+        L"an unknown set class was accepted");
 
   // Delete-on-close through the disposition class, which is what libuv's
   // process code uses to discard a crash dump it could not finish writing.
@@ -576,53 +587,54 @@ void TestFileInformationSet() {
   disposition.DeleteFile = TRUE;
   CHECK(::SetFileInformationByHandle(file, FileDispositionInfo, &disposition,
                                      sizeof(disposition)),
-        "FileDispositionInfo failed (%lu)", ::GetLastError());
+        L"FileDispositionInfo failed (" << ::GetLastError() << L")");
   ::CloseHandle(file);
   CHECK(::GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES,
-        "the file survived a delete-on-close disposition");
+        L"the file survived a delete-on-close disposition");
   ::DeleteFileW(path);
 }
 
 void TestFinalPathAndReOpen() {
-  ::printf("  GetFinalPathNameByHandleW, ReOpenFile\n");
+  std::wcout << L"  GetFinalPathNameByHandleW, ReOpenFile" << std::endl;
 
   wchar_t path[MAX_PATH] = {};
   HANDLE file = MakeTempFile(path, 8);
   if (file == INVALID_HANDLE_VALUE) {
-    CHECK(false, "could not create a temp file (%lu)", ::GetLastError());
+    CHECK(false, L"could not create a temp file (" << ::GetLastError() << L")");
     return;
   }
 
   // The documented two-call shape: with no buffer it returns the length
   // including the terminator, and callers size their buffer from that.
   DWORD needed = ::GetFinalPathNameByHandleW(file, nullptr, 0, VOLUME_NAME_DOS);
-  CHECK(needed > 0, "length probe failed (%lu)", ::GetLastError());
+  CHECK(needed > 0, L"length probe failed (" << ::GetLastError() << L")");
   if (needed > 0) {
     auto* buffer = static_cast<wchar_t*>(::HeapAlloc(
         ::GetProcessHeap(), HEAP_ZERO_MEMORY, (needed + 1) * sizeof(wchar_t)));
     DWORD written =
         ::GetFinalPathNameByHandleW(file, buffer, needed, VOLUME_NAME_DOS);
     CHECK(written > 0 && written < needed,
-          "second call returned %lu against a probe of %lu", written, needed);
+          L"second call returned " << written << L" against a probe of "
+                                   << needed);
     CHECK(::wcsncmp(buffer, L"\\\\?\\", 4) == 0,
-          "the DOS form is not prefixed with \\\\?\\: \"%ls\"", buffer);
-    ::printf("    final path: %ls\n", buffer);
+          L"the DOS form is not prefixed with \\\\?\\: \"" << buffer << L"\"");
+    std::wcout << L"    final path: " << buffer << std::endl;
     ::HeapFree(::GetProcessHeap(), 0, buffer);
   }
 
   wchar_t nt_path[1024] = {};
   DWORD nt_written = ::GetFinalPathNameByHandleW(
       file, nt_path, ARRAYSIZE(nt_path), VOLUME_NAME_NT);
-  CHECK(nt_written > 0, "VOLUME_NAME_NT failed (%lu)", ::GetLastError());
+  CHECK(nt_written > 0, L"VOLUME_NAME_NT failed (" << ::GetLastError() << L")");
   if (nt_written > 0) {
-    CHECK(nt_path[0] == L'\\', "an NT path not starting with a separator");
+    CHECK(nt_path[0] == L'\\', L"an NT path not starting with a separator");
   }
 
   HANDLE reopened = ::ReOpenFile(
       file, FILE_READ_ATTRIBUTES,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0);
-  CHECK(reopened != INVALID_HANDLE_VALUE, "ReOpenFile on a file failed (%lu)",
-        ::GetLastError());
+  CHECK(reopened != INVALID_HANDLE_VALUE,
+        L"ReOpenFile on a file failed (" << ::GetLastError() << L")");
   if (reopened != INVALID_HANDLE_VALUE) {
     ::CloseHandle(reopened);
   }
@@ -646,7 +658,8 @@ void TestFinalPathAndReOpen() {
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         FILE_FLAG_BACKUP_SEMANTICS);
     CHECK(dir_again != INVALID_HANDLE_VALUE,
-          "ReOpenFile could not reopen a directory (%lu)", ::GetLastError());
+          L"ReOpenFile could not reopen a directory (" << ::GetLastError()
+                                                       << L")");
     if (dir_again != INVALID_HANDLE_VALUE) {
       ::CloseHandle(dir_again);
     }
@@ -657,7 +670,7 @@ void TestFinalPathAndReOpen() {
 // --- Named pipes -----------------------------------------------------------
 
 void TestNamedPipes() {
-  ::printf("  Named pipe process IDs\n");
+  std::wcout << L"  Named pipe process IDs" << std::endl;
 
   wchar_t name[128] = {};
   ::wsprintfW(name, L"\\\\.\\pipe\\winwrap-test-%lu", ::GetCurrentProcessId());
@@ -665,16 +678,16 @@ void TestNamedPipes() {
   HANDLE server =
       ::CreateNamedPipeW(name, PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT,
                          1, 512, 512, 0, nullptr);
-  CHECK(server != INVALID_HANDLE_VALUE, "CreateNamedPipeW failed (%lu)",
-        ::GetLastError());
+  CHECK(server != INVALID_HANDLE_VALUE,
+        L"CreateNamedPipeW failed (" << ::GetLastError() << L")");
   if (server == INVALID_HANDLE_VALUE) {
     return;
   }
 
   HANDLE client = ::CreateFileW(name, GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                                 OPEN_EXISTING, 0, nullptr);
-  CHECK(client != INVALID_HANDLE_VALUE, "connecting to the pipe failed (%lu)",
-        ::GetLastError());
+  CHECK(client != INVALID_HANDLE_VALUE,
+        L"connecting to the pipe failed (" << ::GetLastError() << L")");
 
   // Both ends belong to this process, so any answer at all must be this
   // process. Where the information is unavailable the call has to fail
@@ -683,30 +696,33 @@ void TestNamedPipes() {
   const DWORD self = ::GetCurrentProcessId();
   ULONG pid = 0;
   if (::GetNamedPipeServerProcessId(server, &pid)) {
-    CHECK(pid == self, "server process ID is %lu, expected %lu", pid, self);
+    CHECK(pid == self,
+          L"server process ID is " << pid << L", expected " << self);
   } else {
     CHECK(::GetLastError() == ERROR_NOT_SUPPORTED,
-          "server ID failed with %lu, expected ERROR_NOT_SUPPORTED",
-          ::GetLastError());
-    ::printf("    peer process IDs unavailable, as expected before Vista\n");
+          L"server ID failed with " << ::GetLastError()
+                                    << L", expected ERROR_NOT_SUPPORTED");
+    std::wcout << L"    peer process IDs unavailable, as expected before Vista"
+               << std::endl;
   }
 
   if (client != INVALID_HANDLE_VALUE) {
     pid = 0;
     if (::GetNamedPipeClientProcessId(server, &pid)) {
-      CHECK(pid == self, "client process ID is %lu, expected %lu", pid, self);
+      CHECK(pid == self,
+            L"client process ID is " << pid << L", expected " << self);
     } else {
       CHECK(::GetLastError() == ERROR_NOT_SUPPORTED,
-            "client ID failed with %lu, expected ERROR_NOT_SUPPORTED",
-            ::GetLastError());
+            L"client ID failed with " << ::GetLastError()
+                                      << L", expected ERROR_NOT_SUPPORTED");
     }
     ::CloseHandle(client);
   }
 
   CHECK(!::GetNamedPipeServerProcessId(server, nullptr),
-        "a null out parameter was accepted");
+        L"a null out parameter was accepted");
   CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
-        "a null out parameter gave %lu", ::GetLastError());
+        L"a null out parameter gave " << ::GetLastError());
 
   ::CloseHandle(server);
 }
@@ -714,7 +730,7 @@ void TestNamedPipes() {
 // --- Threads, error mode, restart ------------------------------------------
 
 void TestProcessorNumber() {
-  ::printf("  GetCurrentProcessorNumber\n");
+  std::wcout << L"  GetCurrentProcessorNumber" << std::endl;
 
   SYSTEM_INFO info = {};
   ::GetSystemInfo(&info);
@@ -728,18 +744,19 @@ void TestProcessorNumber() {
     ::SetThreadAffinityMask(::GetCurrentThread(), previous);
   }
 
-  CHECK(first == second, "pinned to one processor but reported %lu then %lu",
-        first, second);
-  ::printf("    reported processor %lu of %lu\n", first,
-           info.dwNumberOfProcessors);
+  CHECK(first == second, L"pinned to one processor but reported "
+                             << first << L" then " << second);
+  std::wcout << L"    reported processor " << first << L" of "
+             << (info.dwNumberOfProcessors) << std::endl;
   if (first >= info.dwNumberOfProcessors) {
     // Not a failure: the APIC IDs this derives from need not be dense.
-    ::printf("    note: above the processor count, so IDs are sparse here\n");
+    std::wcout << L"    note: above the processor count, so IDs are sparse here"
+               << std::endl;
   }
 }
 
 void TestErrorModeAndRestart() {
-  ::printf("  GetErrorMode, RegisterApplicationRestart\n");
+  std::wcout << L"  GetErrorMode, RegisterApplicationRestart" << std::endl;
 
   const UINT original = ::GetErrorMode();
 
@@ -752,22 +769,25 @@ void TestErrorModeAndRestart() {
   ::SetErrorMode(0);
   const UINT sticky = ::GetErrorMode();
   if (sticky != 0) {
-    ::printf("    the system holds %#x set regardless\n", sticky);
+    std::wcout << L"    the system holds " << Hex(sticky) << L" set regardless"
+               << std::endl;
   }
 
   // A round trip through SetErrorMode is what catches an inverted bit, which
   // is the one way this is easy to get wrong.
   const UINT wanted = SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX;
   ::SetErrorMode(wanted);
-  CHECK(::GetErrorMode() == (wanted | sticky), "set %#x, read back %#x",
-        wanted, ::GetErrorMode());
+  CHECK(::GetErrorMode() == (wanted | sticky),
+        L"set " << Hex(wanted) << L", read back " << Hex(::GetErrorMode()));
 
   ::SetErrorMode(SEM_NOOPENFILEERRORBOX);
   CHECK(::GetErrorMode() == (SEM_NOOPENFILEERRORBOX | sticky),
-        "set %#x, read back %#x", SEM_NOOPENFILEERRORBOX, ::GetErrorMode());
+        L"set " << Hex(SEM_NOOPENFILEERRORBOX) << L", read back "
+                << Hex(::GetErrorMode()));
 
   ::SetErrorMode(0);
-  CHECK(::GetErrorMode() == sticky, "set 0, read back %#x", ::GetErrorMode());
+  CHECK(::GetErrorMode() == sticky,
+        L"set 0, read back " << Hex(::GetErrorMode()));
 
   // Where the system has its own GetErrorMode, ours must agree with it
   // exactly. That is ground truth rather than an expectation written here,
@@ -786,26 +806,30 @@ void TestErrorModeAndRestart() {
     for (UINT probe : probes) {
       ::SetErrorMode(probe);
       CHECK(::GetErrorMode() == system_version(),
-            "after setting %#x winwrap says %#x, the system says %#x", probe,
-            ::GetErrorMode(), system_version());
+            L"after setting " << Hex(probe) << L" winwrap says "
+                              << Hex(::GetErrorMode()) << L", the system says "
+                              << Hex(system_version()));
     }
-    ::printf("    agrees with the system's own GetErrorMode\n");
+    std::wcout << L"    agrees with the system's own GetErrorMode" << std::endl;
   } else {
-    ::printf("    no system GetErrorMode to compare against\n");
+    std::wcout << L"    no system GetErrorMode to compare against" << std::endl;
   }
 
   ::SetErrorMode(original);
 
   HRESULT hr = ::RegisterApplicationRestart(L"--restarted", 0);
-  CHECK(FAILED(hr), "RegisterApplicationRestart reported success (%#lx)", hr);
+  CHECK(FAILED(hr),
+        L"RegisterApplicationRestart reported success (" << Hex(hr) << L")");
   hr = ::UnregisterApplicationRestart();
-  CHECK(FAILED(hr), "UnregisterApplicationRestart reported success (%#lx)", hr);
+  CHECK(FAILED(hr),
+        L"UnregisterApplicationRestart reported success (" << Hex(hr) << L")");
 }
 
 // --- Directories -----------------------------------------------------------
 
 void TestDirectories() {
-  ::printf("  CreateSymbolicLinkW, NeedCurrentDirectoryForExePathW\n");
+  std::wcout << L"  CreateSymbolicLinkW, NeedCurrentDirectoryForExePathW"
+             << std::endl;
 
   wchar_t directory[MAX_PATH] = {};
   ::GetTempPathW(ARRAYSIZE(directory), directory);
@@ -813,29 +837,29 @@ void TestDirectories() {
   ::wsprintfW(link, L"%swinwrap-link-%lu", directory, ::GetCurrentProcessId());
 
   if (::CreateSymbolicLinkW(link, directory, SYMBOLIC_LINK_FLAG_DIRECTORY)) {
-    ::printf("    symbolic links are available here\n");
+    std::wcout << L"    symbolic links are available here" << std::endl;
     ::RemoveDirectoryW(link);
   } else {
-    ::printf("    symbolic link refused (%lu), as expected without support\n",
-             ::GetLastError());
+    std::wcout << L"    symbolic link refused (" << ::GetLastError()
+               << L"), as expected without support" << std::endl;
   }
 
   // A name that already carries a path never consults the environment.
   CHECK(::NeedCurrentDirectoryForExePathW(L"dir\\program.exe"),
-        "a path-qualified name was refused the current directory");
+        L"a path-qualified name was refused the current directory");
 
   const wchar_t kVariable[] = L"NoDefaultCurrentDirectoryInExePath";
   const bool had = ::GetEnvironmentVariableW(kVariable, nullptr, 0) != 0;
 
   ::SetEnvironmentVariableW(kVariable, nullptr);
   CHECK(::NeedCurrentDirectoryForExePathW(L"program.exe"),
-        "the current directory was refused with the variable unset");
+        L"the current directory was refused with the variable unset");
 
   ::SetEnvironmentVariableW(kVariable, L"1");
   CHECK(!::NeedCurrentDirectoryForExePathW(L"program.exe"),
-        "the current directory was allowed with the variable set");
+        L"the current directory was allowed with the variable set");
   CHECK(::NeedCurrentDirectoryForExePathW(L"dir\\program.exe"),
-        "a path-qualified name was affected by the variable");
+        L"a path-qualified name was affected by the variable");
 
   // Any value counts as set, including an empty one -- but only if the system
   // kept the variable at all. Setting an environment variable to an empty
@@ -847,9 +871,10 @@ void TestDirectories() {
   DWORD probe = ::GetEnvironmentVariableW(kVariable, nullptr, 0);
   if (probe != 0 || ::GetLastError() != ERROR_ENVVAR_NOT_FOUND) {
     CHECK(!::NeedCurrentDirectoryForExePathW(L"program.exe"),
-          "an empty value did not count as set");
+          L"an empty value did not count as set");
   } else {
-    ::printf("    an empty value removes the variable here; skipped\n");
+    std::wcout << L"    an empty value removes the variable here; skipped"
+               << std::endl;
   }
 
   if (!had) {
@@ -860,20 +885,20 @@ void TestDirectories() {
 // --- Fibers ----------------------------------------------------------------
 
 DWORD WINAPI FiberBody(LPVOID) {
-  CHECK(!::IsThreadAFiber(), "a fresh worker thread claimed to be a fiber");
+  CHECK(!::IsThreadAFiber(), L"a fresh worker thread claimed to be a fiber");
 
   LPVOID fiber = ::ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
-  CHECK(fiber != nullptr, "ConvertThreadToFiberEx failed (%lu)",
-        ::GetLastError());
+  CHECK(fiber != nullptr,
+        L"ConvertThreadToFiberEx failed (" << ::GetLastError() << L")");
   if (fiber == nullptr) {
     return 0;
   }
 
-  CHECK(::IsThreadAFiber(), "a converted thread did not report as a fiber");
-  CHECK(::ConvertFiberToThread(), "ConvertFiberToThread failed (%lu)",
-        ::GetLastError());
+  CHECK(::IsThreadAFiber(), L"a converted thread did not report as a fiber");
+  CHECK(::ConvertFiberToThread(),
+        L"ConvertFiberToThread failed (" << ::GetLastError() << L")");
   CHECK(!::IsThreadAFiber(),
-        "a thread converted back still reports as a fiber");
+        L"a thread converted back still reports as a fiber");
   return 0;
 }
 
@@ -902,26 +927,26 @@ VOID CALLBACK BigStackFiber(PVOID parameter) {
 }
 
 void TestMainThreadFiberSequence() {
-  ::printf("  Fiber state on the main thread\n");
+  std::wcout << L"  Fiber state on the main thread" << std::endl;
 
   // Raw, because the answer is derived from it and the two systems disagreeing
   // here is what any difference in behaviour would come down to.
-  ::printf("    GetCurrentFiber() on the main thread = %p\n",
-           ::GetCurrentFiber());
+  std::wcout << L"    GetCurrentFiber() on the main thread = "
+             << ::GetCurrentFiber() << std::endl;
   CHECK(!::IsThreadAFiber(),
-        "the main thread claimed to be a fiber before any conversion");
+        L"the main thread claimed to be a fiber before any conversion");
 
   LPVOID original = ::ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
   CHECK(original != nullptr,
-        "ConvertThreadToFiberEx failed on the main thread (%lu)",
-        ::GetLastError());
+        L"ConvertThreadToFiberEx failed on the main thread ("
+            << ::GetLastError() << L")");
   if (original == nullptr) {
     return;
   }
-  ::printf("    after conversion GetCurrentFiber() = %p\n",
-           ::GetCurrentFiber());
+  std::wcout << L"    after conversion GetCurrentFiber() = "
+             << ::GetCurrentFiber() << std::endl;
   CHECK(::IsThreadAFiber(),
-        "the main thread did not report as a fiber after conversion");
+        L"the main thread did not report as a fiber after conversion");
 
   // 4 MiB with float switching, exactly as wWinMain asks for it. If XP
   // refuses either the size or the flag, Electron falls through to the small
@@ -929,24 +954,24 @@ void TestMainThreadFiberSequence() {
   SwitchState state = {original, false, false};
   LPVOID big = ::CreateFiberEx(0, 4 * 1024 * 1024, FIBER_FLAG_FLOAT_SWITCH,
                                BigStackFiber, &state);
-  CHECK(big != nullptr, "CreateFiberEx(4 MiB, FLOAT_SWITCH) failed (%lu)",
-        ::GetLastError());
+  CHECK(big != nullptr, L"CreateFiberEx(4 MiB, FLOAT_SWITCH) failed ("
+                            << ::GetLastError() << L")");
   if (big != nullptr) {
     ::SwitchToFiber(big);
-    CHECK(state.ran, "the big-stack fiber never ran");
+    CHECK(state.ran, L"the big-stack fiber never ran");
     CHECK(state.reported_as_fiber,
-          "code running on a created fiber did not report as a fiber");
+          L"code running on a created fiber did not report as a fiber");
     ::DeleteFiber(big);
   }
 
-  CHECK(::ConvertFiberToThread(), "ConvertFiberToThread failed (%lu)",
-        ::GetLastError());
+  CHECK(::ConvertFiberToThread(),
+        L"ConvertFiberToThread failed (" << ::GetLastError() << L")");
   CHECK(!::IsThreadAFiber(),
-        "the main thread still reports as a fiber after converting back");
+        L"the main thread still reports as a fiber after converting back");
 }
 
 void TestFibers() {
-  ::printf("  ConvertThreadToFiberEx, IsThreadAFiber\n");
+  std::wcout << L"  ConvertThreadToFiberEx, IsThreadAFiber" << std::endl;
   // On a worker, so the main thread is not left converted.
   RunThreads(FiberBody, 1);
 }
@@ -954,29 +979,30 @@ void TestFibers() {
 // --- Critical sections and I/O cancellation --------------------------------
 
 void TestCriticalSectionEx() {
-  ::printf("  InitializeCriticalSectionEx\n");
+  std::wcout << L"  InitializeCriticalSectionEx" << std::endl;
 
   CRITICAL_SECTION section;
   CHECK(::InitializeCriticalSectionEx(&section, 1000,
                                       CRITICAL_SECTION_NO_DEBUG_INFO),
-        "InitializeCriticalSectionEx failed (%lu)", ::GetLastError());
+        L"InitializeCriticalSectionEx failed (" << ::GetLastError() << L")");
   ::EnterCriticalSection(&section);
   CHECK(::TryEnterCriticalSection(&section),
-        "a critical section refused its owning thread");
+        L"a critical section refused its owning thread");
   ::LeaveCriticalSection(&section);
   ::LeaveCriticalSection(&section);
   ::DeleteCriticalSection(&section);
 }
 
 void TestIoCancellation() {
-  ::printf("  CancelIoEx, CancelSynchronousIo\n");
+  std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
   wchar_t path[MAX_PATH] = {};
   HANDLE file = MakeTempFile(path, 4);
   if (file != INVALID_HANDLE_VALUE) {
     // Nothing is outstanding, which counts as a successful cancel.
     CHECK(::CancelIoEx(file, nullptr),
-          "CancelIoEx failed with nothing pending (%lu)", ::GetLastError());
+          L"CancelIoEx failed with nothing pending (" << ::GetLastError()
+                                                      << L")");
     ::CloseHandle(file);
     ::DeleteFileW(path);
   }
@@ -985,8 +1011,8 @@ void TestIoCancellation() {
   // Vista, and what must not be claimed.
   if (!::CancelSynchronousIo(::GetCurrentThread())) {
     CHECK(::GetLastError() == ERROR_NOT_FOUND,
-          "CancelSynchronousIo failed with %lu, expected ERROR_NOT_FOUND",
-          ::GetLastError());
+          L"CancelSynchronousIo failed with " << ::GetLastError()
+                                              << L", expected ERROR_NOT_FOUND");
   }
 }
 
@@ -995,11 +1021,13 @@ void TestIoCancellation() {
 VOID CALLBACK NoopApc(ULONG_PTR) {}
 
 void TestCompletionPort() {
-  ::printf("  GetQueuedCompletionStatusEx, SetFileCompletionNotificationModes\n");
+  std::wcout
+      << L"  GetQueuedCompletionStatusEx, SetFileCompletionNotificationModes"
+      << std::endl;
 
   HANDLE port = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
-  CHECK(port != nullptr, "CreateIoCompletionPort failed (%lu)",
-        ::GetLastError());
+  CHECK(port != nullptr,
+        L"CreateIoCompletionPort failed (" << ::GetLastError() << L")");
   if (port == nullptr) {
     return;
   }
@@ -1015,26 +1043,27 @@ void TestCompletionPort() {
   ULONG removed = 0;
   CHECK(::GetQueuedCompletionStatusEx(port, entries, ARRAYSIZE(entries),
                                       &removed, 1000, FALSE),
-        "dequeue failed (%lu)", ::GetLastError());
-  CHECK(removed == kPosted, "removed %lu entries, expected %lu", removed,
-        kPosted);
+        L"dequeue failed (" << ::GetLastError() << L")");
+  CHECK(removed == kPosted,
+        L"removed " << removed << L" entries, expected " << kPosted);
   for (ULONG i = 0; i < removed && i < kPosted; ++i) {
     CHECK(entries[i].lpCompletionKey == 100 + i,
-          "entry %lu has key %llu, expected %lu", i,
-          static_cast<unsigned long long>(entries[i].lpCompletionKey),
-          100 + i);
+          L"entry " << i << L" has key "
+                    << (static_cast<unsigned long long>(
+                           entries[i].lpCompletionKey))
+                    << L", expected " << (100 + i));
     CHECK(entries[i].dwNumberOfBytesTransferred == i,
-          "entry %lu has %lu bytes, expected %lu", i,
-          entries[i].dwNumberOfBytesTransferred, i);
+          L"entry " << i << L" has " << (entries[i].dwNumberOfBytesTransferred)
+                    << L" bytes, expected " << i);
   }
 
   // An empty port must time out rather than report a phantom entry.
   removed = 99;
   CHECK(!::GetQueuedCompletionStatusEx(port, entries, ARRAYSIZE(entries),
                                        &removed, 0, FALSE),
-        "an empty port reported success");
-  CHECK(::GetLastError() == WAIT_TIMEOUT, "an empty port gave error %lu",
-        ::GetLastError());
+        L"an empty port reported success");
+  CHECK(::GetLastError() == WAIT_TIMEOUT,
+        L"an empty port gave error " << ::GetLastError());
 
   // The alertable path: a queued APC must end the wait and be reported as
   // such, which the non-alertable path cannot do at all.
@@ -1042,10 +1071,10 @@ void TestCompletionPort() {
   removed = 0;
   BOOL alertable = ::GetQueuedCompletionStatusEx(
       port, entries, ARRAYSIZE(entries), &removed, 1000, TRUE);
-  CHECK(!alertable, "an empty port reported success while alertable");
+  CHECK(!alertable, L"an empty port reported success while alertable");
   CHECK(::GetLastError() == WAIT_IO_COMPLETION,
-        "a queued APC gave error %lu, expected WAIT_IO_COMPLETION",
-        ::GetLastError());
+        L"a queued APC gave error " << ::GetLastError()
+                                    << L", expected WAIT_IO_COMPLETION");
 
   ::CloseHandle(port);
 
@@ -1055,14 +1084,15 @@ void TestCompletionPort() {
   wchar_t path[MAX_PATH] = {};
   HANDLE file = MakeTempFile(path, 1);
   if (file != INVALID_HANDLE_VALUE) {
-    CHECK(::SetFileCompletionNotificationModes(file,
-                                               FILE_SKIP_SET_EVENT_ON_HANDLE),
-          "skipping the handle event was refused (%lu)", ::GetLastError());
+    CHECK(
+        ::SetFileCompletionNotificationModes(file,
+                                             FILE_SKIP_SET_EVENT_ON_HANDLE),
+        L"skipping the handle event was refused (" << ::GetLastError() << L")");
     if (!::SetFileCompletionNotificationModes(
             file, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)) {
       CHECK(::GetLastError() == ERROR_INVALID_FUNCTION,
-            "the refusal gave %lu, expected ERROR_INVALID_FUNCTION",
-            ::GetLastError());
+            L"the refusal gave " << ::GetLastError()
+                                 << L", expected ERROR_INVALID_FUNCTION");
     }
     ::CloseHandle(file);
     ::DeleteFileW(path);
@@ -1072,31 +1102,45 @@ void TestCompletionPort() {
 // --- AppUserModelID --------------------------------------------------------
 
 void TestAppUserModelId() {
-  ::printf("  Get/SetCurrentProcessExplicitAppUserModelID\n");
+  std::wcout << L"  Get/SetCurrentProcessExplicitAppUserModelID" << std::endl;
 
   CHECK(::SetCurrentProcessExplicitAppUserModelID(nullptr) == E_INVALIDARG,
-        "a null application ID was accepted");
+        L"a null application ID was accepted");
 
   HRESULT hr = ::SetCurrentProcessExplicitAppUserModelID(L"winwrap.test");
-  CHECK(SUCCEEDED(hr), "setting an application ID failed (%#lx)", hr);
+  CHECK(SUCCEEDED(hr),
+        L"setting an application ID failed (" << Hex(hr) << L")");
 
   PWSTR current = reinterpret_cast<PWSTR>(static_cast<ULONG_PTR>(0xdeadbeef));
   hr = ::GetCurrentProcessExplicitAppUserModelID(&current);
   if (SUCCEEDED(hr)) {
-    CHECK(current != nullptr, "success with no identifier returned");
+    CHECK(current != nullptr, L"success with no identifier returned");
     ::CoTaskMemFree(current);
   } else {
     // The out parameter must be cleared even on failure: callers free it
     // unconditionally, and freeing an uninitialised pointer is a crash.
     CHECK(current == nullptr,
-          "failure left the out parameter untouched, and callers free it");
+          L"failure left the out parameter untouched, and callers free it");
   }
 }
 
 }  // namespace
 
 int wmain(int argc, WCHAR* argv[]) {
-  ::printf("winwrap stress tests\n");
+  // Send wide characters to the console as they are, instead of letting
+  // std::wcout convert them through the C locale, which is ASCII-only. This
+  // matters more than it looks: a path or locale name carrying a character
+  // outside ASCII does not merely print wrong, it fails the conversion, sets
+  // badbit and silences every later line -- so a non-English user profile
+  // would hide most of the run rather than one word of it. The narrow printf
+  // this replaced dropped the character and carried on, so without this the
+  // output is less robust than it used to be, not more.
+  //
+  // The cost is that redirected output is UTF-16 rather than bytes.
+  ::_setmode(::_fileno(stdout), _O_U16TEXT);
+
+  std::wcout << L"Winwrap Stress Tests" << std::endl;
+  std::wcout << L"Built against winwrap v" << kWinWrapVer << std::endl;
 
   TestExclusive();
   TestShared();
@@ -1122,9 +1166,9 @@ int wmain(int argc, WCHAR* argv[]) {
   TestAppUserModelId();
 
   if (g_failures == 0) {
-    ::printf("all passed\n");
+    std::wcout << L"\nAll Passed!" << std::endl;
     return 0;
   }
-  ::printf("%d failure(s)\n", g_failures);
+  std::wcout << L"\n" << g_failures << L" Failure(s)" << std::endl;
   return 1;
 }
