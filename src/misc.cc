@@ -19,8 +19,7 @@ extern "C" {
 // statement of the situation and callers test only for failure. The sole
 // caller in Chromium resolves this through GetProcAddress and simply does not
 // register when it is absent (chrome/browser/chrome_browser_main_win.cc).
-HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline,
-                                                  DWORD dwFlags) {
+HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline, DWORD dwFlags) {
   UNREFERENCED_PARAMETER(pwzCommandline);
   UNREFERENCED_PARAMETER(dwFlags);
   return E_NOTIMPL;
@@ -42,4 +41,4 @@ HRESULT WINAPI winwrap_UnregisterApplicationRestart(void) {
   return E_NOTIMPL;
 }
 
-}  // extern "C"
+} // extern "C"

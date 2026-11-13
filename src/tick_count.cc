@@ -19,17 +19,17 @@
 
 namespace {
 
-// Last value handed out, as a full 64-bit count. Interlocked so concurrent
-// callers cannot observe it going backwards.
-volatile LONGLONG g_last_tick = 0;
+  // Last value handed out, as a full 64-bit count. Interlocked so concurrent
+  // callers cannot observe it going backwards.
+  volatile LONGLONG g_last_tick = 0;
 
-}  // namespace
+} // namespace
 
 extern "C" ULONGLONG WINAPI winwrap_GetTickCount64(void) {
   const ULONGLONG now32 = ::GetTickCount();
 
   for (;;) {
-    const LONGLONG prev = ::InterlockedCompareExchange64(&g_last_tick, 0, 0);
+    const LONGLONG prev    = ::InterlockedCompareExchange64(&g_last_tick, 0, 0);
     const ULONGLONG prev_u = static_cast<ULONGLONG>(prev);
 
     // Splice the fresh low half onto the high half we have been tracking.
@@ -40,9 +40,8 @@ extern "C" ULONGLONG WINAPI winwrap_GetTickCount64(void) {
       candidate += 0x100000000ull;
     }
 
-    if (::InterlockedCompareExchange64(&g_last_tick,
-                                       static_cast<LONGLONG>(candidate),
-                                       prev) == prev) {
+    if (::InterlockedCompareExchange64(&g_last_tick, static_cast<LONGLONG>(candidate), prev) ==
+        prev) {
       return candidate;
     }
     // Lost the race; another thread advanced it. Retry against the new value.

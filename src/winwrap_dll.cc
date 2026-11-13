@@ -68,7 +68,7 @@ HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pdvi) {
       // Caller passed DLLVERSIONINFO2 - fill extended fields
       DLLVERSIONINFO2* pdvi2 = reinterpret_cast<DLLVERSIONINFO2*>(pdvi);
       pdvi2->dwFlags         = 0;
-      pdvi2->ullVersion      =
+      pdvi2->ullVersion =
           MAKEDLLVERULL(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION, 0);
     }
       [[fallthrough]]; // no break, fall through for backward compatibility DLLVERSIONINFO
@@ -87,4 +87,4 @@ HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pdvi) {
   return E_INVALIDARG;
 }
 
-}  // extern "C"
+} // extern "C"

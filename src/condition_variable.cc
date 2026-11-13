@@ -34,59 +34,57 @@
 
 namespace {
 
-using winwrap::kWakeAll;
-using winwrap::Park;
-using winwrap::ParkResult;
-using winwrap::Queue;
-using winwrap::Unpark;
+  using winwrap::kWakeAll;
+  using winwrap::Park;
+  using winwrap::ParkResult;
+  using winwrap::Queue;
+  using winwrap::Unpark;
 
-// A condition variable has one kind of waiter, so they all share a queue.
-constexpr Queue kWaiters = Queue::kExclusive;
+  // A condition variable has one kind of waiter, so they all share a queue.
+  constexpr Queue kWaiters = Queue::kExclusive;
 
-struct CriticalSectionWait {
-  PCRITICAL_SECTION section;
-};
+  struct CriticalSectionWait {
+    PCRITICAL_SECTION section;
+  };
 
-void ReleaseCriticalSection(void* context) {
-  ::LeaveCriticalSection(static_cast<CriticalSectionWait*>(context)->section);
-}
-
-struct SRWLockWait {
-  PSRWLOCK lock;
-  bool shared;
-};
-
-void ReleaseSRWLock(void* context) {
-  auto* wait = static_cast<SRWLockWait*>(context);
-  // winwrap's own, deliberately. The lock was taken through this library's
-  // implementation, whose state layout is its own; the system's release would
-  // be reading a different structure, where it exists at all.
-  if (wait->shared) {
-    winwrap_ReleaseSRWLockShared(wait->lock);
-  } else {
-    winwrap_ReleaseSRWLockExclusive(wait->lock);
+  void ReleaseCriticalSection(void* context) {
+    ::LeaveCriticalSection(static_cast<CriticalSectionWait*>(context)->section);
   }
-}
 
-}  // namespace
+  struct SRWLockWait {
+    PSRWLOCK lock;
+    bool shared;
+  };
+
+  void ReleaseSRWLock(void* context) {
+    auto* wait = static_cast<SRWLockWait*>(context);
+    // winwrap's own, deliberately. The lock was taken through this library's
+    // implementation, whose state layout is its own; the system's release would
+    // be reading a different structure, where it exists at all.
+    if (wait->shared) {
+      winwrap_ReleaseSRWLockShared(wait->lock);
+    } else {
+      winwrap_ReleaseSRWLockExclusive(wait->lock);
+    }
+  }
+
+} // namespace
 
 extern "C" {
 
-VOID WINAPI winwrap_InitializeConditionVariable(
-    PCONDITION_VARIABLE ConditionVariable) {
+VOID WINAPI winwrap_InitializeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
   // Match CONDITION_VARIABLE_INIT exactly. Nothing reads this word; it is
   // zeroed only so that a caller who inspects it, or who copies a freshly
   // initialised variable, sees what Windows would have left.
   ConditionVariable->Ptr = nullptr;
 }
 
-BOOL WINAPI
-winwrap_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable,
-                                 PCRITICAL_SECTION CriticalSection,
-                                 DWORD dwMilliseconds) {
+BOOL WINAPI winwrap_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable,
+                                             PCRITICAL_SECTION CriticalSection,
+                                             DWORD dwMilliseconds) {
   CriticalSectionWait wait = {CriticalSection};
-  ParkResult result = Park(ConditionVariable, kWaiters, /*validate=*/nullptr,
-                           &ReleaseCriticalSection, &wait, dwMilliseconds);
+  ParkResult result        = Park(ConditionVariable, kWaiters, /*validate=*/nullptr,
+                                  &ReleaseCriticalSection, &wait, dwMilliseconds);
 
   ::EnterCriticalSection(CriticalSection);
 
@@ -97,15 +95,13 @@ winwrap_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable,
   return TRUE;
 }
 
-BOOL WINAPI
-winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable,
-                                  PSRWLOCK SRWLock,
-                                  DWORD dwMilliseconds,
-                                  ULONG Flags) {
-  SRWLockWait wait = {SRWLock,
-                      (Flags & CONDITION_VARIABLE_LOCKMODE_SHARED) != 0};
-  ParkResult result = Park(ConditionVariable, kWaiters, /*validate=*/nullptr,
-                           &ReleaseSRWLock, &wait, dwMilliseconds);
+BOOL WINAPI winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable,
+                                              PSRWLOCK SRWLock,
+                                              DWORD dwMilliseconds,
+                                              ULONG Flags) {
+  SRWLockWait wait  = {SRWLock, (Flags & CONDITION_VARIABLE_LOCKMODE_SHARED) != 0};
+  ParkResult result = Park(ConditionVariable, kWaiters, /*validate=*/nullptr, &ReleaseSRWLock,
+                           &wait, dwMilliseconds);
 
   if (wait.shared) {
     winwrap_AcquireSRWLockShared(SRWLock);
@@ -120,8 +116,7 @@ winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable,
   return TRUE;
 }
 
-VOID WINAPI
-winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+VOID WINAPI winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
   // Waking nobody is not a failure. "If no threads are waiting, the function
   // does nothing" -- there is no signal to store for a future waiter, which is
   // exactly why callers re-test a predicate rather than trusting the wake.
@@ -129,10 +124,9 @@ winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
          /*context=*/nullptr);
 }
 
-VOID WINAPI
-winwrap_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
+VOID WINAPI winwrap_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable) {
   Unpark(ConditionVariable, kWaiters, kWakeAll, /*on_dequeued=*/nullptr,
          /*context=*/nullptr);
 }
 
-}  // extern "C"
+} // extern "C"

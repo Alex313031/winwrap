@@ -59,4 +59,4 @@ HRESULT WINAPI winwrap_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID) {
   return E_FAIL;
 }
 
-}  // extern "C"
+} // extern "C"

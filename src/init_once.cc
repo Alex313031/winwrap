@@ -29,22 +29,22 @@
 
 namespace {
 
-enum : ULONG_PTR {
-  kUninitialised = 0,
-  kRunning = 1,
-  kDone = 2,
-};
+  enum : ULONG_PTR {
+    kUninitialised = 0,
+    kRunning       = 1,
+    kDone          = 2,
+  };
 
-inline PVOID AsPtr(ULONG_PTR value) {
-  return reinterpret_cast<PVOID>(value);
-}
+  inline PVOID AsPtr(ULONG_PTR value) {
+    return reinterpret_cast<PVOID>(value);
+  }
 
-inline ULONG_PTR Load(PVOID volatile* slot) {
-  return reinterpret_cast<ULONG_PTR>(::InterlockedCompareExchangePointer(
-      const_cast<PVOID*>(slot), nullptr, nullptr));
-}
+  inline ULONG_PTR Load(PVOID volatile* slot) {
+    return reinterpret_cast<ULONG_PTR>(
+        ::InterlockedCompareExchangePointer(const_cast<PVOID*>(slot), nullptr, nullptr));
+  }
 
-}  // namespace
+} // namespace
 
 extern "C" BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                                    PINIT_ONCE_FN InitFn,
@@ -61,25 +61,23 @@ extern "C" BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
     switch (Load(slot)) {
       case kDone:
         if (Context) {
-          *Context = nullptr;  // See the limitation note above.
+          *Context = nullptr; // See the limitation note above.
         }
         return TRUE;
 
       case kUninitialised: {
         // Claim the right to run the callback.
-        if (::InterlockedCompareExchangePointer(
-                const_cast<PVOID*>(slot), AsPtr(kRunning),
-                AsPtr(kUninitialised)) != AsPtr(kUninitialised)) {
-          continue;  // Someone else claimed it; re-read the state.
+        if (::InterlockedCompareExchangePointer(const_cast<PVOID*>(slot), AsPtr(kRunning),
+                                                AsPtr(kUninitialised)) != AsPtr(kUninitialised)) {
+          continue; // Someone else claimed it; re-read the state.
         }
 
         PVOID callback_context = nullptr;
-        const BOOL ok = InitFn(InitOnce, Parameter, &callback_context);
+        const BOOL ok          = InitFn(InitOnce, Parameter, &callback_context);
 
         // On failure reset to uninitialised, which is what the real API does:
         // a failed attempt leaves the next caller free to try again.
-        ::InterlockedExchangePointer(const_cast<PVOID*>(slot),
-                                     AsPtr(ok ? kDone : kUninitialised));
+        ::InterlockedExchangePointer(const_cast<PVOID*>(slot), AsPtr(ok ? kDone : kUninitialised));
 
         if (ok && Context) {
           *Context = callback_context;

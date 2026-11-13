@@ -19,7 +19,6 @@
 // static_redirects.cc is a plain assignment with no casting.
 
 #include "framework.h"
-
 #include "winwrap_version.h"
 
 extern "C" {
@@ -73,10 +72,8 @@ BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName);
 // --- Named pipes -----------------------------------------------------------
 // Vista+. Answer only where the kernel can be made to say; see pipes.cc for
 // why no inference is attempted.
-BOOL WINAPI winwrap_GetNamedPipeClientProcessId(HANDLE Pipe,
-                                                PULONG ClientProcessId);
-BOOL WINAPI winwrap_GetNamedPipeServerProcessId(HANDLE Pipe,
-                                                PULONG ServerProcessId);
+BOOL WINAPI winwrap_GetNamedPipeClientProcessId(HANDLE Pipe, PULONG ClientProcessId);
+BOOL WINAPI winwrap_GetNamedPipeServerProcessId(HANDLE Pipe, PULONG ServerProcessId);
 
 // --- Threads ---------------------------------------------------------------
 // Server 2003+. Derived from the CPUID initial APIC ID; see threads.cc.
@@ -103,8 +100,7 @@ LSTATUS APIENTRY winwrap_RegGetValueW(HKEY hkey,
 // --- Miscellaneous ---------------------------------------------------------
 // RegisterApplicationRestart is Vista+ and always fails: XP has no Restart
 // Manager to register with.
-HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline,
-                                                  DWORD dwFlags);
+HRESULT WINAPI winwrap_RegisterApplicationRestart(PCWSTR pwzCommandline, DWORD dwFlags);
 HRESULT WINAPI winwrap_UnregisterApplicationRestart(void);
 
 // --- Fibers ----------------------------------------------------------------
@@ -120,21 +116,16 @@ BOOL WINAPI winwrap_IsThreadAFiber(void);
 // --- Condition variables ---------------------------------------------------
 // Vista+. CONDITION_VARIABLE and the lockmode flag are not version-gated --
 // only the functions are -- so only these declarations are needed.
-VOID WINAPI winwrap_InitializeConditionVariable(
-    PCONDITION_VARIABLE ConditionVariable);
-BOOL WINAPI winwrap_SleepConditionVariableCS(
-    PCONDITION_VARIABLE ConditionVariable,
-    PCRITICAL_SECTION CriticalSection,
-    DWORD dwMilliseconds);
-BOOL WINAPI winwrap_SleepConditionVariableSRW(
-    PCONDITION_VARIABLE ConditionVariable,
-    PSRWLOCK SRWLock,
-    DWORD dwMilliseconds,
-    ULONG Flags);
-VOID WINAPI winwrap_WakeConditionVariable(
-    PCONDITION_VARIABLE ConditionVariable);
-VOID WINAPI winwrap_WakeAllConditionVariable(
-    PCONDITION_VARIABLE ConditionVariable);
+VOID WINAPI winwrap_InitializeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+BOOL WINAPI winwrap_SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVariable,
+                                             PCRITICAL_SECTION CriticalSection,
+                                             DWORD dwMilliseconds);
+BOOL WINAPI winwrap_SleepConditionVariableSRW(PCONDITION_VARIABLE ConditionVariable,
+                                              PSRWLOCK SRWLock,
+                                              DWORD dwMilliseconds,
+                                              ULONG Flags);
+VOID WINAPI winwrap_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
+VOID WINAPI winwrap_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable);
 
 // --- One-time initialisation -----------------------------------------------
 // InitOnceExecuteOnce: Vista+. libuv's uv_once() is built directly on this.
@@ -146,7 +137,7 @@ BOOL WINAPI winwrap_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
 // --- Locale and string -----------------------------------------------------
 // Both Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
 #if !defined(LOCALE_NAME_MAX_LENGTH)
-#define LOCALE_NAME_MAX_LENGTH 85
+ #define LOCALE_NAME_MAX_LENGTH 85
 #endif
 
 int WINAPI winwrap_CompareStringOrdinal(LPCWCH lpString1,
@@ -164,19 +155,17 @@ int WINAPI winwrap_GetLocaleInfoEx(LPCWSTR lpLocaleName,
 // defines it next to OVERLAPPED with no version gate at all, so it is present
 // even at NTDDI_WINXPSP3. Only the skip flags are gated.
 #if !defined(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)
-#define FILE_SKIP_COMPLETION_PORT_ON_SUCCESS 0x1
-#define FILE_SKIP_SET_EVENT_ON_HANDLE 0x2
+ #define FILE_SKIP_COMPLETION_PORT_ON_SUCCESS 0x1
+ #define FILE_SKIP_SET_EVENT_ON_HANDLE        0x2
 #endif
 
-BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(
-    HANDLE CompletionPort,
-    LPOVERLAPPED_ENTRY lpCompletionPortEntries,
-    ULONG ulCount,
-    PULONG ulNumEntriesRemoved,
-    DWORD dwMilliseconds,
-    BOOL fAlertable);
-BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle,
-                                                       UCHAR Flags);
+BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(HANDLE CompletionPort,
+                                                LPOVERLAPPED_ENTRY lpCompletionPortEntries,
+                                                ULONG ulCount,
+                                                PULONG ulNumEntriesRemoved,
+                                                DWORD dwMilliseconds,
+                                                BOOL fAlertable);
+BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle, UCHAR Flags);
 
 // --- I/O cancellation ------------------------------------------------------
 // Both Vista+, and both exist to cancel I/O issued by another thread, which XP
@@ -188,19 +177,18 @@ BOOL WINAPI winwrap_CancelSynchronousIo(HANDLE hThread);
 // --- Critical sections -----------------------------------------------------
 // InitializeCriticalSectionEx: Vista+. The SDK hides the flag below 0x0600.
 #if !defined(CRITICAL_SECTION_NO_DEBUG_INFO)
-#define CRITICAL_SECTION_NO_DEBUG_INFO 0x01000000
+ #define CRITICAL_SECTION_NO_DEBUG_INFO 0x01000000
 #endif
 
-BOOL WINAPI winwrap_InitializeCriticalSectionEx(
-    LPCRITICAL_SECTION lpCriticalSection,
-    DWORD dwSpinCount,
-    DWORD Flags);
+BOOL WINAPI winwrap_InitializeCriticalSectionEx(LPCRITICAL_SECTION lpCriticalSection,
+                                                DWORD dwSpinCount,
+                                                DWORD Flags);
 
 // --- Fiber-local storage ---------------------------------------------------
 // kernel32, Server 2003 and Vista. The SDK hides the type and the sentinel
 // below _WIN32_WINNT 0x0600, which winwrap compiles under, so declare them.
 #if !defined(FLS_OUT_OF_INDEXES)
-#define FLS_OUT_OF_INDEXES ((DWORD)0xFFFFFFFF)
+ #define FLS_OUT_OF_INDEXES ((DWORD)0xFFFFFFFF)
 typedef VOID(WINAPI* PFLS_CALLBACK_FUNCTION)(PVOID lpFlsData);
 #endif
 
@@ -220,6 +208,6 @@ BOOL WINAPI winwrap_FlsFree(DWORD dwFlsIndex);
 HRESULT WINAPI winwrap_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID);
 HRESULT WINAPI winwrap_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID);
 
-}  // extern "C"
+} // extern "C"
 
-#endif  // WINWRAP_WINWRAP_H_
+#endif // WINWRAP_WINWRAP_H_

@@ -50,20 +50,19 @@ inline std::wstring Hex(T value) {
 
 namespace {
 
-  // The message is a stream expression, not a format string:
-  //   CHECK(ok, L"expected " << expected << L", got " << actual);
-  //
-  // Parenthesise anything compound in it. The expression is spliced into a
-  // chain of <<, which binds tighter than comparison, ternary and logical
-  // operators, so `a == b` would bind as `(stream << a) == b`.
-  #define CHECK(cond, message)                                      \
-    do {                                                            \
-      if (!(cond)) {                                                \
-        ++g_failures;                                               \
-        std::wcout << L"    FAIL line " << __LINE__ << L": "        \
-                   << message << std::endl;                         \
-      }                                                             \
-    } while (0)
+// The message is a stream expression, not a format string:
+//   CHECK(ok, L"expected " << expected << L", got " << actual);
+//
+// Parenthesise anything compound in it. The expression is spliced into a
+// chain of <<, which binds tighter than comparison, ternary and logical
+// operators, so `a == b` would bind as `(stream << a) == b`.
+#define CHECK(cond, message)                                                        \
+  do {                                                                              \
+    if (!(cond)) {                                                                  \
+      ++g_failures;                                                                 \
+      std::wcout << L"    FAIL line " << __LINE__ << L": " << message << std::endl; \
+    }                                                                               \
+  } while (0)
 } // namespace
 
 #endif // WINWRAP_WINWRAP_UNITTEST_H_

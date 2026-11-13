@@ -5,7 +5,7 @@
 // Thread functions. Fibers live in fibers.cc; everything else thread-shaped
 // belongs here.
 
-#include <intrin.h>  // __cpuid
+#include <intrin.h> // __cpuid
 
 #include "winwrap.h"
 
@@ -41,4 +41,4 @@ DWORD WINAPI winwrap_GetCurrentProcessorNumber(void) {
   return (static_cast<DWORD>(registers[1]) >> 24) & 0xFF;
 }
 
-}  // extern "C"
+} // extern "C"

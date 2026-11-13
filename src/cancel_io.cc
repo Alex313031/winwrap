@@ -69,4 +69,4 @@ BOOL WINAPI winwrap_CancelSynchronousIo(HANDLE hThread) {
   return FALSE;
 }
 
-}  // extern "C"
+} // extern "C"

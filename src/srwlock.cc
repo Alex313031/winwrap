@@ -40,98 +40,97 @@
 
 namespace {
 
-using winwrap::kWakeAll;
-using winwrap::Park;
-using winwrap::Queue;
-using winwrap::Unpark;
+  using winwrap::kWakeAll;
+  using winwrap::Park;
+  using winwrap::Queue;
+  using winwrap::Unpark;
 
-constexpr uintptr_t kWriterHeld = 1;
-constexpr uintptr_t kWritersWaiting = 2;
-constexpr uintptr_t kReadersWaiting = 4;
-constexpr uintptr_t kReaderShift = 3;
-constexpr uintptr_t kReaderUnit = static_cast<uintptr_t>(1) << kReaderShift;
-constexpr uintptr_t kReaderMask = ~static_cast<uintptr_t>(7);
+  constexpr uintptr_t kWriterHeld     = 1;
+  constexpr uintptr_t kWritersWaiting = 2;
+  constexpr uintptr_t kReadersWaiting = 4;
+  constexpr uintptr_t kReaderShift    = 3;
+  constexpr uintptr_t kReaderUnit     = static_cast<uintptr_t>(1) << kReaderShift;
+  constexpr uintptr_t kReaderMask     = ~static_cast<uintptr_t>(7);
 
-// Long enough to cover a handoff between two threads on different cores,
-// short enough that a lock held across real work reaches the kernel quickly.
-constexpr unsigned kSpinLimit = 40;
+  // Long enough to cover a handoff between two threads on different cores,
+  // short enough that a lock held across real work reaches the kernel quickly.
+  constexpr unsigned kSpinLimit = 40;
 
-inline uintptr_t Load(PSRWLOCK lock) {
-  return reinterpret_cast<uintptr_t>(
-      ::InterlockedCompareExchangePointer(&lock->Ptr, nullptr, nullptr));
-}
+  inline uintptr_t Load(PSRWLOCK lock) {
+    return reinterpret_cast<uintptr_t>(
+        ::InterlockedCompareExchangePointer(&lock->Ptr, nullptr, nullptr));
+  }
 
-inline bool Cas(PSRWLOCK lock, uintptr_t expected, uintptr_t desired) {
-  return ::InterlockedCompareExchangePointer(
-             &lock->Ptr, reinterpret_cast<PVOID>(desired),
-             reinterpret_cast<PVOID>(expected)) ==
-         reinterpret_cast<PVOID>(expected);
-}
+  inline bool Cas(PSRWLOCK lock, uintptr_t expected, uintptr_t desired) {
+    return ::InterlockedCompareExchangePointer(&lock->Ptr, reinterpret_cast<PVOID>(desired),
+                                               reinterpret_cast<PVOID>(expected)) ==
+           reinterpret_cast<PVOID>(expected);
+  }
 
-void ClearBit(PSRWLOCK lock, uintptr_t bit) {
-  for (;;) {
+  void ClearBit(PSRWLOCK lock, uintptr_t bit) {
+    for (;;) {
+      uintptr_t value = Load(lock);
+      if (!(value & bit) || Cas(lock, value, value & ~bit)) {
+        return;
+      }
+    }
+  }
+
+  // A writer sleeps only while the lock is taken and its own bit is still up.
+  // If either stopped being true between deciding to wait and reaching the
+  // bucket, there is something to retry and nothing to wait for.
+  bool ValidateExclusive(void* context) {
+    uintptr_t value = Load(static_cast<PSRWLOCK>(context));
+    return (value & kWritersWaiting) && (value & (kWriterHeld | kReaderMask));
+  }
+
+  // A reader sleeps only while a writer holds it or is queued ahead.
+  bool ValidateShared(void* context) {
+    uintptr_t value = Load(static_cast<PSRWLOCK>(context));
+    return (value & kReadersWaiting) && (value & (kWriterHeld | kWritersWaiting));
+  }
+
+  struct WakeContext {
+    PSRWLOCK lock;
+    uintptr_t bit;
+    size_t woken;
+  };
+
+  // Runs with the bucket locked, so clearing the bit here cannot disagree with
+  // what is actually queued: a thread that set the bit on its way to parking has
+  // not reached the bucket yet, and will re-validate once it does.
+  void OnDequeued(void* context, size_t woken, bool any_left) {
+    auto* wake  = static_cast<WakeContext*>(context);
+    wake->woken = woken;
+    if (!any_left) {
+      ClearBit(wake->lock, wake->bit);
+    }
+  }
+
+  // Hands the lock on. One writer if any is queued, otherwise every reader --
+  // they can all run at once, which is the point of a shared lock.
+  void WakeNext(PSRWLOCK lock) {
     uintptr_t value = Load(lock);
-    if (!(value & bit) || Cas(lock, value, value & ~bit)) {
-      return;
+
+    if (value & kWritersWaiting) {
+      WakeContext wake = {lock, kWritersWaiting, 0};
+      Unpark(lock, Queue::kExclusive, 1, &OnDequeued, &wake);
+      if (wake.woken) {
+        return;
+      }
+      // The bit outlived its queue: a waiter gave up in validation after
+      // setting it. OnDequeued has cleared it, so fall through rather than
+      // leave parked readers asleep with nobody left to wake them.
+      value = Load(lock);
+    }
+
+    if (value & kReadersWaiting) {
+      WakeContext wake = {lock, kReadersWaiting, 0};
+      Unpark(lock, Queue::kShared, kWakeAll, &OnDequeued, &wake);
     }
   }
-}
 
-// A writer sleeps only while the lock is taken and its own bit is still up.
-// If either stopped being true between deciding to wait and reaching the
-// bucket, there is something to retry and nothing to wait for.
-bool ValidateExclusive(void* context) {
-  uintptr_t value = Load(static_cast<PSRWLOCK>(context));
-  return (value & kWritersWaiting) && (value & (kWriterHeld | kReaderMask));
-}
-
-// A reader sleeps only while a writer holds it or is queued ahead.
-bool ValidateShared(void* context) {
-  uintptr_t value = Load(static_cast<PSRWLOCK>(context));
-  return (value & kReadersWaiting) && (value & (kWriterHeld | kWritersWaiting));
-}
-
-struct WakeContext {
-  PSRWLOCK lock;
-  uintptr_t bit;
-  size_t woken;
-};
-
-// Runs with the bucket locked, so clearing the bit here cannot disagree with
-// what is actually queued: a thread that set the bit on its way to parking has
-// not reached the bucket yet, and will re-validate once it does.
-void OnDequeued(void* context, size_t woken, bool any_left) {
-  auto* wake = static_cast<WakeContext*>(context);
-  wake->woken = woken;
-  if (!any_left) {
-    ClearBit(wake->lock, wake->bit);
-  }
-}
-
-// Hands the lock on. One writer if any is queued, otherwise every reader --
-// they can all run at once, which is the point of a shared lock.
-void WakeNext(PSRWLOCK lock) {
-  uintptr_t value = Load(lock);
-
-  if (value & kWritersWaiting) {
-    WakeContext wake = {lock, kWritersWaiting, 0};
-    Unpark(lock, Queue::kExclusive, 1, &OnDequeued, &wake);
-    if (wake.woken) {
-      return;
-    }
-    // The bit outlived its queue: a waiter gave up in validation after
-    // setting it. OnDequeued has cleared it, so fall through rather than
-    // leave parked readers asleep with nobody left to wake them.
-    value = Load(lock);
-  }
-
-  if (value & kReadersWaiting) {
-    WakeContext wake = {lock, kReadersWaiting, 0};
-    Unpark(lock, Queue::kShared, kWakeAll, &OnDequeued, &wake);
-  }
-}
-
-}  // namespace
+} // namespace
 
 extern "C" {
 
@@ -156,20 +155,17 @@ VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
 
     // Only spin while nobody is parked. Once there is a queue, spinning just
     // takes cycles from the thread holding the lock.
-    if (spins < kSpinLimit &&
-        (value & (kWritersWaiting | kReadersWaiting)) == 0) {
+    if (spins < kSpinLimit && (value & (kWritersWaiting | kReadersWaiting)) == 0) {
       ++spins;
       YieldProcessor();
       continue;
     }
 
-    if (!(value & kWritersWaiting) &&
-        !Cas(SRWLock, value, value | kWritersWaiting)) {
+    if (!(value & kWritersWaiting) && !Cas(SRWLock, value, value | kWritersWaiting)) {
       continue;
     }
 
-    Park(SRWLock, Queue::kExclusive, &ValidateExclusive, nullptr, SRWLock,
-         INFINITE);
+    Park(SRWLock, Queue::kExclusive, &ValidateExclusive, nullptr, SRWLock, INFINITE);
     spins = 0;
   }
 }
@@ -177,7 +173,7 @@ VOID WINAPI winwrap_AcquireSRWLockExclusive(PSRWLOCK SRWLock) {
 VOID WINAPI winwrap_ReleaseSRWLockExclusive(PSRWLOCK SRWLock) {
   for (;;) {
     uintptr_t value = Load(SRWLock);
-    uintptr_t next = value & ~kWriterHeld;
+    uintptr_t next  = value & ~kWriterHeld;
     if (!Cas(SRWLock, value, next)) {
       continue;
     }
@@ -205,8 +201,7 @@ VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
       continue;
     }
 
-    if (!(value & kReadersWaiting) &&
-        !Cas(SRWLock, value, value | kReadersWaiting)) {
+    if (!(value & kReadersWaiting) && !Cas(SRWLock, value, value | kReadersWaiting)) {
       continue;
     }
 
@@ -218,13 +213,12 @@ VOID WINAPI winwrap_AcquireSRWLockShared(PSRWLOCK SRWLock) {
 VOID WINAPI winwrap_ReleaseSRWLockShared(PSRWLOCK SRWLock) {
   for (;;) {
     uintptr_t value = Load(SRWLock);
-    uintptr_t next = value - kReaderUnit;
+    uintptr_t next  = value - kReaderUnit;
     if (!Cas(SRWLock, value, next)) {
       continue;
     }
     // Only the reader that turns the count to zero owes anyone a wake.
-    if ((next & kReaderMask) == 0 &&
-        (next & (kWritersWaiting | kReadersWaiting))) {
+    if ((next & kReaderMask) == 0 && (next & (kWritersWaiting | kReadersWaiting))) {
       WakeNext(SRWLock);
     }
     return;
@@ -251,4 +245,4 @@ BOOLEAN WINAPI winwrap_TryAcquireSRWLockShared(PSRWLOCK SRWLock) {
   }
 }
 
-}  // extern "C"
+} // extern "C"

@@ -8,16 +8,15 @@
 
 namespace {
 
-// PROCESSINFOCLASS as winternl.h declares it names only a few members, and
-// this is not among them.
-constexpr ULONG kProcessDefaultHardErrorMode = 12;
+  // PROCESSINFOCLASS as winternl.h declares it names only a few members, and
+  // this is not among them.
+  constexpr ULONG kProcessDefaultHardErrorMode = 12;
 
-using NtQueryInformationProcessFn =
-    NTSTATUS(NTAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+  using NtQueryInformationProcessFn = NTSTATUS(NTAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
 
-using SetProcessDPIAwareFn = BOOL(WINAPI*)(void);
+  using SetProcessDPIAwareFn = BOOL(WINAPI*)(void);
 
-}  // namespace
+} // namespace
 
 extern "C" {
 
@@ -44,12 +43,10 @@ UINT WINAPI winwrap_GetErrorMode(void) {
 
   if (query) {
     DWORD hard_error_mode = 0;
-    NTSTATUS status =
-        query(::GetCurrentProcess(), kProcessDefaultHardErrorMode,
-              &hard_error_mode, sizeof(hard_error_mode), nullptr);
+    NTSTATUS status = query(::GetCurrentProcess(), kProcessDefaultHardErrorMode, &hard_error_mode,
+                            sizeof(hard_error_mode), nullptr);
     if (status >= 0) {
-      return (hard_error_mode & 1) ? (hard_error_mode & ~1u)
-                                   : (hard_error_mode | 1u);
+      return (hard_error_mode & 1) ? (hard_error_mode & ~1u) : (hard_error_mode | 1u);
     }
   }
 
@@ -61,7 +58,6 @@ UINT WINAPI winwrap_GetErrorMode(void) {
   ::SetErrorMode(previous);
   return previous;
 }
-
 
 // Declare the process DPI aware. user32, Vista.
 //
@@ -92,4 +88,4 @@ BOOL WINAPI winwrap_SetProcessDPIAware(void) {
   return TRUE;
 }
 
-}  // extern "C"
+} // extern "C"

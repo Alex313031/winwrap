@@ -12,73 +12,73 @@
 
 namespace {
 
-// Dequeues whatever is already queued, without waiting. Returns the count, and
-// leaves the last error as GetQueuedCompletionStatus left it when none came.
-ULONG DrainReady(HANDLE port, LPOVERLAPPED_ENTRY entries, ULONG capacity) {
-  ULONG removed = 0;
-  while (removed < capacity) {
-    DWORD bytes = 0;
-    ULONG_PTR key = 0;
-    LPOVERLAPPED overlapped = nullptr;
-    BOOL ok = ::GetQueuedCompletionStatus(port, &bytes, &key, &overlapped, 0);
-    if (!ok && overlapped == nullptr) {
-      break;
+  // Dequeues whatever is already queued, without waiting. Returns the count, and
+  // leaves the last error as GetQueuedCompletionStatus left it when none came.
+  ULONG DrainReady(HANDLE port, LPOVERLAPPED_ENTRY entries, ULONG capacity) {
+    ULONG removed = 0;
+    while (removed < capacity) {
+      DWORD bytes             = 0;
+      ULONG_PTR key           = 0;
+      LPOVERLAPPED overlapped = nullptr;
+      BOOL ok                 = ::GetQueuedCompletionStatus(port, &bytes, &key, &overlapped, 0);
+      if (!ok && overlapped == nullptr) {
+        break;
+      }
+      entries[removed].lpCompletionKey            = key;
+      entries[removed].lpOverlapped               = overlapped;
+      entries[removed].dwNumberOfBytesTransferred = bytes;
+      entries[removed].Internal                   = overlapped ? overlapped->Internal : 0;
+      ++removed;
     }
-    entries[removed].lpCompletionKey = key;
-    entries[removed].lpOverlapped = overlapped;
-    entries[removed].dwNumberOfBytesTransferred = bytes;
-    entries[removed].Internal = overlapped ? overlapped->Internal : 0;
-    ++removed;
+    return removed;
   }
-  return removed;
-}
 
-// The fAlertable path: alternate between draining the port and sleeping
-// alertably, so queued APCs get a chance to run.
-BOOL AlertableDrain(HANDLE port,
-                    LPOVERLAPPED_ENTRY entries,
-                    ULONG capacity,
-                    PULONG removed_out,
-                    DWORD timeout_ms) {
-  // Short enough that a completion is not held up noticeably, long enough not
-  // to spin the CPU while idle.
-  constexpr DWORD kSliceMs = 5;
+  // The fAlertable path: alternate between draining the port and sleeping
+  // alertably, so queued APCs get a chance to run.
+  BOOL AlertableDrain(HANDLE port,
+                      LPOVERLAPPED_ENTRY entries,
+                      ULONG capacity,
+                      PULONG removed_out,
+                      DWORD timeout_ms) {
+    // Short enough that a completion is not held up noticeably, long enough not
+    // to spin the CPU while idle.
+    constexpr DWORD kSliceMs = 5;
 
-  const DWORD start = ::GetTickCount();
-  for (;;) {
-    ULONG removed = DrainReady(port, entries, capacity);
-    if (removed != 0) {
-      *removed_out = removed;
-      ::SetLastError(ERROR_SUCCESS);
-      return TRUE;
-    }
-    // Nothing queued. Anything other than a timeout is a real failure of the
-    // port itself and belongs to the caller.
-    if (::GetLastError() != WAIT_TIMEOUT) {
-      return FALSE;
-    }
-
-    DWORD slice = kSliceMs;
-    if (timeout_ms != INFINITE) {
-      const DWORD elapsed = ::GetTickCount() - start;
-      if (elapsed >= timeout_ms) {
-        ::SetLastError(WAIT_TIMEOUT);
+    const DWORD start = ::GetTickCount();
+    for (;;) {
+      ULONG removed = DrainReady(port, entries, capacity);
+      if (removed != 0) {
+        *removed_out = removed;
+        ::SetLastError(ERROR_SUCCESS);
+        return TRUE;
+      }
+      // Nothing queued. Anything other than a timeout is a real failure of the
+      // port itself and belongs to the caller.
+      if (::GetLastError() != WAIT_TIMEOUT) {
         return FALSE;
       }
-      const DWORD remaining = timeout_ms - elapsed;
-      if (remaining < slice) {
-        slice = remaining;
+
+      DWORD slice = kSliceMs;
+      if (timeout_ms != INFINITE) {
+        const DWORD elapsed = ::GetTickCount() - start;
+        if (elapsed >= timeout_ms) {
+          ::SetLastError(WAIT_TIMEOUT);
+          return FALSE;
+        }
+        const DWORD remaining = timeout_ms - elapsed;
+        if (remaining < slice) {
+          slice = remaining;
+        }
+      }
+
+      if (::SleepEx(slice, TRUE) == WAIT_IO_COMPLETION) {
+        ::SetLastError(WAIT_IO_COMPLETION);
+        return FALSE;
       }
     }
-
-    if (::SleepEx(slice, TRUE) == WAIT_IO_COMPLETION) {
-      ::SetLastError(WAIT_IO_COMPLETION);
-      return FALSE;
-    }
   }
-}
 
-}  // namespace
+} // namespace
 
 extern "C" {
 
@@ -107,13 +107,12 @@ extern "C" {
 // The cost is that a packet arriving mid-slice waits out the remainder, so the
 // alertable path trades a few milliseconds of latency for the ability to
 // deliver APCs at all. Both callers in Electron pass FALSE and never reach it.
-BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(
-    HANDLE CompletionPort,
-    LPOVERLAPPED_ENTRY lpCompletionPortEntries,
-    ULONG ulCount,
-    PULONG ulNumEntriesRemoved,
-    DWORD dwMilliseconds,
-    BOOL fAlertable) {
+BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(HANDLE CompletionPort,
+                                                LPOVERLAPPED_ENTRY lpCompletionPortEntries,
+                                                ULONG ulCount,
+                                                PULONG ulNumEntriesRemoved,
+                                                DWORD dwMilliseconds,
+                                                BOOL fAlertable) {
   if (!lpCompletionPortEntries || !ulNumEntriesRemoved || ulCount == 0) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return FALSE;
@@ -122,20 +121,19 @@ BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(
   *ulNumEntriesRemoved = 0;
 
   if (fAlertable) {
-    return AlertableDrain(CompletionPort, lpCompletionPortEntries, ulCount,
-                          ulNumEntriesRemoved, dwMilliseconds);
+    return AlertableDrain(CompletionPort, lpCompletionPortEntries, ulCount, ulNumEntriesRemoved,
+                          dwMilliseconds);
   }
 
   ULONG removed = 0;
   DWORD timeout = dwMilliseconds;
 
   for (ULONG i = 0; i < ulCount; ++i) {
-    DWORD bytes = 0;
-    ULONG_PTR key = 0;
+    DWORD bytes             = 0;
+    ULONG_PTR key           = 0;
     LPOVERLAPPED overlapped = nullptr;
 
-    BOOL ok = ::GetQueuedCompletionStatus(CompletionPort, &bytes, &key,
-                                          &overlapped, timeout);
+    BOOL ok = ::GetQueuedCompletionStatus(CompletionPort, &bytes, &key, &overlapped, timeout);
     if (!ok && overlapped == nullptr) {
       // Nothing came out. If this was the blocking first pass, the caller gets
       // the real reason -- WAIT_TIMEOUT, or a genuine error, which libuv
@@ -147,16 +145,15 @@ BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(
       break;
     }
 
-    lpCompletionPortEntries[i].lpCompletionKey = key;
-    lpCompletionPortEntries[i].lpOverlapped = overlapped;
+    lpCompletionPortEntries[i].lpCompletionKey            = key;
+    lpCompletionPortEntries[i].lpOverlapped               = overlapped;
     lpCompletionPortEntries[i].dwNumberOfBytesTransferred = bytes;
     // The real entry mirrors the status out of the OVERLAPPED, which already
     // holds it. A hand-posted packet has no OVERLAPPED and so no status.
-    lpCompletionPortEntries[i].Internal =
-        overlapped ? overlapped->Internal : 0;
+    lpCompletionPortEntries[i].Internal = overlapped ? overlapped->Internal : 0;
 
     ++removed;
-    timeout = 0;  // Everything after the first is a drain, never a wait.
+    timeout = 0; // Everything after the first is a drain, never a wait.
   }
 
   *ulNumEntriesRemoved = removed;
@@ -188,8 +185,7 @@ BOOL WINAPI winwrap_GetQueuedCompletionStatusEx(
 // libuv's UDP path treats exactly that code as "this handle does not support
 // the optimisation" and carries on without it (deps/uv/src/win/udp.c). Its TCP
 // path has no such tolerance and still needs a patch of its own.
-BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle,
-                                                       UCHAR Flags) {
+BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle, UCHAR Flags) {
   UNREFERENCED_PARAMETER(FileHandle);
 
   if ((Flags & ~FILE_SKIP_SET_EVENT_ON_HANDLE) == 0) {
@@ -200,4 +196,4 @@ BOOL WINAPI winwrap_SetFileCompletionNotificationModes(HANDLE FileHandle,
   return FALSE;
 }
 
-}  // extern "C"
+} // extern "C"

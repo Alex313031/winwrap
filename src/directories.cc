@@ -39,12 +39,12 @@
 // path npm takes on Windows. The callers who want a junction can already ask
 // for one; the callers who arrive here asked for something else.
 
-#include <string.h>  // wcschr
+#include <string.h> // wcschr
 
 #include "winwrap.h"
 
 #if !defined(SYMBOLIC_LINK_FLAG_DIRECTORY)
-#define SYMBOLIC_LINK_FLAG_DIRECTORY 0x1
+ #define SYMBOLIC_LINK_FLAG_DIRECTORY 0x1
 #endif
 
 extern "C" {
@@ -92,10 +92,9 @@ BOOL WINAPI winwrap_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName) {
   // the empty string can report a size of zero, which is also what a missing
   // variable reports. Only the error code separates the two.
   ::SetLastError(ERROR_SUCCESS);
-  DWORD size = ::GetEnvironmentVariableW(L"NoDefaultCurrentDirectoryInExePath",
-                                         nullptr, 0);
+  DWORD size   = ::GetEnvironmentVariableW(L"NoDefaultCurrentDirectoryInExePath", nullptr, 0);
   bool present = size != 0 || ::GetLastError() != ERROR_ENVVAR_NOT_FOUND;
   return present ? FALSE : TRUE;
 }
 
-}  // extern "C"
+} // extern "C"

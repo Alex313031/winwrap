@@ -18,17 +18,15 @@
 
 extern "C" {
 
-BOOL WINAPI winwrap_InitializeCriticalSectionEx(
-    LPCRITICAL_SECTION lpCriticalSection,
-    DWORD dwSpinCount,
-    DWORD Flags) {
+BOOL WINAPI winwrap_InitializeCriticalSectionEx(LPCRITICAL_SECTION lpCriticalSection,
+                                                DWORD dwSpinCount,
+                                                DWORD Flags) {
   // The spin count field is 24 bits of count plus flag bits above it, so the
   // flag rides along rather than replacing anything.
   if (Flags & CRITICAL_SECTION_NO_DEBUG_INFO) {
     dwSpinCount |= CRITICAL_SECTION_NO_DEBUG_INFO;
   }
-  return ::InitializeCriticalSectionAndSpinCount(lpCriticalSection,
-                                                 dwSpinCount);
+  return ::InitializeCriticalSectionAndSpinCount(lpCriticalSection, dwSpinCount);
 }
 
-}  // extern "C"
+} // extern "C"

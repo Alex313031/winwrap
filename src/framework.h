@@ -36,7 +36,7 @@
 #include <winternl.h>
 // clang-format on
 
-#include <stdlib.h>  // wcstoul
-#include <string.h>  // wcslen, wcsncmp
+#include <stdlib.h> // wcstoul
+#include <string.h> // wcslen, wcsncmp
 
 #endif // WINWRAP_FRAMEWORK_H_

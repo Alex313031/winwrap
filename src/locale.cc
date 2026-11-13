@@ -15,196 +15,194 @@
 
 namespace {
 
-constexpr DWORD kSpinCount = 2000;
+  constexpr DWORD kSpinCount = 2000;
 
-PVOID g_lock_ptr = nullptr;
+  PVOID g_lock_ptr = nullptr;
 
-CRITICAL_SECTION* EnsureLock() {
-  if (PVOID existing =
-          ::InterlockedCompareExchangePointer(&g_lock_ptr, nullptr, nullptr)) {
-    return static_cast<CRITICAL_SECTION*>(existing);
-  }
-  auto* fresh = static_cast<CRITICAL_SECTION*>(
-      ::HeapAlloc(::GetProcessHeap(), 0, sizeof(CRITICAL_SECTION)));
-  if (!fresh || !::InitializeCriticalSectionAndSpinCount(fresh, kSpinCount)) {
-    if (fresh) {
-      ::HeapFree(::GetProcessHeap(), 0, fresh);
+  CRITICAL_SECTION* EnsureLock() {
+    if (PVOID existing = ::InterlockedCompareExchangePointer(&g_lock_ptr, nullptr, nullptr)) {
+      return static_cast<CRITICAL_SECTION*>(existing);
     }
-    ::RaiseException(STATUS_NO_MEMORY, EXCEPTION_NONCONTINUABLE, 0, nullptr);
-    return nullptr;
-  }
-  PVOID won = ::InterlockedCompareExchangePointer(&g_lock_ptr, fresh, nullptr);
-  if (won == nullptr) {
-    return fresh;
-  }
-  ::DeleteCriticalSection(fresh);
-  ::HeapFree(::GetProcessHeap(), 0, fresh);
-  return static_cast<CRITICAL_SECTION*>(won);
-}
-
-using RtlUpcaseUnicodeCharFn = WCHAR(NTAPI*)(WCHAR);
-
-// Ordinal uppercasing, which is not linguistic uppercasing: it is a fixed
-// per-code-unit mapping with no locale in it.
-//
-// RtlUpcaseUnicodeChar is that mapping -- it is the table NT itself uses for
-// case-insensitive ordinal comparison, so matching it is the difference
-// between "close" and "the same answer". LCMapStringW with LOCALE_INVARIANT is
-// the NLS uppercase, which is near-identical but not the same function, and is
-// only the fallback for the impossible case of ntdll not resolving.
-//
-// ASCII is handled inline: it is the overwhelming majority of what gets
-// compared, the two mappings agree there, and it avoids a call per character.
-wchar_t UpcaseOrdinal(wchar_t c) {
-  if (c < 0x80) {
-    return (c >= L'a' && c <= L'z') ? static_cast<wchar_t>(c - L'a' + L'A') : c;
+    auto* fresh = static_cast<CRITICAL_SECTION*>(
+        ::HeapAlloc(::GetProcessHeap(), 0, sizeof(CRITICAL_SECTION)));
+    if (!fresh || !::InitializeCriticalSectionAndSpinCount(fresh, kSpinCount)) {
+      if (fresh) {
+        ::HeapFree(::GetProcessHeap(), 0, fresh);
+      }
+      ::RaiseException(STATUS_NO_MEMORY, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+      return nullptr;
+    }
+    PVOID won = ::InterlockedCompareExchangePointer(&g_lock_ptr, fresh, nullptr);
+    if (won == nullptr) {
+      return fresh;
+    }
+    ::DeleteCriticalSection(fresh);
+    ::HeapFree(::GetProcessHeap(), 0, fresh);
+    return static_cast<CRITICAL_SECTION*>(won);
   }
 
-  static const auto upcase = []() -> RtlUpcaseUnicodeCharFn {
-    HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
-    return ntdll ? reinterpret_cast<RtlUpcaseUnicodeCharFn>(
-                       ::GetProcAddress(ntdll, "RtlUpcaseUnicodeChar"))
-                 : nullptr;
-  }();
-  if (upcase) {
-    return upcase(c);
+  using RtlUpcaseUnicodeCharFn = WCHAR(NTAPI*)(WCHAR);
+
+  // Ordinal uppercasing, which is not linguistic uppercasing: it is a fixed
+  // per-code-unit mapping with no locale in it.
+  //
+  // RtlUpcaseUnicodeChar is that mapping -- it is the table NT itself uses for
+  // case-insensitive ordinal comparison, so matching it is the difference
+  // between "close" and "the same answer". LCMapStringW with LOCALE_INVARIANT is
+  // the NLS uppercase, which is near-identical but not the same function, and is
+  // only the fallback for the impossible case of ntdll not resolving.
+  //
+  // ASCII is handled inline: it is the overwhelming majority of what gets
+  // compared, the two mappings agree there, and it avoids a call per character.
+  wchar_t UpcaseOrdinal(wchar_t c) {
+    if (c < 0x80) {
+      return (c >= L'a' && c <= L'z') ? static_cast<wchar_t>(c - L'a' + L'A') : c;
+    }
+
+    static const auto upcase = []() -> RtlUpcaseUnicodeCharFn {
+      HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+      return ntdll ? reinterpret_cast<RtlUpcaseUnicodeCharFn>(
+                         ::GetProcAddress(ntdll, "RtlUpcaseUnicodeChar"))
+                   : nullptr;
+    }();
+    if (upcase) {
+      return upcase(c);
+    }
+
+    wchar_t upper = c;
+    if (::LCMapStringW(LOCALE_INVARIANT, LCMAP_UPPERCASE, &c, 1, &upper, 1) != 1) {
+      return c;
+    }
+    return upper;
   }
 
-  wchar_t upper = c;
-  if (::LCMapStringW(LOCALE_INVARIANT, LCMAP_UPPERCASE, &c, 1, &upper, 1) != 1) {
-    return c;
+  // EnumSystemLocalesW's callback takes no context -- EnumSystemLocalesEx, the
+  // one that does, arrived with the function being replaced here -- so the
+  // search has to communicate through these, under the lock.
+  const wchar_t* g_wanted_name = nullptr;
+  LCID g_found_lcid            = 0;
+  bool g_found                 = false;
+
+  // One-entry memo. ICU asks for the same locale a dozen times in a row while
+  // building one formatter, and each miss is an enumeration of every locale the
+  // system has installed.
+  wchar_t g_cached_name[LOCALE_NAME_MAX_LENGTH] = {};
+  LCID g_cached_lcid                            = 0;
+  bool g_has_cached                             = false;
+
+  bool NamesEqual(const wchar_t* a, const wchar_t* b) {
+    for (;; ++a, ++b) {
+      if (UpcaseOrdinal(*a) != UpcaseOrdinal(*b)) {
+        return false;
+      }
+      if (!*a) {
+        return true;
+      }
+    }
   }
-  return upper;
-}
 
-// EnumSystemLocalesW's callback takes no context -- EnumSystemLocalesEx, the
-// one that does, arrived with the function being replaced here -- so the
-// search has to communicate through these, under the lock.
-const wchar_t* g_wanted_name = nullptr;
-LCID g_found_lcid = 0;
-bool g_found = false;
-
-// One-entry memo. ICU asks for the same locale a dozen times in a row while
-// building one formatter, and each miss is an enumeration of every locale the
-// system has installed.
-wchar_t g_cached_name[LOCALE_NAME_MAX_LENGTH] = {};
-LCID g_cached_lcid = 0;
-bool g_has_cached = false;
-
-bool NamesEqual(const wchar_t* a, const wchar_t* b) {
-  for (;; ++a, ++b) {
-    if (UpcaseOrdinal(*a) != UpcaseOrdinal(*b)) {
+  // Rebuilds a locale's BCP 47-ish name from the pieces XP does expose, which is
+  // how a name is matched without LocaleNameToLCID: "en" plus "US" is "en-US".
+  //
+  // The alternative, which YY-Thunks takes, is a static table of every name and
+  // LCID taken from the NLS reference. That resolves names this cannot --
+  // anything whose Windows name is not language plus country, such as the
+  // script-tagged zh-Hans or sr-Latn-RS -- at the cost of a few hundred lines of
+  // data that has to be right and stay right. Asking the running system instead
+  // cannot go stale and cannot disagree with it, and covers every locale the
+  // machine actually has. Worth revisiting if a consumer needs the script-tagged
+  // names, which neither Electron nor ICU's Windows formatters request.
+  bool NameForLcid(LCID lcid, wchar_t* out, int out_chars) {
+    wchar_t language[16] = {};
+    if (::GetLocaleInfoW(lcid, LOCALE_SISO639LANGNAME, language, ARRAYSIZE(language)) == 0) {
       return false;
     }
-    if (!*a) {
-      return true;
-    }
-  }
-}
 
-// Rebuilds a locale's BCP 47-ish name from the pieces XP does expose, which is
-// how a name is matched without LocaleNameToLCID: "en" plus "US" is "en-US".
-//
-// The alternative, which YY-Thunks takes, is a static table of every name and
-// LCID taken from the NLS reference. That resolves names this cannot --
-// anything whose Windows name is not language plus country, such as the
-// script-tagged zh-Hans or sr-Latn-RS -- at the cost of a few hundred lines of
-// data that has to be right and stay right. Asking the running system instead
-// cannot go stale and cannot disagree with it, and covers every locale the
-// machine actually has. Worth revisiting if a consumer needs the script-tagged
-// names, which neither Electron nor ICU's Windows formatters request.
-bool NameForLcid(LCID lcid, wchar_t* out, int out_chars) {
-  wchar_t language[16] = {};
-  if (::GetLocaleInfoW(lcid, LOCALE_SISO639LANGNAME, language,
-                       ARRAYSIZE(language)) == 0) {
-    return false;
-  }
+    wchar_t country[16] = {};
+    bool have_country =
+        ::GetLocaleInfoW(lcid, LOCALE_SISO3166CTRYNAME, country, ARRAYSIZE(country)) > 0 &&
+        country[0] != L'\0';
 
-  wchar_t country[16] = {};
-  bool have_country = ::GetLocaleInfoW(lcid, LOCALE_SISO3166CTRYNAME, country,
-                                       ARRAYSIZE(country)) > 0 &&
-                      country[0] != L'\0';
-
-  int written = 0;
-  for (const wchar_t* p = language; *p && written < out_chars - 1; ++p) {
-    out[written++] = *p;
-  }
-  if (have_country && written < out_chars - 1) {
-    out[written++] = L'-';
-    for (const wchar_t* p = country; *p && written < out_chars - 1; ++p) {
+    int written = 0;
+    for (const wchar_t* p = language; *p && written < out_chars - 1; ++p) {
       out[written++] = *p;
     }
-  }
-  out[written] = L'\0';
-  return true;
-}
-
-BOOL CALLBACK EnumLocaleProc(LPWSTR lpLocaleString) {
-  // The callback is handed the LCID as an eight-digit hex string.
-  LCID lcid = static_cast<LCID>(::wcstoul(lpLocaleString, nullptr, 16));
-
-  wchar_t name[LOCALE_NAME_MAX_LENGTH] = {};
-  if (!NameForLcid(lcid, name, ARRAYSIZE(name))) {
-    return TRUE;  // Keep going.
-  }
-  if (!NamesEqual(name, g_wanted_name)) {
-    return TRUE;
-  }
-  g_found_lcid = lcid;
-  g_found = true;
-  return FALSE;  // Stop.
-}
-
-// LOCALE_NAME_SYSTEM_DEFAULT, spelled out because the SDK hides it below 0x0600.
-constexpr wchar_t kSystemDefaultName[] = L"!x-sys-default-locale";
-
-bool LcidForName(LPCWSTR name, LCID* out) {
-  if (name == nullptr) {
-    *out = LOCALE_USER_DEFAULT;  // LOCALE_NAME_USER_DEFAULT is a null pointer.
-    return true;
-  }
-  if (name[0] == L'\0') {
-    *out = LOCALE_INVARIANT;  // LOCALE_NAME_INVARIANT is the empty string.
-    return true;
-  }
-  if (NamesEqual(name, kSystemDefaultName)) {
-    *out = LOCALE_SYSTEM_DEFAULT;
-    return true;
-  }
-
-  CRITICAL_SECTION* lock = EnsureLock();
-  ::EnterCriticalSection(lock);
-
-  if (g_has_cached && NamesEqual(g_cached_name, name)) {
-    *out = g_cached_lcid;
-    ::LeaveCriticalSection(lock);
-    return true;
-  }
-
-  g_wanted_name = name;
-  g_found = false;
-  g_found_lcid = 0;
-  ::EnumSystemLocalesW(EnumLocaleProc, LCID_SUPPORTED);
-
-  bool found = g_found;
-  if (found) {
-    *out = g_found_lcid;
-
-    size_t i = 0;
-    for (; name[i] && i < ARRAYSIZE(g_cached_name) - 1; ++i) {
-      g_cached_name[i] = name[i];
+    if (have_country && written < out_chars - 1) {
+      out[written++] = L'-';
+      for (const wchar_t* p = country; *p && written < out_chars - 1; ++p) {
+        out[written++] = *p;
+      }
     }
-    g_cached_name[i] = L'\0';
-    g_cached_lcid = g_found_lcid;
-    g_has_cached = true;
+    out[written] = L'\0';
+    return true;
   }
-  g_wanted_name = nullptr;
 
-  ::LeaveCriticalSection(lock);
-  return found;
-}
+  BOOL CALLBACK EnumLocaleProc(LPWSTR lpLocaleString) {
+    // The callback is handed the LCID as an eight-digit hex string.
+    LCID lcid = static_cast<LCID>(::wcstoul(lpLocaleString, nullptr, 16));
 
-}  // namespace
+    wchar_t name[LOCALE_NAME_MAX_LENGTH] = {};
+    if (!NameForLcid(lcid, name, ARRAYSIZE(name))) {
+      return TRUE; // Keep going.
+    }
+    if (!NamesEqual(name, g_wanted_name)) {
+      return TRUE;
+    }
+    g_found_lcid = lcid;
+    g_found      = true;
+    return FALSE; // Stop.
+  }
+
+  // LOCALE_NAME_SYSTEM_DEFAULT, spelled out because the SDK hides it below 0x0600.
+  constexpr wchar_t kSystemDefaultName[] = L"!x-sys-default-locale";
+
+  bool LcidForName(LPCWSTR name, LCID* out) {
+    if (name == nullptr) {
+      *out = LOCALE_USER_DEFAULT; // LOCALE_NAME_USER_DEFAULT is a null pointer.
+      return true;
+    }
+    if (name[0] == L'\0') {
+      *out = LOCALE_INVARIANT; // LOCALE_NAME_INVARIANT is the empty string.
+      return true;
+    }
+    if (NamesEqual(name, kSystemDefaultName)) {
+      *out = LOCALE_SYSTEM_DEFAULT;
+      return true;
+    }
+
+    CRITICAL_SECTION* lock = EnsureLock();
+    ::EnterCriticalSection(lock);
+
+    if (g_has_cached && NamesEqual(g_cached_name, name)) {
+      *out = g_cached_lcid;
+      ::LeaveCriticalSection(lock);
+      return true;
+    }
+
+    g_wanted_name = name;
+    g_found       = false;
+    g_found_lcid  = 0;
+    ::EnumSystemLocalesW(EnumLocaleProc, LCID_SUPPORTED);
+
+    bool found = g_found;
+    if (found) {
+      *out = g_found_lcid;
+
+      size_t i = 0;
+      for (; name[i] && i < ARRAYSIZE(g_cached_name) - 1; ++i) {
+        g_cached_name[i] = name[i];
+      }
+      g_cached_name[i] = L'\0';
+      g_cached_lcid    = g_found_lcid;
+      g_has_cached     = true;
+    }
+    g_wanted_name = nullptr;
+
+    ::LeaveCriticalSection(lock);
+    return found;
+  }
+
+} // namespace
 
 extern "C" {
 
@@ -227,11 +225,9 @@ int WINAPI winwrap_CompareStringOrdinal(LPCWCH lpString1,
   // string that extends it. Not CompareStringW with any flag -- that is always
   // linguistic, which is a different answer, and the reason this function was
   // added to Windows at all.
-  size_t length1 = cchCount1 < 0 ? ::wcslen(lpString1)
-                                 : static_cast<size_t>(cchCount1);
-  size_t length2 = cchCount2 < 0 ? ::wcslen(lpString2)
-                                 : static_cast<size_t>(cchCount2);
-  size_t shared = length1 < length2 ? length1 : length2;
+  size_t length1 = cchCount1 < 0 ? ::wcslen(lpString1) : static_cast<size_t>(cchCount1);
+  size_t length2 = cchCount2 < 0 ? ::wcslen(lpString2) : static_cast<size_t>(cchCount2);
+  size_t shared  = length1 < length2 ? length1 : length2;
 
   for (size_t i = 0; i < shared; ++i) {
     wchar_t c1 = lpString1[i];
@@ -265,4 +261,4 @@ int WINAPI winwrap_GetLocaleInfoEx(LPCWSTR lpLocaleName,
   return ::GetLocaleInfoW(lcid, LCType, lpLCData, cchData);
 }
 
-}  // extern "C"
+} // extern "C"

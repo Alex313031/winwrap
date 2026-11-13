@@ -24,23 +24,23 @@
 #include "winwrap.h"
 
 #if !defined(FIBER_FLAG_FLOAT_SWITCH)
-#define FIBER_FLAG_FLOAT_SWITCH 0x1
+ #define FIBER_FLAG_FLOAT_SWITCH 0x1
 #endif
 
 namespace {
 
-// The real kernel32 export, where there is one. Deferring rather than
-// replacing is deliberate for these: on a system that implements the flag
-// properly there is no reason to give up float switching just because the
-// binary also runs on XP. It is the same reasoning as pipes.cc, and the two
-// together are becoming winwrap's rule for functions that exist but behave
-// differently, as opposed to functions that are simply absent.
-FARPROC Kernel32Proc(const char* name) {
-  HMODULE kernel32 = ::GetModuleHandleW(L"kernel32.dll");
-  return kernel32 ? ::GetProcAddress(kernel32, name) : nullptr;
-}
+  // The real kernel32 export, where there is one. Deferring rather than
+  // replacing is deliberate for these: on a system that implements the flag
+  // properly there is no reason to give up float switching just because the
+  // binary also runs on XP. It is the same reasoning as pipes.cc, and the two
+  // together are becoming winwrap's rule for functions that exist but behave
+  // differently, as opposed to functions that are simply absent.
+  FARPROC Kernel32Proc(const char* name) {
+    HMODULE kernel32 = ::GetModuleHandleW(L"kernel32.dll");
+    return kernel32 ? ::GetProcAddress(kernel32, name) : nullptr;
+  }
 
-}  // namespace
+} // namespace
 
 extern "C" {
 
@@ -58,11 +58,10 @@ extern "C" {
 //
 // A caller that genuinely depends on float switching cannot be satisfied on
 // XP by any means, so there is no answer here that is both honest and useful.
-LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter,
-                                             DWORD dwFlags) {
+LPVOID WINAPI winwrap_ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags) {
   using ConvertFunction = LPVOID(WINAPI*)(LPVOID, DWORD);
-  static const auto real = reinterpret_cast<ConvertFunction>(
-      Kernel32Proc("ConvertThreadToFiberEx"));
+  static const auto real =
+      reinterpret_cast<ConvertFunction>(Kernel32Proc("ConvertThreadToFiberEx"));
   if (real) {
     return real(lpParameter, dwFlags);
   }
@@ -87,10 +86,8 @@ LPVOID WINAPI winwrap_CreateFiberEx(SIZE_T dwStackCommitSize,
                                     DWORD dwFlags,
                                     LPFIBER_START_ROUTINE lpStartAddress,
                                     LPVOID lpParameter) {
-  using CreateFunction = LPVOID(WINAPI*)(SIZE_T, SIZE_T, DWORD,
-                                         LPFIBER_START_ROUTINE, LPVOID);
-  static const auto real =
-      reinterpret_cast<CreateFunction>(Kernel32Proc("CreateFiberEx"));
+  using CreateFunction   = LPVOID(WINAPI*)(SIZE_T, SIZE_T, DWORD, LPFIBER_START_ROUTINE, LPVOID);
+  static const auto real = reinterpret_cast<CreateFunction>(Kernel32Proc("CreateFiberEx"));
 
   if (!real) {
     // Not expected -- XP has it -- but CreateFiber takes the reserve size, so
@@ -98,17 +95,14 @@ LPVOID WINAPI winwrap_CreateFiberEx(SIZE_T dwStackCommitSize,
     return ::CreateFiber(dwStackReserveSize, lpStartAddress, lpParameter);
   }
 
-  LPVOID fiber = real(dwStackCommitSize, dwStackReserveSize, dwFlags,
-                      lpStartAddress, lpParameter);
+  LPVOID fiber = real(dwStackCommitSize, dwStackReserveSize, dwFlags, lpStartAddress, lpParameter);
   if (fiber != nullptr) {
     return fiber;
   }
 
-  if ((dwFlags & FIBER_FLAG_FLOAT_SWITCH) != 0 &&
-      ::GetLastError() == ERROR_INVALID_PARAMETER) {
-    return real(dwStackCommitSize, dwStackReserveSize,
-                dwFlags & ~FIBER_FLAG_FLOAT_SWITCH, lpStartAddress,
-                lpParameter);
+  if ((dwFlags & FIBER_FLAG_FLOAT_SWITCH) != 0 && ::GetLastError() == ERROR_INVALID_PARAMETER) {
+    return real(dwStackCommitSize, dwStackReserveSize, dwFlags & ~FIBER_FLAG_FLOAT_SWITCH,
+                lpStartAddress, lpParameter);
   }
   return fiber;
 }
@@ -132,4 +126,4 @@ BOOL WINAPI winwrap_IsThreadAFiber(void) {
   return TRUE;
 }
 
-}  // extern "C"
+} // extern "C"
