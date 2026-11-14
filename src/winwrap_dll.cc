@@ -58,26 +58,27 @@ BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD dwReason, LPVOID lpvReserved) {
 // expects): STDAPI shape, i.e. C linkage + stdcall, exported undecorated via
 // the .def. Fills whichever of DLLVERSIONINFO / DLLVERSIONINFO2 the caller
 // sized. No exceptions cross this boundary - a bad size is a return code.
-HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pdvi) {
-  if (pdvi == nullptr) {
+HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi) {
+  if (pDvi == nullptr) {
     return E_POINTER;
   }
 
-  switch (pdvi->cbSize) {
+  switch (pDvi->cbSize) {
     case sizeof(DLLVERSIONINFO2): {
       // Caller passed DLLVERSIONINFO2 - fill extended fields
-      DLLVERSIONINFO2* pdvi2 = reinterpret_cast<DLLVERSIONINFO2*>(pdvi);
-      pdvi2->dwFlags         = 0;
-      pdvi2->ullVersion =
+      DLLVERSIONINFO2* pDvi2 = reinterpret_cast<DLLVERSIONINFO2*>(pDvi);
+      pDvi2->dwFlags         = 0;
+      pDvi2->ullVersion =
           MAKEDLLVERULL(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION, 0);
     }
-      [[fallthrough]]; // no break, fall through for backward compatibility DLLVERSIONINFO
+      // No break, fall through for filling backward compatibile DLLVERSIONINFO
+      [[fallthrough]];
     case sizeof(DLLVERSIONINFO): {
       // Fill base DLLVERSIONINFO fields
-      pdvi->dwMajorVersion = WINWRAP_MAJOR_VERSION;
-      pdvi->dwMinorVersion = WINWRAP_MINOR_VERSION;
-      pdvi->dwBuildNumber  = WINWRAP_BUILD_VERSION;
-      pdvi->dwPlatformID   = DLLVER_PLATFORM_NT;
+      pDvi->dwMajorVersion = WINWRAP_MAJOR_VERSION;
+      pDvi->dwMinorVersion = WINWRAP_MINOR_VERSION;
+      pDvi->dwBuildNumber  = WINWRAP_BUILD_VERSION;
+      pDvi->dwPlatformID   = DLLVER_PLATFORM_NT;
       return S_OK;
     }
     default:

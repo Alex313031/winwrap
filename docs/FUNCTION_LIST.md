@@ -1,7 +1,7 @@
 # Function list
 
 Every Win32 function winwrap substitutes, and the oldest Windows that exports
-it natively. winwrap is only needed below that version — on anything newer the
+it natively. winwrap is only needed below that version; on anything newer the
 system's implementation is the better one, and the point of the table is to say
 exactly where the line falls.
 
@@ -9,7 +9,7 @@ Since 0.3.0 the library acts on this column itself: each function asks for the
 real one and only runs its own code if the answer is no, so the same binary is
 correct from XP to 11 and no build flag selects between them. Two groups resolve
 all-or-nothing rather than one function at a time, because their arguments mean
-different things to each implementation — the SRWLOCK and CONDITION_VARIABLE
+different things to each implementation: the SRWLOCK and CONDITION_VARIABLE
 functions together, which therefore only defer from Windows 7 (Vista has no
 `TryAcquireSRWLock*`, and no `RtlTryAcquireSRWLock*` under it either), and the
 `Fls*` four.
@@ -69,7 +69,7 @@ Most of the above is a full implementation and a caller cannot tell the
 difference. Some of it cannot be, either because XP has nothing to build on or
 because the honest answer is an error. Those are listed separately, with what
 each one does instead and what it costs, in
-[INCOMPLETE_FUNCS.md](INCOMPLETE_FUNCS.md) — read it before relying on
+[INCOMPLETE_FUNCS.md](INCOMPLETE_FUNCS.md); read it before relying on
 `CancelIoEx`, `CancelSynchronousIo`, the `Fls*` family's scope, or
 `GetQueuedCompletionStatusEx` with `fAlertable`.
 

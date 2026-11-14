@@ -21,7 +21,7 @@ Most of them are complete; the ones that cannot be, and what they do instead, ar
 
 [YY-Thunks](https://github.com/Chuyu-Team/YY-Thunks) (MIT) covers much of the same ground and has had
 far longer to find the edge cases. It was consulted while writing several of these functions, and is
-cited in the source comments where it mattered — both where it had already been caught out by
+cited in the source comments where it mattered: both where it had already been caught out by
 something, and where winwrap deliberately went a different way.
 
 No YY-Thunks code is used here, so this is an acknowledgement of a useful reference rather than a
