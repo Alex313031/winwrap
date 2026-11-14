@@ -4,7 +4,7 @@
 
 import("//third_party/winwrap/winwrap.gni")
 
-assert(is_win || target_os == "win", "winwrap only has a reason to exist on Windows")
+assert(is_win || target_os == "win", "winwrap is only valid for Windows targets")
 
 # The implementations, plus static_redirects.cc, which both link modes need.
 #
@@ -39,6 +39,7 @@ _winwrap_sources = [
   "src/process.cc",
   "src/registry.cc",
   "src/srwlock.cc",
+  "src/static_redirects.cc",
   "src/sys.cc",
   "src/sys.h",
   "src/threads.cc",
@@ -57,15 +58,15 @@ config("winwrap_public_config") {
 # anything that pulls in a post-XP import of its own.
 config("winwrap_internal_config") {
   cflags = [
-    "-U_WIN32_WINNT", # Must undef first to avoid redefinition errors.
-    "-D_WIN32_WINNT=0x0501", # XP, for winwrap's own sources only.
+    "-U_WIN32_WINNT",  # Must undef first to avoid redefinition errors.
+    "-D_WIN32_WINNT=0x0501",  # XP, for winwrap's own sources only.
 
     # NTDDI_VERSION as well, or the guardrail only half works: plenty of SDK
     # headers gate on NTDDI_VERSION rather than _WIN32_WINNT, so lowering one
     # and not the other still exposes post-XP declarations. OVERLAPPED_ENTRY
     # is one such -- visible at _WIN32_WINNT=0x0501 until this was added.
     "-UNTDDI_VERSION",
-    "-DNTDDI_VERSION=0x05010300", # NTDDI_WINXPSP3
+    "-DNTDDI_VERSION=0x05010300",  # NTDDI_WINXPSP3
   ]
 
   # winwrap is a C++17 project. Chromium builds at a newer standard, and the
@@ -79,13 +80,14 @@ config("winwrap_internal_config") {
 }
 
 shared_library("winwrap_shared") {
-  defines = [ "WINWRAP_DLL" ]
   output_name = "winwrap"
+
+  defines = [ "WINWRAP_DLL" ]
+
   # winwrap_dll.cc contains functions only a DLL would want.
   sources = _winwrap_sources + [
-    "src/static_redirects.cc",
-    "src/winwrap_dll.cc",
     "src/winwrap.rc",
+    "src/winwrap_dll.cc",
   ]
 
   # //build/config:common_deps depends on winwrap_lib, and every
@@ -108,7 +110,9 @@ shared_library("winwrap_shared") {
 static_library("winwrap_static") {
   output_name = "winwrap"
 
-  sources = _winwrap_sources + [ "src/static_redirects.cc" ]
+  defines = [ "WINWRAP_STATIC" ]
+
+  sources = _winwrap_sources
 
   configs += [ ":winwrap_internal_config" ]
   public_configs = [ ":winwrap_public_config" ]
@@ -129,10 +133,11 @@ group("winwrap_lib") {
 
 group("winwrap_all") {
   testonly = true
+
   # Build both static and shared versions of the lib
   deps = [
+    ":winwrap_shared",
     ":winwrap_static",
-    ":winwrap_shared"
   ]
   public_deps = [ "test:winwrap_test" ]
 }
