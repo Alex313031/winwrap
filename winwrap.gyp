@@ -17,6 +17,17 @@
 #   '<(DEPTH)/third_party/winwrap/winwrap.gyp:winwrap'
 #
 # ---------------------------------------------------------------------------
+# Prerequisite: the "C++ Clang Compiler for Windows" Visual Studio component
+#
+# This target builds with clang-cl even in a tree that is otherwise MSVC,
+# because static_redirects.cc needs Clang asm labels and MSVC has no
+# equivalent. That component is not installed by default. See the long note on
+# the target itself for why, and for what it would take to lift the
+# requirement. Check for it with:
+#
+#   "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang-cl.exe" --version
+#
+# ---------------------------------------------------------------------------
 # READ THIS BEFORE DEPENDING ON IT: the consumer has work to do
 #
 # Two things this file cannot do for you.
@@ -70,6 +81,47 @@
     {
       'target_name': 'winwrap',
       'type': 'static_library',
+
+      # winwrap compiles with clang-cl, even in a tree that is otherwise MSVC.
+      # This is a requirement, not a preference.
+      #
+      # static_redirects.cc names its symbols with a Clang asm label:
+      #
+      #   extern "C" decltype(&ww_Foo) winwrap_imp_Foo __asm__("__imp__Foo@4")
+      #       = &ww_Foo;
+      #
+      # which is the only way to produce the name from source, because
+      # __imp__Foo@4 is not a legal C identifier. MSVC has no asm labels and
+      # no equivalent, so cl.exe reports a wall of C2059 and C2146 on every
+      # WINWRAP_REDIRECT line. /alternatename is the obvious-looking answer
+      # and does not work: the linker consults an alternate name only when the
+      # original symbol is undefined, and kernel32.lib defines __imp_<name>,
+      # so it always loses.
+      #
+      # Mixing toolsets within one solution is fine here. Symbol names are
+      # ABI, not compiler-specific, so MSVC-compiled call sites reference
+      # __imp__Foo@4 and this object defines it; winwrap's whole surface is
+      # extern "C", so no C++ ABI crosses the boundary. /WHOLEARCHIVE is a
+      # link.exe flag and is unaffected.
+      #
+      # The cost is that a GYP consumer needs the "C++ Clang Compiler for
+      # Windows" Visual Studio component, which is not installed by default.
+      # Removing that requirement means giving static_redirects.cc an MSVC
+      # path -- the __imp_ symbols defined in MASM, which can name anything --
+      # and that is worth doing, since the whole point of shipping a .gyp is
+      # to be consumable outside a Chromium-style clang build. Until then this
+      # is the narrow way to get the redirects at all.
+      #
+      # On Common_Base because gyp-next reads msbuild_toolset from the
+      # target's default configuration, and every concrete configuration
+      # inherits from this one.
+      'configurations': {
+        'Common_Base': {
+          'abstract': 1,
+          'msbuild_toolset': 'ClangCL',
+        },
+      },
+
       # Mirrors _winwrap_sources in BUILD.gn. static_redirects.cc is the whole
       # mechanism in this mode: it is what defines the __imp_<name> slots the
       # consumer's call sites load through.
