@@ -23,6 +23,7 @@ _winwrap_sources = [
   "src/directories.cc",
   "src/dispatch.cc",
   "src/dispatch.h",
+  "src/etw.cc",
   "src/fibers.cc",
   "src/files.cc",
   "src/fls.cc",

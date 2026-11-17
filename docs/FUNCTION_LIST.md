@@ -29,6 +29,7 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetCurrentProcessorNumber` | kernel32 | Server 2003 | From the CPUID initial APIC ID; a hint, as the real one is too |
 | `SetProcessDPIAware` | user32 | Vista | Reports success: XP has no DPI virtualisation to opt out of, so the state already holds |
 | `RegGetValueW` | advapi32 | Vista | Built on `RegQueryValueExW`: type filter, guaranteed termination, environment expansion |
+| `EventWriteTransfer` | advapi32 | Vista | Always `ERROR_INVALID_HANDLE`; XP's ETW has no manifest-based provider model to write into |
 | `GetErrorMode` | kernel32 | Vista | Read from the process information NT already keeps, with the low bit inverted |
 | `RegisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`; XP has no Restart Manager |
 | `UnregisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`, to agree with its other half |
@@ -42,6 +43,7 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `WakeAllConditionVariable` | kernel32 | Vista | |
 | `CompareStringOrdinal` | kernel32 | Vista | Written out; binary comparison is not something `CompareStringW` can be asked for |
 | `GetLocaleInfoEx` | kernel32 | Vista | Resolves the locale name to an LCID by enumeration, then `GetLocaleInfoW` |
+| `LCMapStringEx` | kernel32 | Vista | The same name-to-LCID resolution, then `LCMapStringW`. Refuses a sort handle or a sort version, which XP has neither of |
 | `CancelIoEx` | kernel32 | Vista | Best effort via `CancelIo`: same-thread only, and cannot target one request |
 | `CancelSynchronousIo` | kernel32 | Vista | Always fails with `ERROR_NOT_FOUND`; cross-thread by definition, impossible on XP |
 | `GetQueuedCompletionStatusEx` | kernel32 | Vista | `GetQueuedCompletionStatus` in a loop; `fAlertable` ignored, no alertable form exists |

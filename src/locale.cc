@@ -2,14 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// CompareStringOrdinal and GetLocaleInfoEx. kernel32, Vista.
+// CompareStringOrdinal, GetLocaleInfoEx and LCMapStringEx. kernel32, Vista.
 //
-// Both are the "Ex" half of a pair whose older form XP does have, but they are
-// not the same shape underneath. CompareStringOrdinal is new behaviour --
+// All three are the "Ex" half of a pair whose older form XP does have, but they
+// are not the same shape underneath. CompareStringOrdinal is new behaviour --
 // binary comparison, which CompareStringW cannot be asked for -- so it is
-// written out here. GetLocaleInfoEx is the old call addressed by locale *name*
-// rather than LCID, so the work is turning one into the other, and XP has no
-// LocaleNameToLCID to do it with.
+// written out here. GetLocaleInfoEx and LCMapStringEx are the old calls
+// addressed by locale *name* rather than LCID, so the work is turning one into
+// the other, and XP has no LocaleNameToLCID to do it with. LcidForName below is
+// therefore the shared part of both, and the rest of each is the original call.
 
 #include "dispatch.h"
 #include "winwrap.h"
@@ -261,6 +262,44 @@ int WINAPI ww_GetLocaleInfoEx(LPCWSTR lpLocaleName, LCTYPE LCType, LPWSTR lpLCDa
   // Everything past the name is unchanged between the two, LOCALE_RETURN_NUMBER
   // included, so the rest is the original call.
   return ::GetLocaleInfoW(lcid, LCType, lpLCData, cchData);
+}
+
+int WINAPI ww_LCMapStringEx(LPCWSTR lpLocaleName,
+                            DWORD dwMapFlags,
+                            LPCWSTR lpSrcStr,
+                            int cchSrc,
+                            LPWSTR lpDestStr,
+                            int cchDest,
+                            LPNLSVERSIONINFO lpVersionInformation,
+                            LPVOID lpReserved,
+                            LPARAM sortHandle) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, LCMapStringEx)) {
+    return system_fn(lpLocaleName, dwMapFlags, lpSrcStr, cchSrc, lpDestStr, cchDest,
+                     lpVersionInformation, lpReserved, sortHandle);
+  }
+
+  // The three parameters with nothing on XP to map onto, refused rather than
+  // ignored. lpVersionInformation selects a specific sort version, sortHandle
+  // names a sort handle -- which is what LCMAP_SORTHANDLE makes lpLocaleName
+  // mean as well -- and neither exists before Vista. lpReserved is specified
+  // as always null. A caller passing any of them asked for something this
+  // cannot do, and quietly doing the unversioned mapping instead would answer
+  // a question it did not ask.
+  if (lpVersionInformation != nullptr || lpReserved != nullptr || sortHandle != 0) {
+    ::SetLastError(ERROR_INVALID_PARAMETER);
+    return 0;
+  }
+
+  LCID lcid = 0;
+  if (!LcidForName(lpLocaleName, &lcid)) {
+    ::SetLastError(ERROR_INVALID_PARAMETER);
+    return 0;
+  }
+  // Everything past the name is unchanged between the two -- the flags, the
+  // counts and the -1-means-null-terminated convention all carry over -- so
+  // the rest is the original call.
+  return ::LCMapStringW(lcid, dwMapFlags, lpSrcStr, cchSrc, lpDestStr, cchDest);
 }
 
 } // extern "C"

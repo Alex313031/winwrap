@@ -136,7 +136,7 @@ BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                    LPVOID* Context);
 
 // --- Locale and string -----------------------------------------------------
-// Both Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
+// All three Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
 #if !defined(LOCALE_NAME_MAX_LENGTH)
  #define LOCALE_NAME_MAX_LENGTH 85
 #endif
@@ -147,6 +147,40 @@ int WINAPI ww_CompareStringOrdinal(LPCWCH lpString1,
                                    int cchCount2,
                                    BOOL bIgnoreCase);
 int WINAPI ww_GetLocaleInfoEx(LPCWSTR lpLocaleName, LCTYPE LCType, LPWSTR lpLCData, int cchData);
+int WINAPI ww_LCMapStringEx(LPCWSTR lpLocaleName,
+                            DWORD dwMapFlags,
+                            LPCWSTR lpSrcStr,
+                            int cchSrc,
+                            LPWSTR lpDestStr,
+                            int cchDest,
+                            LPNLSVERSIONINFO lpVersionInformation,
+                            LPVOID lpReserved,
+                            LPARAM sortHandle);
+
+// --- ETW manifest-based providers ------------------------------------------
+// advapi32, Vista+. Not emulable -- XP's ETW has no manifest-based half at all
+// -- so this always fails. See etw.cc for why, and for why only this one
+// function out of the family.
+//
+// evntprov.h is gated in its entirety on WINVER >= 0x0600, so REGHANDLE comes
+// from here. Repeating a typedef with the same type is legal, which matters
+// because WINVER is not something winwrap controls in every build that
+// consumes it -- so this is correct whether or not that gate happened to be
+// open. The width is not cosmetic: REGHANDLE is 64 bits on both
+// architectures, and that is what makes the x86 stdcall argument size 28
+// rather than 24.
+typedef ULONGLONG REGHANDLE;
+
+// The two descriptor pointers are deliberately opaque. winwrap never reads
+// either -- it forwards them or fails -- so transcribing EVENT_DESCRIPTOR and
+// EVENT_DATA_DESCRIPTOR would be surface with no behaviour behind it, and a
+// pointer is a pointer as far as the ABI is concerned.
+ULONG WINAPI ww_EventWriteTransfer(REGHANDLE RegHandle,
+                                   const void* EventDescriptor,
+                                   LPCGUID ActivityId,
+                                   LPCGUID RelatedActivityId,
+                                   ULONG UserDataCount,
+                                   const void* UserData);
 
 // --- I/O completion ports --------------------------------------------------
 // Both Vista+. OVERLAPPED_ENTRY needs no declaration here: minwinbase.h

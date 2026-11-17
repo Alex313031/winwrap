@@ -23,6 +23,7 @@ EXPORTS
     CreateFiberEx = ww_CreateFiberEx
     CreateSymbolicLinkW = ww_CreateSymbolicLinkW
     DllGetVersion
+    EventWriteTransfer = ww_EventWriteTransfer
     FlsAlloc = ww_FlsAlloc
     FlsFree = ww_FlsFree
     FlsGetValue = ww_FlsGetValue
@@ -44,6 +45,7 @@ EXPORTS
     InitOnceExecuteOnce = ww_InitOnceExecuteOnce
     IsRunningOnWine
     IsThreadAFiber = ww_IsThreadAFiber
+    LCMapStringEx = ww_LCMapStringEx
     NeedCurrentDirectoryForExePathW = ww_NeedCurrentDirectoryForExePathW
     RegGetValueW = ww_RegGetValueW
     RegisterApplicationRestart = ww_RegisterApplicationRestart

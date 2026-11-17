@@ -86,6 +86,21 @@ stale, cannot disagree with it, and covers exactly the locales the machine
 really has, at the price of these names. Worth revisiting if a consumer needs
 them; neither Electron nor ICU's Windows formatters request them.
 
+### `LCMapStringEx`: no sort handle, and no sort version
+
+The locale name is resolved the same way `GetLocaleInfoEx` does, so it inherits
+that entry's limit exactly -- script-tagged names do not match -- and the
+mapping itself is then XP's `LCMapStringW`, which is the same function
+underneath.
+
+What it will not do is the three parameters the `Ex` form added.
+`lpVersionInformation` selects a specific sort version and `sortHandle` names a
+sort handle, neither of which exists before Vista, and `LCMAP_SORTHANDLE` makes
+`lpLocaleName` a sort handle too. Passing any of them fails with
+`ERROR_INVALID_PARAMETER` rather than quietly doing the unversioned mapping,
+which would answer a question the caller did not ask. `lpReserved` is specified
+as always null and is checked for the same reason.
+
 ### `Fls*`: per thread, not per fiber
 
 Fiber-local storage built on thread-local storage. The callback half is
@@ -172,6 +187,7 @@ No emulation is possible. Each returns the error its callers already test for.
 |---|---|---|
 | `CreateSymbolicLinkW` | `ERROR_NOT_SUPPORTED` | XP has no symbolic links to create. |
 | `CancelSynchronousIo` | `ERROR_NOT_FOUND` | Cross-thread by definition, and XP offers no way to reach another thread's synchronous I/O. See the `CancelIoEx` note above for what this costs libuv. |
+| `EventWriteTransfer` | `ERROR_INVALID_HANDLE` | XP's ETW is the classic provider model only -- `RegisterTraceGuids` and `TraceEvent`. A manifest provider is described by a manifest the system must already know about, and there is nothing on XP for its events to be written into. `ERROR_INVALID_HANDLE` rather than `ERROR_NOT_SUPPORTED` because the `REGHANDLE` really is invalid: `EventRegister` is absent too, so nothing can ever have produced a valid one, and that is the condition the real function reports this way. |
 | `RegisterApplicationRestart` | `E_NOTIMPL` | XP has no Restart Manager. |
 | `UnregisterApplicationRestart` | `E_NOTIMPL` | To agree with its other half. |
 | `GetNamedPipeServerProcessId` | Fails | XP's npfs records neither party to a connection, and no inference from the handle is safe. |
