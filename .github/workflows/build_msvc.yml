@@ -99,6 +99,56 @@ jobs:
           echo        Update WINDOWS_SDK in this workflow to one of the above.
           exit /b 1
 
+      # The clang-cl path, which nothing else here covers, and one file that
+      # nothing covers at all.
+      #
+      # BUILD.gn compiles src/static_redirects.cc -- the redirect table written
+      # with Clang asm labels -- and neither the Makefile nor winwrap.gyp ever
+      # does, because both assemble the generated .asm instead. So the single
+      # file tools/gen_forwarders.py reads from was the one file no CI build
+      # compiled. The GN form of the unit test went unchecked too, and that is
+      # exactly where it bit: a block-scope `extern "C"`, which MSVC accepts as
+      # an extension and clang rejects outright per [dcl.link]/4, built clean
+      # through nmake and GYP and would have failed only in Chromium.
+      #
+      # Syntax-only, so it costs seconds and links nothing. Not a substitute
+      # for a GN build -- it is the cheapest check that stops the three build
+      # systems disagreeing about whether the sources are even valid C++.
+      #
+      # The defines mirror BUILD.gn's two targets rather than being invented
+      # here: winwrap's own sources at its lowered target, winwrap_dll.cc with
+      # WINWRAP_DLL because it is in the shared target only, and the test
+      # against the current SDK with exceptions on.
+      - name: Syntax-check with clang-cl
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x86 %WINDOWS_SDK% || exit /b 1
+          set "CLANGCL=%VSPATH%\VC\Tools\Llvm\bin\clang-cl.exe"
+          if not exist "%CLANGCL%" set "CLANGCL=%ProgramFiles%\LLVM\bin\clang-cl.exe"
+          if not exist "%CLANGCL%" (
+            echo ERROR: no clang-cl found. Looked in Visual Studio's Llvm
+            echo        directory and in %%ProgramFiles%%\LLVM. The runner image
+            echo        ships LLVM; if that has changed, either install it in
+            echo        this step or drop the step and say so here, because
+            echo        nothing else compiles static_redirects.cc.
+            exit /b 1
+          )
+          "%CLANGCL%" --version || exit /b 1
+          set "LOW=-U_WIN32_WINNT -D_WIN32_WINNT=0x0501 -UNTDDI_VERSION -DNTDDI_VERSION=0x05010300 -UWINVER -DWINVER=0x0501"
+          rem Both target widths, because static_redirects.cc picks its symbol
+          rem decoration with #if defined(_M_IX86) and one pass would leave the
+          rem other branch unparsed -- the x86 one being the awkward half, where
+          rem the asm labels carry a leading underscore and the stdcall argument
+          rem size. clang-cl's target is its own default, not the prompt's, so
+          rem -m32/-m64 is what selects it.
+          for %%b in (32 64) do (
+            echo ---- -m%%b
+            for %%f in (src\*.cc) do if /i not "%%~nxf"=="winwrap_dll.cc" "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% -DWINWRAP_STATIC "%%f" || exit /b 1
+            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% -DWINWRAP_DLL src\winwrap_dll.cc || exit /b 1
+            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /EHsc /I src /I test test\winwrap_unittest.cc || exit /b 1
+          )
+
       # vcvarsall rather than a third-party action, and called inside the same
       # shell as nmake: each `run:` is a fresh process, so the environment it
       # sets would not survive to a later step. The Makefile takes the
