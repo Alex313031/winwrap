@@ -16,13 +16,18 @@
 //                       caller is the thread that issued the I/O
 //   CancelSynchronousIo nothing; it is cross-thread by definition
 //
-// Both report failure as ERROR_NOT_FOUND, which is the documented "no matching
-// request" result and therefore a value callers already handle. That choice is
-// deliberate: libuv, the only caller in this tree, asserts
-// `r || GetLastError() == ERROR_NOT_FOUND` at both of its call sites
-// (deps/uv/src/win/pipe.c). Returning ERROR_CALL_NOT_IMPLEMENTED instead --
-// which is what YY-Thunks returns -- would trip that assertion in a debug
-// build while being no more informative.
+// Where either has to report failure of its own, it reports ERROR_NOT_FOUND:
+// the documented "no matching request" result, and therefore a value callers
+// already handle. That choice is deliberate: libuv, the only caller in this
+// tree, asserts `r || GetLastError() == ERROR_NOT_FOUND` at both of its call
+// sites (deps/uv/src/win/pipe.c). Returning ERROR_CALL_NOT_IMPLEMENTED
+// instead -- which is what YY-Thunks returns -- would trip that assertion in a
+// debug build while being no more informative.
+//
+// For CancelSynchronousIo that is every call. CancelIoEx reaches it only by
+// passing CancelIo's own failure through, and notably does *not* produce it
+// for "there was nothing to cancel", which the real function does and CancelIo
+// gives no way to detect -- see the note at the call below.
 //
 // Known consequence, written down so it is recognised rather than rediscovered:
 // uv__pipe_interrupt_read() spins on CancelSynchronousIo for a non-overlapped

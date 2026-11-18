@@ -184,14 +184,25 @@ LSTATUS APIENTRY ww_RegGetValueW(HKEY hkey,
     } else {
       // The stored size may omit the terminator a string type is promised,
       // so the answer can be larger than what is on disk.
-      const DWORD terminator = static_cast<DWORD>(TerminatorChars(type) * sizeof(WCHAR));
-      const DWORD needed     = stored_size + terminator;
+      const size_t wanted    = TerminatorChars(type);
+      const DWORD terminator = static_cast<DWORD>(wanted * sizeof(WCHAR));
+
+      // What a query has to quote, and deliberately the worst case: nothing
+      // has read the data at this point, so whether it carries a terminator
+      // of its own is not yet known, and the promise of a terminated string
+      // has already been made. The real RegGetValueW quotes the same, which a
+      // caller sees as a size query answering two bytes more than the value
+      // it then reads.
+      const DWORD needed = stored_size + terminator;
 
       if (pvData == nullptr) {
         if (pcbData) {
           *pcbData = needed;
         }
-      } else if (caller_size < needed) {
+      } else if (caller_size < stored_size) {
+        // Not even room for what is stored. Compared against stored_size and
+        // not against needed, because a buffer that exactly fits an already
+        // terminated value is enough and the real RegGetValueW accepts it.
         if (pcbData) {
           *pcbData = needed;
         }
@@ -200,20 +211,39 @@ LSTATUS APIENTRY ww_RegGetValueW(HKEY hkey,
         DWORD size = caller_size;
         status =
             ::RegQueryValueExW(key, lpValue, nullptr, &type, static_cast<LPBYTE>(pvData), &size);
-        if (status == ERROR_SUCCESS) {
-          if (terminator != 0) {
-            // Terminate whatever came back, whether or not the stored data
-            // bothered to. This is the guarantee the caller is relying on.
-            auto* text           = static_cast<WCHAR*>(pvData);
-            const size_t written = size / sizeof(WCHAR);
-            for (size_t i = 0; i < TerminatorChars(type); ++i) {
-              text[written + i] = L'\0';
+        if (status == ERROR_SUCCESS && terminator != 0) {
+          // Terminate whatever came back, whether or not the stored data
+          // bothered to -- but add only what is missing, and count only what
+          // was added. Appending unconditionally over-reports by a character
+          // on the ordinary case of an already terminated value, and the
+          // reported size is what a caller measures a string by, so that
+          // lands as an off-by-one in the caller rather than here. The real
+          // RegGetValueW reports what it produced.
+          auto* text         = static_cast<WCHAR*>(pvData);
+          const size_t chars = size / sizeof(WCHAR);
+          size_t present     = 0;
+          while (present < wanted && chars > present && text[chars - 1 - present] == L'\0') {
+            ++present;
+          }
+
+          const size_t missing = wanted - present;
+          if (missing != 0) {
+            if (size + missing * sizeof(WCHAR) > caller_size) {
+              // Room for the data but not for the terminator it lacks.
+              if (pcbData) {
+                *pcbData = needed;
+              }
+              status = ERROR_MORE_DATA;
+            } else {
+              for (size_t i = 0; i < missing; ++i) {
+                text[chars + i] = L'\0';
+              }
+              size += static_cast<DWORD>(missing * sizeof(WCHAR));
             }
-            size += terminator;
           }
-          if (pcbData) {
-            *pcbData = size;
-          }
+        }
+        if (status == ERROR_SUCCESS && pcbData) {
+          *pcbData = size;
         }
       }
     }
