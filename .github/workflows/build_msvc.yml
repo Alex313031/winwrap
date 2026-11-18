@@ -30,6 +30,13 @@ on:
 permissions:
   contents: read
 
+env:
+  # The Windows SDK to build against, passed to vcvarsall below. Kept here so
+  # there is one line to change, and matching what sawbuck-ng pins through
+  # msvs_windows_target_platform_version -- the two trees share winwrap, so
+  # they should not disagree about which SDK it was validated against.
+  WINDOWS_SDK: 10.0.26100.0
+
 jobs:
   build:
     # Pinned rather than windows-latest, which has moved to 2025 and will move
@@ -55,11 +62,49 @@ jobs:
       - name: Check the generated forwarders are current
         run: python tools/gen_forwarders.py --check
 
+      # Which SDK the build will use, before it uses it. vcvarsall below is
+      # given WINDOWS_SDK by name, so unlike sawbuck-ng's build there is no
+      # "newest installed" guess to reproduce -- the question is only whether
+      # that version is there. vcvarsall would fail on its own if it were not,
+      # but it reports the version it was asked for and not the ones it could
+      # have had, so this prints the list while there is still something useful
+      # to do with it.
+      #
+      # A failure here means the runner image changed its SDKs, which is
+      # outside this repository's control: read the list and update
+      # WINDOWS_SDK.
+      - name: Check which Windows SDK the build will use
+        shell: cmd
+        run: |
+          set "KITS=%ProgramFiles(x86)%\Windows Kits\10\Include"
+          echo Installed SDKs:
+          dir /b /o-n "%KITS%" || exit /b 1
+          echo.
+          echo Building against %WINDOWS_SDK%
+          if exist "%KITS%\%WINDOWS_SDK%\um\windows.h" exit /b 0
+          echo ERROR: Windows SDK %WINDOWS_SDK% is not installed on this runner.
+          echo        Update WINDOWS_SDK in this workflow to one of the above.
+          exit /b 1
+
       # vcvarsall rather than a third-party action, and called inside the same
       # shell as nmake: each `run:` is a fresh process, so the environment it
       # sets would not survive to a later step. The Makefile takes the
       # architecture from VSCMD_ARG_TGT_ARCH, which vcvarsall sets, so the
       # prompt is the only switch there is.
+      #
+      # The SDK version is vcvarsall's second argument, and it is pinned rather
+      # than left to "whatever is newest on the machine". There is no other
+      # place to pin it for this build: nmake sees the SDK only through INCLUDE
+      # and LIB, which vcvarsall is what sets. Pinning matters here more than
+      # in most projects -- winwrap stands in front of the SDK's own
+      # declarations, so a different SDK is a different set of functions to
+      # stand in front of, and the mc.exe regression that made base emit
+      # EventWriteTransfer where it used to emit EventWrite is exactly the kind
+      # of thing that arrives with an SDK bump and nothing else.
+      #
+      # vcvarsall fails loudly if the version is not installed, which is the
+      # behaviour wanted: a runner image that drops this SDK should stop the
+      # build rather than quietly build against another one.
       #
       # `nmake all` builds both flavours and both test binaries for one
       # architecture, so two invocations cover all four.
@@ -67,14 +112,19 @@ jobs:
         shell: cmd
         run: |
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
-          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x86 || exit /b 1
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x86 %WINDOWS_SDK% || exit /b 1
+          rem What vcvarsall actually resolved, which is what nmake will see --
+          rem the check above says the SDK is installed, this says it is the one
+          rem in use. WindowsSDKVersion carries a trailing backslash.
+          echo SDK in use: %WindowsSDKVersion%  (%WindowsSdkDir%)
           nmake all || exit /b 1
 
       - name: Build x64
         shell: cmd
         run: |
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
-          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 || exit /b 1
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 %WINDOWS_SDK% || exit /b 1
+          echo SDK in use: %WindowsSDKVersion%  (%WindowsSdkDir%)
           nmake all || exit /b 1
 
       - name: Show what was built
@@ -113,13 +163,18 @@ jobs:
             popd
           )
 
-      - name: Package
-        shell: cmd
-        run: |
-          powershell -NoLogo -NoProfile -Command "Compress-Archive -Path out\* -DestinationPath winwrap-${{ steps.rev.outputs.short }}.zip -CompressionLevel Optimal"
-
+      # out\ is uploaded directly, and deliberately not zipped first. GitHub
+      # zips every artifact on the way out and again names the download after
+      # the artifact, so compressing here produced a .zip holding one .zip --
+      # two unpacking steps to reach a .lib. The artifact name below is what
+      # the downloaded file is called, so the revision still travels with it.
+      #
+      # obj\ is excluded: it is the intermediate objects for four flavours and
+      # dwarfs everything anyone would want out of this.
       - uses: actions/upload-artifact@v4
         with:
           name: winwrap-${{ steps.rev.outputs.short }}
-          path: winwrap-${{ steps.rev.outputs.short }}.zip
+          path: |
+            out/**
+            !out/**/obj/**
           if-no-files-found: error
