@@ -12,6 +12,16 @@
 ;
 ; x86. Names carry a leading underscore and the __stdcall argument size, and a
 ; slot is one 4-byte pointer, so dd.
+;
+; The body is guarded on WINWRAP_X86, which the build defines for the matching
+; architecture only. Both files go into every build's source list, because a
+; GYP or MSBuild project holds all its configurations at once and cannot
+; choose a source per architecture -- so the one that does not apply has to
+; assemble to an empty object rather than be excluded. It would not merely be
+; wrong otherwise: ml64 rejects .model outright, and ml would quietly accept
+; the x64 file and define undecorated 8-byte slots nothing references.
+
+IFDEF WINWRAP_X86
 
 .386
 .model flat
@@ -166,5 +176,7 @@ __imp__GetCurrentProcessExplicitAppUserModelID@4 dd _ww_GetCurrentProcessExplici
 ; a build uses, the contract is identical.
 PUBLIC _winwrap_static_redirects
 _winwrap_static_redirects dd 0
+
+ENDIF
 
 END

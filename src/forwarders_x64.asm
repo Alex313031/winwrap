@@ -12,6 +12,16 @@
 ;
 ; x64. One calling convention, so names are undecorated, and a slot is one
 ; 8-byte pointer, so dq. No .model directive: ml64 rejects it.
+;
+; The body is guarded on WINWRAP_X64, which the build defines for the matching
+; architecture only. Both files go into every build's source list, because a
+; GYP or MSBuild project holds all its configurations at once and cannot
+; choose a source per architecture -- so the one that does not apply has to
+; assemble to an empty object rather than be excluded. It would not merely be
+; wrong otherwise: ml64 rejects .model outright, and ml would quietly accept
+; the x64 file and define undecorated 8-byte slots nothing references.
+
+IFDEF WINWRAP_X64
 
 EXTERN ww_GetTickCount64 : PROC
 EXTERN ww_InitOnceExecuteOnce : PROC
@@ -163,5 +173,7 @@ __imp_GetCurrentProcessExplicitAppUserModelID dq ww_GetCurrentProcessExplicitApp
 ; a build uses, the contract is identical.
 PUBLIC winwrap_static_redirects
 winwrap_static_redirects dd 0
+
+ENDIF
 
 END

@@ -17,15 +17,25 @@
 #   '<(DEPTH)/third_party/winwrap/winwrap.gyp:winwrap'
 #
 # ---------------------------------------------------------------------------
-# Prerequisite: the "C++ Clang Compiler for Windows" Visual Studio component
+# Builds with MSVC. No clang-cl, no extra Visual Studio component
 #
-# This target builds with clang-cl even in a tree that is otherwise MSVC,
-# because static_redirects.cc needs Clang asm labels and MSVC has no
-# equivalent. That component is not installed by default. See the long note on
-# the target itself for why, and for what it would take to lift the
-# requirement. Check for it with:
+# src/static_redirects.cc is absent from the sources below, and
+# src/forwarders_x86.asm and src/forwarders_x64.asm are there instead. They are
+# the same table of __imp_<name> slots: the C++ version names its symbols with
+# a Clang asm label, because __imp__GetTickCount64@0 is not a legal C
+# identifier, and MSVC has no asm labels at all -- cl.exe answers with C2059
+# and C2146 on every line of it. MASM can name anything, so the table
+# assembles rather than compiles.
 #
-#   "%ProgramFiles%\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\Llvm\\bin\\clang-cl.exe" --version
+# A build takes one or the other and never both: two definitions of a slot is
+# a duplicate symbol. BUILD.gn keeps static_redirects.cc because the GN build
+# is for Chromium and Electron, which compile with clang-cl anyway.
+#
+# Both .asm files are listed, and each guards its body on an architecture
+# define this file supplies per configuration -- see the MASM settings on
+# x86_Base and x64_Base. A GYP project holds all four configurations at once,
+# so it cannot pick a source per architecture; the one that does not apply
+# assembles to an empty object instead.
 #
 # ---------------------------------------------------------------------------
 # READ THIS BEFORE DEPENDING ON IT: the consumer has work to do
@@ -50,7 +60,7 @@
 #
 #    So the consumer has to force winwrap's redirects into the link itself,
 #    with /INCLUDE: on the executable that links winwrap. Name the anchor
-#    static_redirects.cc provides for this, winwrap_static_redirects, which
+#    winwrap provides for this, winwrap_static_redirects, which
 #    takes the usual decoration -- so x86 wants a leading underscore and x64
 #    does not, and it therefore has to be set per configuration:
 #
@@ -73,10 +83,11 @@
 #        },
 #      },
 #
-#    One symbol is enough, and any symbol in that object would do: every
-#    WINWRAP_REDIRECT lives in static_redirects.cc, so a single object carries
-#    all of them, and its initialisers reference the ww_* implementations,
-#    which pulls those in turn. The anchor exists so the contract is a symbol
+#    One symbol is enough, and any symbol in that object would do: the whole
+#    redirect table is one translation unit -- forwarders_<arch>.asm in this
+#    build, static_redirects.cc in the GN one -- so a single object carries all
+#    of the slots, and they reference the ww_* implementations, which pulls
+#    those in turn. The anchor exists so the contract is a symbol
 #    of winwrap's own rather than whichever shim a consumer happened to pick --
 #    naming __imp__GetTickCount64@0 works, but it breaks with LNK2001 if that
 #    shim is ever dropped, and a consumer should not have to track which
@@ -128,49 +139,45 @@
       'target_name': 'winwrap',
       'type': 'static_library',
 
-      # winwrap compiles with clang-cl, even in a tree that is otherwise MSVC.
-      # This is a requirement, not a preference.
+      # The architecture define for the forwarders, and the setting most easily
+      # forgotten here: both .asm files guard their whole body on it, so the one
+      # that does not apply assembles to an empty object and the one that does
+      # has to be told which it is. Get this wrong and winwrap builds perfectly
+      # cleanly and does nothing at all.
       #
-      # static_redirects.cc names its symbols with a Clang asm label:
+      # On the abstract per-architecture configurations for the same reason
+      # MinimumRequiredVersion is, on the consumer side: one generated project
+      # holds all four configurations, so nothing substituted at generation time
+      # can differ between them.
       #
-      #   extern "C" decltype(&ww_Foo) winwrap_imp_Foo __asm__("__imp__Foo@4")
-      #       = &ww_Foo;
-      #
-      # which is the only way to produce the name from source, because
-      # __imp__Foo@4 is not a legal C identifier. MSVC has no asm labels and
-      # no equivalent, so cl.exe reports a wall of C2059 and C2146 on every
-      # WINWRAP_REDIRECT line. /alternatename is the obvious-looking answer
-      # and does not work: the linker consults an alternate name only when the
-      # original symbol is undefined, and kernel32.lib defines __imp_<name>,
-      # so it always loses.
-      #
-      # Mixing toolsets within one solution is fine here. Symbol names are
-      # ABI, not compiler-specific, so MSVC-compiled call sites reference
-      # __imp__Foo@4 and this object defines it; winwrap's whole surface is
-      # extern "C", so no C++ ABI crosses the boundary. /INCLUDE: is a
-      # link.exe flag and is unaffected.
-      #
-      # The cost is that a GYP consumer needs the "C++ Clang Compiler for
-      # Windows" Visual Studio component, which is not installed by default.
-      # Removing that requirement means giving static_redirects.cc an MSVC
-      # path -- the __imp_ symbols defined in MASM, which can name anything --
-      # and that is worth doing, since the whole point of shipping a .gyp is
-      # to be consumable outside a Chromium-style clang build. Until then this
-      # is the narrow way to get the redirects at all.
-      #
-      # On Common_Base because gyp-next reads msbuild_toolset from the
-      # target's default configuration, and every concrete configuration
-      # inherits from this one.
+      # UseSafeExceptionHandlers is /safeseh, and required rather than tidy on
+      # x86: link.exe defaults to /SAFESEH:YES there, and a MASM object without
+      # the metadata fails the link with LNK2026, "module unsafe for SAFESEH
+      # image". x64 keeps no such table and ml64 does not take the flag.
       'configurations': {
-        'Common_Base': {
+        'x86_Base': {
           'abstract': 1,
-          'msbuild_toolset': 'ClangCL',
+          'msvs_settings': {
+            'MASM': {
+              'PreprocessorDefinitions': ['WINWRAP_X86=1'],
+              'UseSafeExceptionHandlers': 'true',
+            },
+          },
+        },
+        'x64_Base': {
+          'abstract': 1,
+          'msvs_settings': {
+            'MASM': {
+              'PreprocessorDefinitions': ['WINWRAP_X64=1'],
+            },
+          },
         },
       },
 
-      # Mirrors _winwrap_sources in BUILD.gn. static_redirects.cc is the whole
-      # mechanism in this mode: it is what defines the __imp_<name> slots the
-      # consumer's call sites load through.
+      # _winwrap_sources from BUILD.gn, with static_redirects.cc replaced by the
+      # two forwarders_*.asm -- see the note at the top of this file. They are
+      # what define the __imp_<name> slots the consumer's call sites load
+      # through, so without them winwrap builds and does nothing.
       'sources': [
         'src/app_user_model_id.cc',
         'src/cancel_io.cc',
@@ -196,7 +203,8 @@
         'src/process.cc',
         'src/registry.cc',
         'src/srwlock.cc',
-        'src/static_redirects.cc',
+        'src/forwarders_x86.asm',
+        'src/forwarders_x64.asm',
         'src/sys.cc',
         'src/sys.h',
         'src/threads.cc',

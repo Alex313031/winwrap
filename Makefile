@@ -57,16 +57,26 @@
 # Nothing else is needed. The include directory is src, and USING_WINWRAP is
 # only a marker a consumer may test for -- the redirects need no header.
 
+# The architecture define is not optional. Both forwarders_*.asm files guard
+# their whole body on it, so without the right one they assemble to an empty
+# object and every __imp_ slot silently goes missing -- the build succeeds and
+# winwrap does nothing. See tools/gen_forwarders.py for why the files are
+# guarded rather than selected.
+#
+# /safeseh on x86 only, and required rather than tidy: link.exe defaults to
+# /SAFESEH:YES for x86, and a MASM object without the metadata fails the link
+# with LNK2026, "module unsafe for SAFESEH image". x64 has no such table and
+# ml64 does not take the flag.
 !IF "$(VSCMD_ARG_TGT_ARCH)" == "x64" || "$(PLATFORM)" == "x64"
 ARCH    = x64
 ASM     = ml64
-ASFLAGS = /nologo /c
+ASFLAGS = /nologo /c /DWINWRAP_X64=1
 ANCHOR  = winwrap_static_redirects
 SUBSYS  = /SUBSYSTEM:WINDOWS,5.02
 !ELSE
 ARCH    = x86
 ASM     = ml
-ASFLAGS = /nologo /c /coff
+ASFLAGS = /nologo /c /coff /safeseh /DWINWRAP_X86=1
 ANCHOR  = _winwrap_static_redirects
 SUBSYS  = /SUBSYSTEM:WINDOWS,5.01
 !ENDIF
