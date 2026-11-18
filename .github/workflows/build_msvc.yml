@@ -241,8 +241,22 @@ jobs:
       # two unpacking steps to reach a .lib. The artifact name below is what
       # the downloaded file is called, so the revision still travels with it.
       #
-      # obj\ is excluded: it is the intermediate objects for four flavours and
-      # dwarfs everything anyone would want out of this.
+      # Three exclusions, all of them build state that happens to land beside
+      # the output rather than under obj\:
+      #
+      #   obj\    the intermediate objects for four flavours, which dwarf
+      #           everything anyone would want out of this.
+      #   *.ilk   link.exe's incremental-link database, written because the
+      #           test and DLL links pass /DEBUG. It is only meaningful to a
+      #           later incremental link in the same directory.
+      #   *.exp   the export file the DLL link emits alongside /IMPLIB. It
+      #           exists to break circular link dependencies while building
+      #           the DLL; a consumer links winwrap.lib and never sees it.
+      #
+      # .pdb files are deliberately kept. They are the one by-product a
+      # consumer has a real use for, and the Makefile names them explicitly
+      # for that reason -- without them a crash in winwrap on someone else's
+      # machine is an address and nothing more.
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -250,4 +264,6 @@ jobs:
           path: |
             out/**
             !out/**/obj/**
+            !out/**/*.ilk
+            !out/**/*.exp
           if-no-files-found: error
