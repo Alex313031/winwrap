@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Explicit Application User Model IDs. shell32, Windows 7 and later.
+// The Application User Model family. shell32, Windows 7 and later.
+//
+// Named for the family rather than for the two functions currently in it, so
+// the rest of it has somewhere to go: SHGetPropertyStoreForWindow and the
+// relaunch-command properties would belong here too if they are ever wanted.
 //
 // An AppUserModelID identifies a process to the Windows 7 taskbar so that its
 // windows group under a single button and a jump list can be attached to them.

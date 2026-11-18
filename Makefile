@@ -183,7 +183,7 @@ CXXFLAGS = $(CXXFLAGS) $(OPTFLAGS) $(CRTFLAG)
 # does here, and winwrap_dll.cc, which holds what only a DLL wants and would
 # be dead weight in the static library.
 OBJECTS = \
-	$(OBJDIR)\app_user_model_id.obj \
+	$(OBJDIR)\app_user_model.obj \
 	$(OBJDIR)\cancel_io.obj \
 	$(OBJDIR)\condition_variable.obj \
 	$(OBJDIR)\critical_section.obj \

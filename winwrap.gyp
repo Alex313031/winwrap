@@ -210,7 +210,7 @@
       # what define the __imp_<name> slots the consumer's call sites load
       # through, so without them winwrap builds and does nothing.
       'sources': [
-        'src/app_user_model_id.cc',
+        'src/app_user_model.cc',
         'src/cancel_io.cc',
         'src/condition_variable.cc',
         'src/critical_section.cc',

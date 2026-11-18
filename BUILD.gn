@@ -16,7 +16,7 @@ assert(is_win || target_os == "win", "winwrap is only valid for Windows targets"
 # DLL imports from kernel32 the very functions it exists to supply, and fails
 # to load on XP before any of this runs.
 _winwrap_sources = [
-  "src/app_user_model_id.cc",
+  "src/app_user_model.cc",
   "src/cancel_io.cc",
   "src/condition_variable.cc",
   "src/critical_section.cc",
