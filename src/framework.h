@@ -36,10 +36,10 @@
  #define WIN32_NO_STATUS
 #endif
 #include <windows.h> // Main Windows header
+#include <winnt.h>
 #ifdef _MSC_VER
  #undef WIN32_NO_STATUS
 #endif
-#include <winnt.h>
 #include <winternl.h>
 #include <ntstatus.h> // Full NTSTATUS codes (e.g. STATUS_SUCCESS)
 // clang-format on

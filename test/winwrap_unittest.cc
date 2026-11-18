@@ -1318,6 +1318,9 @@ namespace {
 } // namespace
 
 int wmain(int argc, WCHAR* argv[]) {
+  // argc/argv unused for now.
+  UNREFERENCED_PARAMETER(argc);
+  UNREFERENCED_PARAMETER(argv);
   // Send wide characters to the console as they are, instead of letting
   // std::wcout convert them through the C locale, which is ASCII-only. This
   // matters more than it looks: a path or locale name carrying a character
