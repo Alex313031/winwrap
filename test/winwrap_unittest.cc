@@ -456,25 +456,39 @@ namespace {
     // can be verified anywhere -- unlike the fallback itself, which only runs
     // on a Windows that lacks these, so a test machine never reaches it.
 
+    // "strasse" with a sharp s, written as a universal character name rather
+    // than as the character. This file is UTF-8 with no BOM and nothing passes
+    // /utf-8, so cl reads it in the system code page: on the CI runner the two
+    // bytes of U+00DF arrived as two CP1252 characters, which is what made the
+    // log read "STRA?x.E". The mapping still agreed with itself, so the checks
+    // passed while testing a different string than the one written here. A
+    // \u escape is read the same way by every compiler in every code page.
+    const wchar_t kSharpS[] = L"stra\u00dfe";
+
     wchar_t upper_ex[16] = {};
     wchar_t upper_w[16]  = {};
-    int ex_len = ::LCMapStringEx(L"en-US", LCMAP_UPPERCASE, L"straße", -1, upper_ex,
-                                 ARRAYSIZE(upper_ex), nullptr, nullptr, 0);
-    int w_len  = ::LCMapStringW(kEnUs, LCMAP_UPPERCASE, L"straße", -1, upper_w,
-                                ARRAYSIZE(upper_w));
-    CHECK(ex_len == w_len, L"LCMapStringEx returned " << ex_len << L" chars, LCMapStringW "
-                                                      << w_len);
+    int ex_len           = ::LCMapStringEx(L"en-US", LCMAP_UPPERCASE, kSharpS, -1, upper_ex,
+                                           ARRAYSIZE(upper_ex), nullptr, nullptr, 0);
+    int w_len = ::LCMapStringW(kEnUs, LCMAP_UPPERCASE, kSharpS, -1, upper_w, ARRAYSIZE(upper_w));
+    CHECK(ex_len == w_len,
+          L"LCMapStringEx returned " << ex_len << L" chars, LCMapStringW " << w_len);
     if (ex_len > 0 && ex_len == w_len) {
-      CHECK(::wcscmp(upper_ex, upper_w) == 0,
-            L"LCMapStringEx gave \"" << upper_ex << L"\", LCMapStringW \"" << upper_w << L"\"");
-      std::wcout << L"    LCMapStringEx(en-US, UPPERCASE) -> \"" << upper_ex << L"\"" << std::endl;
+      CHECK(::wcscmp(upper_ex, upper_w) == 0, L"LCMapStringEx gave \""
+                                                  << Printable(upper_ex) << L"\", LCMapStringW \""
+                                                  << Printable(upper_w) << L"\"");
+      // Escaped, because the answer is not ASCII and the console would mangle
+      // it: Windows maps a lone sharp s to itself rather than to SS unless
+      // asked for linguistic casing, so this reads STRA\u00dfE on a machine
+      // that agrees with itself.
+      std::wcout << L"    LCMapStringEx(en-US, UPPERCASE) -> \"" << Printable(upper_ex) << L"\""
+                 << std::endl;
     }
 
     // A sort order the ordinal comparison above would get wrong, so this is
     // actually exercising the linguistic path rather than agreeing by accident.
-    const int ex_cmp = ::CompareStringEx(L"en-US", 0, L"apple", -1, L"Banana", -1,
-                                         nullptr, nullptr, 0);
-    const int w_cmp  = ::CompareStringW(kEnUs, 0, L"apple", -1, L"Banana", -1);
+    const int ex_cmp =
+        ::CompareStringEx(L"en-US", 0, L"apple", -1, L"Banana", -1, nullptr, nullptr, 0);
+    const int w_cmp = ::CompareStringW(kEnUs, 0, L"apple", -1, L"Banana", -1);
     CHECK(ex_cmp == w_cmp,
           L"CompareStringEx said " << ex_cmp << L", CompareStringW said " << w_cmp);
     CHECK(ex_cmp == CSTR_LESS_THAN,
@@ -490,8 +504,8 @@ namespace {
     // real function decides, and it accepts a sort version perfectly well.
     if (!SystemHas(L"kernel32.dll", "CompareStringEx")) {
       ::SetLastError(ERROR_SUCCESS);
-      CHECK(::CompareStringEx(L"en-US", 0, L"a", -1, L"a", -1, nullptr,
-                              reinterpret_cast<LPVOID>(1), 0) == 0,
+      CHECK(::CompareStringEx(L"en-US", 0, L"a", -1, L"a", -1, nullptr, reinterpret_cast<LPVOID>(1),
+                              0) == 0,
             L"CompareStringEx accepted a non-null lpReserved");
       CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
             L"refusing lpReserved set last error to " << Hex(::GetLastError()));
@@ -549,12 +563,11 @@ namespace {
       return;
     }
 
-    const wchar_t kText[]     = L"winwrap";
+    const wchar_t kText[]       = L"winwrap";
     const wchar_t kUnexpanded[] = L"%SystemRoot%\\explorer.exe";
-    const DWORD kNumber        = 0xC0FFEE;
+    const DWORD kNumber         = 0xC0FFEE;
 
-    ::RegSetValueExW(key, L"Text", 0, REG_SZ, reinterpret_cast<const BYTE*>(kText),
-                     sizeof(kText));
+    ::RegSetValueExW(key, L"Text", 0, REG_SZ, reinterpret_cast<const BYTE*>(kText), sizeof(kText));
     ::RegSetValueExW(key, L"Number", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&kNumber),
                      sizeof(kNumber));
     ::RegSetValueExW(key, L"Expandable", 0, REG_EXPAND_SZ,
@@ -579,7 +592,7 @@ namespace {
 
     DWORD number = 0;
     size         = sizeof(number);
-    status = ::RegGetValueW(key, nullptr, L"Number", RRF_RT_REG_DWORD, &type, &number, &size);
+    status       = ::RegGetValueW(key, nullptr, L"Number", RRF_RT_REG_DWORD, &type, &number, &size);
     CHECK(status == ERROR_SUCCESS, L"reading Number failed with " << status);
     CHECK(number == kNumber, L"Number read back as " << Hex(number));
     CHECK(type == REG_DWORD, L"Number reported type " << type);
@@ -595,32 +608,45 @@ namespace {
 
     wchar_t literal[MAX_PATH] = {};
     size                      = sizeof(literal);
-    status = ::RegGetValueW(key, nullptr, L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
-                            &type, literal, &size);
+    status = ::RegGetValueW(key, nullptr, L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND, &type,
+                            literal, &size);
     CHECK(status == ERROR_SUCCESS, L"reading Expandable unexpanded failed with " << status);
     CHECK(::wcscmp(literal, kUnexpanded) == 0,
           L"RRF_NOEXPAND gave \"" << literal << L"\" rather than the stored string");
     std::wcout << L"    expanded \"" << literal << L"\" to \"" << expanded << L"\"" << std::endl;
 
     // A size query, which is a null buffer and a non-null size.
+    //
+    // The answer is the stored size *plus room for a terminator*, and not the
+    // stored size, which is worth being explicit about because it looks like
+    // an off-by-one. Nothing has read the data at this point, so neither
+    // implementation can know whether it carries a terminator of its own, and
+    // both have promised the caller a terminated string -- so both quote the
+    // worst case. The real RegGetValueW does exactly the same; this is where
+    // that promise is paid for. A read into a buffer large enough reports the
+    // true size instead, which is what the check further up measures.
+    const DWORD kPadded = static_cast<DWORD>(sizeof(kText) + sizeof(wchar_t));
+
     size   = 0;
     status = ::RegGetValueW(key, nullptr, L"Text", RRF_RT_REG_SZ, nullptr, nullptr, &size);
     CHECK(status == ERROR_SUCCESS, L"a size query returned " << status);
-    CHECK(size == sizeof(kText), L"a size query reported " << size << L" bytes");
+    CHECK(size == kPadded, L"a size query reported " << size << L" bytes, expected " << kPadded);
 
-    // And a buffer that cannot hold the answer.
+    // And a buffer that cannot hold the answer, which gets the same worst case
+    // for the same reason.
     wchar_t tiny[2] = {};
     size            = sizeof(tiny);
-    status = ::RegGetValueW(key, nullptr, L"Text", RRF_RT_REG_SZ, nullptr, tiny, &size);
+    status          = ::RegGetValueW(key, nullptr, L"Text", RRF_RT_REG_SZ, nullptr, tiny, &size);
     CHECK(status == ERROR_MORE_DATA, L"a short buffer returned " << status);
-    CHECK(size == sizeof(kText), L"a short buffer reported " << size << L" bytes needed");
+    CHECK(size == kPadded,
+          L"a short buffer reported " << size << L" bytes needed, expected " << kPadded);
 
     // Where the system has its own RegGetValueW, ours must agree with it, the
     // same way the GetErrorMode check above does. Ground truth rather than an
     // expectation written here, and the only thing that can say this
     // reimplementation matches what it reimplements.
-    using RegGetValueFunction = LSTATUS(APIENTRY*)(HKEY, LPCWSTR, LPCWSTR, DWORD, LPDWORD, PVOID,
-                                                   LPDWORD);
+    using RegGetValueFunction =
+        LSTATUS(APIENTRY*)(HKEY, LPCWSTR, LPCWSTR, DWORD, LPDWORD, PVOID, LPDWORD);
     RegGetValueFunction system_version = nullptr;
     if (HMODULE advapi32 = ::GetModuleHandleW(L"advapi32.dll")) {
       system_version =
@@ -631,10 +657,8 @@ namespace {
         const wchar_t* value;
         DWORD flags;
       } probes[] = {
-          {L"Text", RRF_RT_REG_SZ},
-          {L"Number", RRF_RT_REG_DWORD},
-          {L"Expandable", RRF_RT_REG_SZ},
-          {L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND},
+          {L"Text", RRF_RT_REG_SZ},       {L"Number", RRF_RT_REG_DWORD},
+          {L"Expandable", RRF_RT_REG_SZ}, {L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND},
           {L"Number", RRF_RT_REG_SZ}, // the rejection path
           {L"Absent", RRF_RT_ANY},    // the missing-value path
       };
@@ -644,17 +668,17 @@ namespace {
         DWORD our_type = 0, their_type = 0;
         DWORD our_size = sizeof(ours), their_size = sizeof(theirs);
 
-        LSTATUS our_status = ::RegGetValueW(key, nullptr, probe.value, probe.flags, &our_type,
-                                            ours, &our_size);
+        LSTATUS our_status =
+            ::RegGetValueW(key, nullptr, probe.value, probe.flags, &our_type, ours, &our_size);
         LSTATUS their_status = system_version(key, nullptr, probe.value, probe.flags, &their_type,
                                               theirs, &their_size);
 
         CHECK(our_status == their_status, L"on " << probe.value << L"/" << Hex(probe.flags)
-                                                << L" winwrap returned " << our_status
-                                                << L", the system " << their_status);
+                                                 << L" winwrap returned " << our_status
+                                                 << L", the system " << their_status);
         if (our_status == ERROR_SUCCESS && their_status == ERROR_SUCCESS) {
-          CHECK(our_type == their_type, L"on " << probe.value << L" winwrap said type "
-                                               << our_type << L", the system " << their_type);
+          CHECK(our_type == their_type, L"on " << probe.value << L" winwrap said type " << our_type
+                                               << L", the system " << their_type);
           CHECK(our_size == their_size, L"on " << probe.value << L" winwrap said " << our_size
                                                << L" bytes, the system " << their_size);
           CHECK(::memcmp(ours, theirs, our_size < their_size ? our_size : their_size) == 0,
@@ -700,8 +724,10 @@ namespace {
   // --- File information by handle --------------------------------------------
 
   // Makes a temp file holding `bytes` bytes. Returns the handle and writes out
-  // the path.
-  HANDLE MakeTempFile(wchar_t* path_out, DWORD bytes) {
+  // the path. `flags` is for the one caller that needs FILE_FLAG_OVERLAPPED,
+  // which must then ask for no content: WriteFile on an overlapped handle with
+  // a null OVERLAPPED is not a valid call.
+  HANDLE MakeTempFile(wchar_t* path_out, DWORD bytes, DWORD flags = FILE_ATTRIBUTE_NORMAL) {
     wchar_t directory[MAX_PATH] = {};
     if (::GetTempPathW(ARRAYSIZE(directory), directory) == 0) {
       return INVALID_HANDLE_VALUE;
@@ -712,7 +738,7 @@ namespace {
 
     HANDLE file = ::CreateFileW(path_out, GENERIC_READ | GENERIC_WRITE | DELETE,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                                OPEN_EXISTING, flags, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
       return file;
     }
@@ -885,6 +911,14 @@ namespace {
     // directories outright. FILE_FLAG_BACKUP_SEMANTICS is how a caller says the
     // handle might be one, and libuv depends on it to reopen a directory for
     // FILE_WRITE_ATTRIBUTES.
+    //
+    // Only assertable where winwrap is the one answering. The system's own
+    // ReOpenFile refuses this outright -- ERROR_ACCESS_DENIED on Windows
+    // Server 2022, which is not what the documented flag list predicts, since
+    // FILE_FLAG_BACKUP_SEMANTICS is not in it. winwrap's NtCreateFile path
+    // does honour it, by asking for FILE_OPEN_FOR_BACKUP_INTENT rather than
+    // FILE_NON_DIRECTORY_FILE, so this is a case where the emulation is the
+    // more capable of the two and the test cannot demand the system match it.
     wchar_t directory[MAX_PATH] = {};
     ::GetTempPathW(ARRAYSIZE(directory), directory);
     HANDLE dir = ::CreateFileW(directory, FILE_READ_ATTRIBUTES,
@@ -894,8 +928,17 @@ namespace {
       HANDLE dir_again = ::ReOpenFile(dir, FILE_READ_ATTRIBUTES,
                                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                       FILE_FLAG_BACKUP_SEMANTICS);
-      CHECK(dir_again != INVALID_HANDLE_VALUE,
-            L"ReOpenFile could not reopen a directory (" << ::GetLastError() << L")");
+      // Before SystemHas, whose GetProcAddress would clobber it.
+      const DWORD reopen_error = ::GetLastError();
+      if (!SystemHas(L"kernel32.dll", "ReOpenFile")) {
+        CHECK(dir_again != INVALID_HANDLE_VALUE,
+              L"ReOpenFile could not reopen a directory (" << reopen_error << L")");
+      } else if (dir_again != INVALID_HANDLE_VALUE) {
+        std::wcout << L"    the system's ReOpenFile reopened a directory" << std::endl;
+      } else {
+        std::wcout << L"    the system's ReOpenFile refuses a directory (" << reopen_error
+                   << L"); winwrap's own path allows it" << std::endl;
+      }
       if (dir_again != INVALID_HANDLE_VALUE) {
         ::CloseHandle(dir_again);
       }
@@ -948,9 +991,17 @@ namespace {
       ::CloseHandle(client);
     }
 
+    // A null out parameter has to be refused. *Which* refusal differs, and the
+    // test takes either: winwrap answers ERROR_INVALID_PARAMETER, while the
+    // system treats it as a zero-length output buffer and answers
+    // ERROR_INSUFFICIENT_BUFFER. The part that matters to a caller -- that it
+    // fails rather than writing through the null -- is the same.
     CHECK(!::GetNamedPipeServerProcessId(server, nullptr), L"a null out parameter was accepted");
-    CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
-          L"a null out parameter gave " << ::GetLastError());
+    const DWORD null_error = ::GetLastError();
+    CHECK(null_error == ERROR_INVALID_PARAMETER || null_error == ERROR_INSUFFICIENT_BUFFER,
+          L"a null out parameter gave " << null_error
+                                        << L", expected ERROR_INVALID_PARAMETER or "
+                                           L"ERROR_INSUFFICIENT_BUFFER");
 
     ::CloseHandle(server);
   }
@@ -1039,10 +1090,24 @@ namespace {
 
     ::SetErrorMode(original);
 
+    // The Restart Manager, which XP has no part of. winwrap must fail rather
+    // than claim a registration it cannot honour -- a caller that believes it
+    // will be restarted and is not has lost whatever it was relying on that
+    // for. Only assertable where winwrap is the one answering: from Vista the
+    // call is forwarded and really does register, so there the test undoes it
+    // and says nothing about the result.
     HRESULT hr = ::RegisterApplicationRestart(L"--restarted", 0);
-    CHECK(FAILED(hr), L"RegisterApplicationRestart reported success (" << Hex(hr) << L")");
-    hr = ::UnregisterApplicationRestart();
-    CHECK(FAILED(hr), L"UnregisterApplicationRestart reported success (" << Hex(hr) << L")");
+    if (!SystemHas(L"kernel32.dll", "RegisterApplicationRestart")) {
+      CHECK(FAILED(hr), L"RegisterApplicationRestart reported success (" << Hex(hr) << L")");
+      hr = ::UnregisterApplicationRestart();
+      CHECK(FAILED(hr), L"UnregisterApplicationRestart reported success (" << Hex(hr) << L")");
+    } else {
+      CHECK(SUCCEEDED(hr), L"the system's RegisterApplicationRestart failed (" << Hex(hr) << L")");
+      hr = ::UnregisterApplicationRestart();
+      CHECK(SUCCEEDED(hr),
+            L"the system's UnregisterApplicationRestart failed (" << Hex(hr) << L")");
+      std::wcout << L"    forwarded to the system's own Restart Manager" << std::endl;
+    }
   }
 
   // --- Directories -----------------------------------------------------------
@@ -1205,9 +1270,21 @@ namespace {
     wchar_t path[MAX_PATH] = {};
     HANDLE file            = MakeTempFile(path, 4);
     if (file != INVALID_HANDLE_VALUE) {
-      // Nothing is outstanding, which counts as a successful cancel.
-      CHECK(::CancelIoEx(file, nullptr),
-            L"CancelIoEx failed with nothing pending (" << ::GetLastError() << L")");
+      // Nothing is outstanding, and the two implementations differ on what
+      // that is -- a divergence cancel_io.cc documents rather than one found
+      // here. The real CancelIoEx reports ERROR_NOT_FOUND when it finds no
+      // request to cancel. winwrap's goes through CancelIo, which reports
+      // success either way and gives it no means of telling "cancelled
+      // something" from "there was nothing to cancel", so it says success.
+      //
+      // Either answer is accepted, because a caller cannot act on the
+      // difference: both mean nothing is left pending. What would not be
+      // acceptable is a third error, which is what this catches.
+      const BOOL cancelled     = ::CancelIoEx(file, nullptr);
+      const DWORD cancel_error = ::GetLastError();
+      CHECK(cancelled || cancel_error == ERROR_NOT_FOUND,
+            L"CancelIoEx with nothing pending failed with " << cancel_error
+                                                            << L", expected ERROR_NOT_FOUND");
       ::CloseHandle(file);
       ::DeleteFileW(path);
     }
@@ -1278,14 +1355,38 @@ namespace {
     // The two notification flags are not equally safe to pretend about.
     // Skipping the handle event is harmless; skipping the completion packet is
     // not, and must be refused where it cannot actually be arranged.
+    //
+    // FILE_FLAG_OVERLAPPED is not decoration here. The system's own
+    // SetFileCompletionNotificationModes refuses a synchronous handle with
+    // ERROR_INVALID_PARAMETER -- which made both checks below fail against a
+    // plain handle, the first because it expected success and the second
+    // because it expected winwrap's refusal and got the system's. winwrap's
+    // own implementation ignores the handle entirely, so it would have passed
+    // either way; the overlapped handle is what makes this test mean the same
+    // thing on both. Hence no content: see MakeTempFile.
     wchar_t path[MAX_PATH] = {};
-    HANDLE file            = MakeTempFile(path, 1);
+    HANDLE file            = MakeTempFile(path, 0, FILE_FLAG_OVERLAPPED);
     if (file != INVALID_HANDLE_VALUE) {
       CHECK(::SetFileCompletionNotificationModes(file, FILE_SKIP_SET_EVENT_ON_HANDLE),
             L"skipping the handle event was refused (" << ::GetLastError() << L")");
-      if (!::SetFileCompletionNotificationModes(file, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)) {
-        CHECK(::GetLastError() == ERROR_INVALID_FUNCTION,
-              L"the refusal gave " << ::GetLastError() << L", expected ERROR_INVALID_FUNCTION");
+
+      // The packet-skipping flag, which only winwrap has to refuse and only
+      // winwrap can be held to. From Vista the system implements it and the
+      // call is forwarded, and whether it accepts the flag for a handle not
+      // bound to a completion port is its own affair -- an expectation written
+      // here about that would be one more guess about Windows, which is what
+      // sent most of this function wrong to begin with.
+      const BOOL skipped =
+          ::SetFileCompletionNotificationModes(file, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS);
+      const DWORD skip_error = ::GetLastError();
+      if (!SystemHas(L"kernel32.dll", "SetFileCompletionNotificationModes")) {
+        CHECK(!skipped, L"winwrap accepted FILE_SKIP_COMPLETION_PORT_ON_SUCCESS");
+        CHECK(skip_error == ERROR_INVALID_FUNCTION,
+              L"the refusal gave " << skip_error << L", expected ERROR_INVALID_FUNCTION");
+      } else {
+        std::wcout << L"    the system's FILE_SKIP_COMPLETION_PORT_ON_SUCCESS -> "
+                   << (skipped ? L"accepted" : L"refused") << L" (" << skip_error << L")"
+                   << std::endl;
       }
       ::CloseHandle(file);
       ::DeleteFileW(path);

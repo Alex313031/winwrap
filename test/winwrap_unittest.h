@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <io.h>
 
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -46,6 +47,28 @@ inline std::wstring Hex(T value) {
   static_assert(std::is_integral_v<T>, "Hex() formats integers");
   std::wostringstream stream;
   stream << L"0x" << std::hex << static_cast<std::make_unsigned_t<T>>(value);
+  return stream.str();
+}
+
+// A string with everything outside printable ASCII spelled as \uXXXX, for
+// anything that gets streamed to the console.
+//
+// std::wcout converts through the console's code page, which cannot represent
+// most of what the locale tests deal in. A GitHub Actions log reported the
+// uppercased form of "stra\u00dfe" as "STRA?x.E" -- unreadable, and worse,
+// indistinguishable from a real defect, since the one thing a reader needs to
+// know is which character came back. Escaping is also the only form that
+// survives being pasted somewhere else.
+inline std::wstring Printable(const wchar_t* text) {
+  std::wostringstream stream;
+  for (const wchar_t* p = text; p && *p; ++p) {
+    if (*p >= 0x20 && *p < 0x7F) {
+      stream << *p;
+    } else {
+      stream << L"\\u" << std::hex << std::setfill(L'0') << std::setw(4)
+             << static_cast<unsigned int>(*p) << std::dec << std::setfill(L' ');
+    }
+  }
   return stream.str();
 }
 
