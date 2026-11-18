@@ -37,7 +37,7 @@ namespace {
       if (fresh) {
         ::HeapFree(::GetProcessHeap(), 0, fresh);
       }
-      ::RaiseException(STATUS_NO_MEMORY, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+      ::RaiseException(kStatusNoMemory, EXCEPTION_NONCONTINUABLE, 0, nullptr);
       return nullptr;
     }
     PVOID won = ::InterlockedCompareExchangePointer(&g_lock_ptr, fresh, nullptr);

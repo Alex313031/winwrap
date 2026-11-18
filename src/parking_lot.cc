@@ -46,7 +46,7 @@ namespace winwrap {
         if (state == 0) {
           for (size_t i = 0; i < kBucketCount; ++i) {
             if (!::InitializeCriticalSectionAndSpinCount(&g_buckets[i].lock, kBucketSpinCount)) {
-              ::RaiseException(STATUS_NO_MEMORY, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+              ::RaiseException(kStatusNoMemory, EXCEPTION_NONCONTINUABLE, 0, nullptr);
             }
           }
           g_thread_event_tls = ::TlsAlloc();
@@ -75,7 +75,7 @@ namespace winwrap {
       }
       HANDLE fresh = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
       if (!fresh) {
-        ::RaiseException(STATUS_NO_MEMORY, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+        ::RaiseException(kStatusNoMemory, EXCEPTION_NONCONTINUABLE, 0, nullptr);
         return nullptr;
       }
       ::TlsSetValue(g_thread_event_tls, fresh);

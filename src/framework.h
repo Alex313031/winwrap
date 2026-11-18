@@ -56,4 +56,22 @@
 // exists to support. winwrap shims all three now, but it should not be
 // creating the need for its own shims.
 
+// STATUS_NO_MEMORY as RaiseException wants it.
+//
+// RaiseException takes a DWORD, and ntstatus.h types the STATUS_* codes as
+// NTSTATUS -- a signed LONG, negative for every failure code, since they all
+// carry severity in the top two bits. Passing one straight through is a
+// signed/unsigned conversion, which MSVC reports as C4245 at every call site.
+//
+// A cast rather than a different code: the EXCEPTION_* family has no spelling
+// of "out of memory", and this is the value the lazy-initialisation paths want
+// when they cannot allocate a lock and have no way to report it. Named here,
+// next to the include that decides the type, so the reason lives in one place
+// rather than as four unexplained casts across three files.
+//
+// Worth knowing why it warns only in some configurations: winnt.h defines the
+// same macro as a DWORD, and framework.h asks for WIN32_NO_STATUS above so
+// that ntstatus.h's definitions are the ones in force.
+constexpr DWORD kStatusNoMemory = static_cast<DWORD>(STATUS_NO_MEMORY);
+
 #endif // WINWRAP_FRAMEWORK_H_
