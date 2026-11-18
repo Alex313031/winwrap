@@ -1300,7 +1300,14 @@ namespace {
 
   // --- Completion ports ------------------------------------------------------
 
+  // Counts rather than doing nothing, so the alertable test below can tell "the
+  // APC ran and the wait was reported oddly" from "the wait ended without
+  // running the APC at all". Those are different faults and look identical
+  // from the return value.
+  LONG g_apc_runs = 0;
+
   VOID CALLBACK NoopApc(ULONG_PTR) {
+    ::InterlockedIncrement(&g_apc_runs);
   }
 
   void TestCompletionPort() {
@@ -1343,33 +1350,54 @@ namespace {
     // The alertable path: a queued APC must end the wait, which the
     // non-alertable path cannot do at all.
     //
-    // *How* it is reported turns out to be two different things, and the
-    // invariant worth holding both to is that nothing was dequeued. The
-    // documented shape -- FALSE with WAIT_IO_COMPLETION -- is what Windows 7
-    // and later do, and what winwrap's own implementation does, so XP agrees
-    // with 11 here.
+    // The documented shape is FALSE with WAIT_IO_COMPLETION and nothing
+    // dequeued. That is what Windows 7 and later do, and what winwrap's own
+    // implementation does -- so XP agrees with 11, and the assertion below is
+    // the real check for everything this library is responsible for.
     //
-    // Vista does not. Its own GetQueuedCompletionStatusEx returns TRUE when an
-    // APC ends the wait, and sets no error: the last error observed after it
-    // was 258, the WAIT_TIMEOUT left behind by the empty-port call just above.
-    // So the test takes either answer and checks what actually matters, which
-    // is that no entry was reported. Failing here would be reporting a Vista
-    // bug as a winwrap one -- and would also have hidden the thing a reader
-    // needs to know, which is that a caller cannot use the return value alone
-    // on Vista and has to look at the count.
+    // Vista's own GetQueuedCompletionStatusEx does something else entirely,
+    // and winwrap forwards to it there rather than substituting, so this is
+    // measured rather than asserted. What it was observed to do, on a port the
+    // call just above confirmed empty:
+    //
+    //   returns TRUE, sets no error -- the error seen afterwards was 258, the
+    //   WAIT_TIMEOUT left behind by that previous call -- and reports one
+    //   entry removed.
+    //
+    // That count is the dangerous part, and the reason this prints the entry
+    // and whether the APC ran. A caller testing the return value sees success;
+    // a caller testing the count sees one completion; neither has any way to
+    // know there was none. entries is zeroed first so the contents are
+    // attributable: a zero entry means Vista wrote one, and the key from the
+    // dequeue further up means it left the buffer alone and only the count is
+    // wrong.
+    //
+    // Not a failure here. It is not winwrap's defect, and a Vista run that is
+    // permanently red teaches people to stop reading the output. See
+    // docs/INCOMPLETE_FUNCS.md, which is where a caller needs to find this.
+    ::ZeroMemory(entries, sizeof(entries));
+    g_apc_runs = 0;
     ::QueueUserAPC(NoopApc, ::GetCurrentThread(), 0);
     removed = 99;
     const BOOL alertable =
         ::GetQueuedCompletionStatusEx(port, entries, ARRAYSIZE(entries), &removed, 1000, TRUE);
     const DWORD alertable_error = ::GetLastError();
+    const LONG apc_runs         = g_apc_runs;
 
-    CHECK(removed == 0, L"a queued APC reported " << removed << L" dequeued entries");
     if (!alertable) {
       CHECK(alertable_error == WAIT_IO_COMPLETION,
             L"a queued APC gave error " << alertable_error << L", expected WAIT_IO_COMPLETION");
+      CHECK(removed == 0, L"a queued APC reported " << removed << L" dequeued entries");
     } else {
-      std::wcout << L"    a queued APC ended the wait as success with no entries"
-                 << L" (Vista's shape, not the documented one)" << std::endl;
+      std::wcout << L"    a queued APC ended the wait as SUCCESS, which is Vista's shape and"
+                 << L" not the documented one:" << std::endl;
+      std::wcout << L"      entries removed: " << removed << L" (should be none)" << std::endl;
+      std::wcout << L"      first entry:     key "
+                 << static_cast<unsigned long long>(entries[0].lpCompletionKey) << L", "
+                 << entries[0].dwNumberOfBytesTransferred << L" bytes, overlapped "
+                 << (entries[0].lpOverlapped ? L"non-null" : L"null") << std::endl;
+      std::wcout << L"      APC ran:         " << (apc_runs ? L"yes" : L"NO, still queued")
+                 << std::endl;
     }
 
     ::CloseHandle(port);
