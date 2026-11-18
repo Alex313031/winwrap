@@ -96,17 +96,25 @@ namespace {
 
 extern "C" {
 
-LSTATUS APIENTRY ww_RegGetValueW(HKEY hkey,
-                                 LPCWSTR lpSubKey,
-                                 LPCWSTR lpValue,
-                                 DWORD dwFlags,
-                                 LPDWORD pdwType,
-                                 PVOID pvData,
-                                 LPDWORD pcbData) {
-  // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hAdvapi32, RegGetValueW)) {
-    return system_fn(hkey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
-  }
+// The implementation XP actually runs, split out of ww_RegGetValueW so that a
+// test can reach it on a machine that has the real function.
+//
+// Without the split there is nowhere to exercise this. ww_RegGetValueW hands
+// over to advapi32 wherever advapi32 has RegGetValueW, so on Vista and later a
+// test calling the public name compares the system function with itself and
+// cannot fail; on XP there is no system function to compare against. Neither
+// arrangement says whether this code is right.
+//
+// Not exported from winwrap.dll -- it is winwrap's own business, not API. The
+// unit test reaches it in the static form only, where linking the archive
+// makes every symbol in it available.
+LSTATUS APIENTRY winwrap_RegGetValueFallbackW(HKEY hkey,
+                                              LPCWSTR lpSubKey,
+                                              LPCWSTR lpValue,
+                                              DWORD dwFlags,
+                                              LPDWORD pdwType,
+                                              PVOID pvData,
+                                              LPDWORD pcbData) {
   // A buffer with no size is unusable, and a filter that permits no type at
   // all can never succeed.
   if ((pvData != nullptr && pcbData == nullptr) || (dwFlags & RRF_RT_ANY) == 0) {
@@ -262,6 +270,20 @@ LSTATUS APIENTRY ww_RegGetValueW(HKEY hkey,
     ::RegCloseKey(key);
   }
   return status;
+}
+
+LSTATUS APIENTRY ww_RegGetValueW(HKEY hkey,
+                                 LPCWSTR lpSubKey,
+                                 LPCWSTR lpValue,
+                                 DWORD dwFlags,
+                                 LPDWORD pdwType,
+                                 PVOID pvData,
+                                 LPDWORD pcbData) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hAdvapi32, RegGetValueW)) {
+    return system_fn(hkey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
+  }
+  return winwrap_RegGetValueFallbackW(hkey, lpSubKey, lpValue, dwFlags, pdwType, pvData, pcbData);
 }
 
 } // extern "C"

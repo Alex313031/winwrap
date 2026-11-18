@@ -9,10 +9,18 @@
 ; and the SRWLOCK family to winwrap.dll with no remaining kernel32 import for
 ; any of them.
 ;
-; Sorted by exported name, which is why the three that are winwrap's own API
+; Sorted by exported name, which is why the four that are winwrap's own API
 ; rather than stand-ins for a Win32 function -- DllGetVersion,
-; GetRealNTVersion, IsRunningOnWine -- sit among the aliases instead of
-; together. They are exported under their own names, with nothing to alias.
+; GetRealNTVersion, IsRunningOnWine, winwrap_RegGetValueFallbackW -- sit among
+; the aliases instead of together. They are exported under their own names,
+; with nothing to alias.
+;
+; The last of those is here for the unit test. ww_RegGetValueW hands over to
+; advapi32 on every OS that has RegGetValueW, so the XP code path is otherwise
+; unreachable anywhere it can be compared against the real function. Exporting
+; it is what lets the shared-form test link; compiling the comparison for the
+; static form only would have put the same condition into three build systems
+; and quietly tested less wherever one of them drifted.
 LIBRARY winwrap
 EXPORTS
     AcquireSRWLockExclusive = ww_AcquireSRWLockExclusive
@@ -65,3 +73,4 @@ EXPORTS
     UnregisterApplicationRestart = ww_UnregisterApplicationRestart
     WakeAllConditionVariable = ww_WakeAllConditionVariable
     WakeConditionVariable = ww_WakeConditionVariable
+    winwrap_RegGetValueFallbackW

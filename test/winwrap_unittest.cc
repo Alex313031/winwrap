@@ -33,6 +33,22 @@
 // names to test them.
 #include <evntprov.h>
 
+// The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
+// the real advapi32 function. Declared here rather than at the point of use
+// because a linkage specification may only appear at namespace scope -- inside
+// a function body it is ill-formed, and both gcc and clang reject it outright
+// rather than warning.
+//
+// Not in winwrap.h: that header declares the ww_* stand-ins, and this is not
+// one. See src/registry.cc for why it exists as a separate entry point.
+extern "C" LSTATUS APIENTRY winwrap_RegGetValueFallbackW(HKEY hkey,
+                                                         LPCWSTR lpSubKey,
+                                                         LPCWSTR lpValue,
+                                                         DWORD dwFlags,
+                                                         LPDWORD pdwType,
+                                                         PVOID pvData,
+                                                         LPDWORD pcbData);
+
 namespace {
 
   constexpr DWORD kThreads      = 16;
@@ -566,12 +582,21 @@ namespace {
     const wchar_t kText[]       = L"winwrap";
     const wchar_t kUnexpanded[] = L"%SystemRoot%\\explorer.exe";
     const DWORD kNumber         = 0xC0FFEE;
+    // Double terminated, as a REG_MULTI_SZ is supposed to be.
+    const wchar_t kMulti[] = L"one\0two\0";
+    // Deliberately stored without its terminator, which is the case the
+    // terminator handling exists for and the one it used to get wrong.
+    const wchar_t kRaw[] = L"raw";
 
     ::RegSetValueExW(key, L"Text", 0, REG_SZ, reinterpret_cast<const BYTE*>(kText), sizeof(kText));
     ::RegSetValueExW(key, L"Number", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&kNumber),
                      sizeof(kNumber));
     ::RegSetValueExW(key, L"Expandable", 0, REG_EXPAND_SZ,
                      reinterpret_cast<const BYTE*>(kUnexpanded), sizeof(kUnexpanded));
+    ::RegSetValueExW(key, L"Multi", 0, REG_MULTI_SZ, reinterpret_cast<const BYTE*>(kMulti),
+                     sizeof(kMulti));
+    ::RegSetValueExW(key, L"Unterminated", 0, REG_SZ, reinterpret_cast<const BYTE*>(kRaw),
+                     3 * sizeof(wchar_t));
 
     // A plain string, with the type reported back.
     wchar_t text[64] = {};
@@ -645,6 +670,15 @@ namespace {
     // same way the GetErrorMode check above does. Ground truth rather than an
     // expectation written here, and the only thing that can say this
     // reimplementation matches what it reimplements.
+    //
+    // Through winwrap_RegGetValueFallbackW -- declared above this namespace,
+    // because a linkage specification may only appear at namespace scope --
+    // rather than ::RegGetValueW, because the latter hands over to advapi32 on
+    // any OS that has it, which is every OS this test can run on. Calling the
+    // public name here compared the system function with itself and could not
+    // fail, on either side of the branch: identical pointers above XP, and the
+    // whole block skipped on XP for want of a system_version to compare
+    // against.
     using RegGetValueFunction =
         LSTATUS(APIENTRY*)(HKEY, LPCWSTR, LPCWSTR, DWORD, LPDWORD, PVOID, LPDWORD);
     RegGetValueFunction system_version = nullptr;
@@ -656,20 +690,54 @@ namespace {
       struct Probe {
         const wchar_t* value;
         DWORD flags;
+        DWORD cap; // bytes offered to the call; 0 means the whole buffer
       } probes[] = {
-          {L"Text", RRF_RT_REG_SZ},       {L"Number", RRF_RT_REG_DWORD},
-          {L"Expandable", RRF_RT_REG_SZ}, {L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND},
-          {L"Number", RRF_RT_REG_SZ}, // the rejection path
-          {L"Absent", RRF_RT_ANY},    // the missing-value path
+          {L"Text", RRF_RT_REG_SZ, 0},
+          {L"Number", RRF_RT_REG_DWORD, 0},
+          {L"Expandable", RRF_RT_REG_SZ, 0},
+          {L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND, 0},
+          // REG_MULTI_SZ needs two terminators rather than one, and had no
+          // coverage at all.
+          {L"Multi", RRF_RT_REG_MULTI_SZ, 0},
+          // A value stored without its terminator: the shim has to add one and
+          // say so in the size it reports.
+          {L"Unterminated", RRF_RT_REG_SZ, 0},
+          // Buffers that are exactly the stored size, which is where the
+          // terminator handling decides between success and ERROR_MORE_DATA --
+          // the case that used to answer ERROR_MORE_DATA spuriously for an
+          // already terminated value, and to over-report its size by one
+          // character.
+          {L"Text", RRF_RT_REG_SZ, sizeof(kText)},
+          {L"Unterminated", RRF_RT_REG_SZ, 3 * sizeof(wchar_t)},
+          {L"Multi", RRF_RT_REG_MULTI_SZ, sizeof(kMulti)},
+          {L"Number", RRF_RT_REG_SZ, 0}, // the rejection path
+          {L"Absent", RRF_RT_ANY, 0},    // the missing-value path
       };
       for (const Probe& probe : probes) {
         BYTE ours[MAX_PATH * sizeof(wchar_t)]   = {};
         BYTE theirs[MAX_PATH * sizeof(wchar_t)] = {};
         DWORD our_type = 0, their_type = 0;
-        DWORD our_size = sizeof(ours), their_size = sizeof(theirs);
+        DWORD our_size   = probe.cap ? probe.cap : sizeof(ours);
+        DWORD their_size = probe.cap ? probe.cap : sizeof(theirs);
 
-        LSTATUS our_status =
-            ::RegGetValueW(key, nullptr, probe.value, probe.flags, &our_type, ours, &our_size);
+        // The size query first: it is what a caller allocates from, so the two
+        // disagreeing there is as wrong as disagreeing on the data.
+        DWORD our_needed = 0, their_needed = 0;
+        LSTATUS our_query = winwrap_RegGetValueFallbackW(key, nullptr, probe.value, probe.flags,
+                                                         nullptr, nullptr, &our_needed);
+        LSTATUS their_query =
+            system_version(key, nullptr, probe.value, probe.flags, nullptr, nullptr, &their_needed);
+        CHECK(our_query == their_query, L"sizing " << probe.value << L"/" << Hex(probe.flags)
+                                                   << L" winwrap returned " << our_query
+                                                   << L", the system " << their_query);
+        if (our_query == ERROR_SUCCESS) {
+          CHECK(our_needed == their_needed, L"sizing " << probe.value << L" winwrap wanted "
+                                                       << our_needed << L" bytes, the system "
+                                                       << their_needed);
+        }
+
+        LSTATUS our_status   = winwrap_RegGetValueFallbackW(key, nullptr, probe.value, probe.flags,
+                                                            &our_type, ours, &our_size);
         LSTATUS their_status = system_version(key, nullptr, probe.value, probe.flags, &their_type,
                                               theirs, &their_size);
 
