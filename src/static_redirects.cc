@@ -44,18 +44,20 @@
 // count is the total size of the arguments: 0 for a void function, 4 per
 // pointer-sized parameter.
 //
-// === Why the SRWLOCK redirects are XP-only ===
+// === The SRWLOCK and CONDITION_VARIABLE entries are not independent ===
 //
-// Do not link these on Vista. Vista exports the whole SRWLOCK family except
-// TryAcquireSRWLock{Shared,Exclusive}, and redirecting only those two would
-// point our CRITICAL_SECTION-based Try at a lock whose Ptr field the real
-// Vista implementation owns -- reading its internals as if they were our
-// pointer. The family has to be all ours or all the system's, and on Vista
-// there is no way to make it all ours while leaving Acquire/Release native.
+// Redirecting a slot here only decides where the call lands. For every other
+// function that is the whole story, because the arguments mean the same thing
+// to winwrap and to the system. For these twelve it is not: an SRWLOCK is one
+// opaque pointer-sized word, and the two implementations keep different things
+// in it, so half a lock from each is not a slower lock but memory corruption.
 //
-// That is why Vista is handled instead by teaching libuv that the Try variants
-// can be absent (patches/node/06-node-xp-vista-support.patch returns UV_ENOSYS),
-// and why winwrap's SRWLOCK set exists for XP, where nothing else provides it.
+// The grouping that prevents that is at runtime, in lock_family.cc, not here.
+// SystemLockFamily() resolves all twelve or none, which is why Vista -- which
+// exports AcquireSRWLock*/ReleaseSRWLock* but not TryAcquireSRWLock*, and has
+// no RtlTryAcquireSRWLock* underneath either -- keeps winwrap's whole family
+// rather than a mixture. So these redirects are linked everywhere the rest
+// are, and nothing about them is XP-only.
 
 #include "winwrap.h"
 
@@ -69,6 +71,16 @@
 // linkage in C++, which would let the definition be discarded despite the asm
 // label, and the reference it is meant to satisfy would fall through to
 // kernel32 again.
+//
+// `bytes` is not checked by anything here. decltype validates the type of the
+// pointer, but the asm label is an opaque string to the compiler, so a wrong
+// count builds cleanly and defines __imp__Name@wrong, which nothing
+// references -- leaving the real slot to fall through to kernel32 and the
+// binary to fail at load on XP. The MASM table is the stricter of the two:
+// forwarders_x86.asm carries the same count on its `EXTERN _ww_Name@bytes`,
+// where a wrong one cannot resolve and is an LNK2019 at build time. So when a
+// count changes, regenerate with tools/gen_forwarders.py and build the MSVC
+// side; that is what turns a silent miss into an error.
 #define WINWRAP_REDIRECT(name, bytes)                                                           \
   extern "C" decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = \
       &ww_##name

@@ -1,5 +1,5 @@
 ; Shared-library mode: export the public Win32 names, aliased onto the
-; winwrap_ implementations, so the generated import library provides
+; ww_ implementations, so the generated import library provides
 ; __imp_<name> and the linker binds there instead of kernel32.
 ;
 ; Undecorated alias targets work on both architectures: lld-link matches
@@ -9,9 +9,10 @@
 ; and the SRWLOCK family to winwrap.dll with no remaining kernel32 import for
 ; any of them.
 ;
-; Sorted by exported name. The last two are winwrap's own API rather than
-; stand-ins for a Win32 function, so they are exported under their own names
-; with nothing to alias.
+; Sorted by exported name, which is why the three that are winwrap's own API
+; rather than stand-ins for a Win32 function -- DllGetVersion,
+; GetRealNTVersion, IsRunningOnWine -- sit among the aliases instead of
+; together. They are exported under their own names, with nothing to alias.
 LIBRARY winwrap
 EXPORTS
     AcquireSRWLockExclusive = ww_AcquireSRWLockExclusive

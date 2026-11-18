@@ -67,14 +67,32 @@ arriving mid-slice waits out the remainder, so the alertable path trades a few
 milliseconds of latency for being able to deliver APCs at all. Both of
 Electron's callers pass `FALSE` and never reach it.
 
-**Not winwrap's, but it lands on the same callers: Vista reports an APC-ended
-alertable wait differently.** Windows 7 and later return `FALSE` with
-`WAIT_IO_COMPLETION`, which is what the documentation says and what the
-emulation above does — so XP agrees with 11. Vista's own implementation returns
-`TRUE` with zero entries removed and sets no error, and winwrap forwards to it
-there rather than substituting, so a winwrap-linked binary sees that shape on
-Vista. A caller that only tests the return value will read it as "entries were
-dequeued" and then process an empty array. Test the count.
+**Not winwrap's, but it lands on the same callers, and it is worse than a
+different spelling: on Vista an APC-ended alertable wait is indistinguishable
+from a completion.**
+
+Windows 7 and later return `FALSE` with `WAIT_IO_COMPLETION` and nothing
+dequeued, which is what the documentation says and what the emulation above
+does — so XP agrees with 11. Vista's own implementation, measured on a port
+confirmed empty immediately beforehand:
+
+* returns `TRUE`,
+* sets no error — the error left afterwards was the previous call's
+  `WAIT_TIMEOUT`,
+* and reports **one entry removed**.
+
+winwrap forwards to it there rather than substituting, so a winwrap-linked
+binary sees this on Vista. There is no combination of return value and count
+that tells a caller the truth: success says there is work, the count says there
+is one item, and there was none. A caller that dispatches on
+`lpNumberOfEntriesRemoved` will process an entry that no I/O produced.
+
+The practical defence is not to pass `fAlertable = TRUE` on Vista at all — use
+a separate alertable wait if APCs have to be delivered. Both of Electron's
+callers pass `FALSE`, so nothing in that tree is exposed. The unit test prints
+the entry's contents and whether the APC actually ran, rather than failing, so
+a Vista run stays legible; it is `TestCompletionPort` in
+`test/winwrap_unittest.cc` if the shape needs checking again on another build.
 
 ### `GetFinalPathNameByHandleW`: two of the four name formats
 

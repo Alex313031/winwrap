@@ -98,7 +98,7 @@ shared_library("winwrap_shared") {
   # common_deps in the first place.
   no_default_deps = true
 
-  # Exports the public Win32 names, aliased onto the winwrap_ implementations,
+  # Exports the public Win32 names, aliased onto the ww_ implementations,
   # so the generated import library satisfies __imp_<name> and the linker
   # binds to winwrap.dll instead of kernel32.
   inputs = [ "src/winwrap.def" ]

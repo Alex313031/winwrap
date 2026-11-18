@@ -23,6 +23,15 @@ Two things are checked, because they are the two halves of the recipe:
     spotless import table and still be refused by the loader for claiming
     6.00.
 
+And one thing that is NOT checked, which matters when a binary passes this and
+still will not start. The covered list comes from winwrap's own sources, so
+these are the only names compared: an import of a post-XP function winwrap has
+no shim for has nothing to compare against and passes in silence. "All clear"
+means winwrap won the link and the header claims an acceptable version --
+necessary for running on the old Windows, not sufficient. --show-all lists
+every import, marking the covered ones, which is what to read when the loader
+disagrees with this tool.
+
 Usage:
 
     python3 tools/check_imports.py out/x86/static/winwrap_unittests.exe
