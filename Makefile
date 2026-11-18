@@ -4,12 +4,13 @@
 #
 # NMAKE makefile for winwrap. For MSVC, deliberately -- not MinGW.
 #
-#   nmake                     winwrap.lib for this prompt's architecture
-#   nmake dll                 winwrap.dll and its import library as well
-#   nmake DEBUG=1             unoptimised, /MTd, with full debug info
+#   nmake                     print usage and build nothing
+#   nmake all                 both flavours, static and shared
+#   nmake static              only out\<arch>\static\winwrap.lib
+#   nmake dll                 only out\<arch>\dll\winwrap.dll
+#   nmake DEBUG=1 all         unoptimised, /MTd, with full debug info
 #   nmake check-forwarders    verify the generated .asm is current
 #   nmake clean
-#   nmake help
 #
 # Run it from a Visual Studio command prompt, so cl, link, lib, ml and rc are
 # on PATH and the architecture is already chosen. "x86 Native Tools Command
@@ -70,7 +71,46 @@ ANCHOR  = _winwrap_static_redirects
 SUBSYS  = /SUBSYSTEM:WINDOWS,5.01
 !ENDIF
 
-OUTDIR = out\$(ARCH)
+# --- The three macros, which form they select, and where it goes -----------
+#
+# WINWRAP_DLL and WINWRAP_STATIC say which form is being built. Only the first
+# is read, and only as version-resource metadata: winwrap_version.h picks
+# ORIG_FILENAME from it, and winwrap.rc picks FILETYPE, so a DLL says
+# winwrap.dll and VFT_DLL where a static library says winwrap.lib and
+# VFT_STATIC_LIB. WINWRAP_STATIC is read nowhere and is documentary -- it is
+# set anyway, because BUILD.gn sets it on its static_library target and these
+# builds should not disagree about something a reader will compare.
+#
+# It has to reach the resource compiler, not just cl, which is the one place
+# it does anything. Hence FORMDEF on both.
+#
+# USING_WINWRAP is a marker for consumers and is read nowhere inside winwrap.
+# It is defined here as well because GN applies winwrap_public_config to the
+# target itself and not only to its dependents, and winwrap.gyp does the same
+# through 'defines' plus 'direct_dependent_settings'.
+#
+# Each form gets its own output directory, out\$(ARCH)\static and
+# out\$(ARCH)\dll, because otherwise they collide on the name winwrap.lib --
+# and collide destructively. The static form's winwrap.lib is the archive
+# itself; the shared form's is the import library /IMPLIB writes beside the
+# DLL. Those are entirely different things with the same name, so building one
+# after the other would leave a consumer linking an import library that needs
+# winwrap.dll at run time while believing it had the self-contained archive.
+# Nothing would report it.
+#
+# The objects go under the same split, which also means the two forms cannot
+# reuse each other's. Nothing in a .cc reads either macro today, so they would
+# in fact be identical -- but that stops being true the moment one of these
+# macros grows a second use.
+!IFDEF SHARED
+FORM    = dll
+FORMDEF = /DWINWRAP_DLL
+!ELSE
+FORM    = static
+FORMDEF = /DWINWRAP_STATIC
+!ENDIF
+
+OUTDIR = out\$(ARCH)\$(FORM)
 OBJDIR = $(OUTDIR)\obj
 
 # The only import library winwrap needs, and worth stating as a fact about the
@@ -103,10 +143,16 @@ TARGETDEFS = /D_WIN32_WINNT=0x0501 /DNTDDI_VERSION=0x05010300 /DWINVER=0x0501
 # surprising dependencies. /Zc:__cplusplus so __cplusplus reports the standard
 # in force rather than 199711L, which is what MSVC says without it.
 CXXFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /GR- /EHs-c- \
-	/DWINWRAP_STATIC /DUSING_WINWRAP /DUNICODE /D_UNICODE \
+	$(FORMDEF) /DUSING_WINWRAP /DUNICODE /D_UNICODE \
 	$(TARGETDEFS) /I src /Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap.pdb
 
-!IFDEF DEBUG
+# Tested by value, not with !IFDEF, so the recursive invocations below can
+# forward it unconditionally. `DEBUG=` on a command line *defines* the macro as
+# empty, which !IFDEF reads as true -- so forwarding an unset DEBUG would turn
+# every release build into a debug one.
+DEBUG = 0
+
+!IF "$(DEBUG)" != "0"
 CXXFLAGS = $(CXXFLAGS) /Od /MTd /Zi /D_DEBUG
 !ELSE
 CXXFLAGS = $(CXXFLAGS) /O2 /Oi /MT /Zi /DNDEBUG
@@ -153,15 +199,51 @@ HEADERS = \
 STATICLIB = $(OUTDIR)\winwrap.lib
 SHAREDLIB = $(OUTDIR)\winwrap.dll
 
-all: $(STATICLIB)
+# FIRST, and so the default: a bare `nmake` prints usage and builds nothing.
+# Building is always something you asked for by name.
+help:
+	@echo  nmake                     this message
+	@echo  nmake all                 both flavours, static and shared
+	@echo  nmake static              only out\$(ARCH)\static\winwrap.lib
+	@echo  nmake dll                 only out\$(ARCH)\dll\winwrap.dll
+	@echo  nmake DEBUG=1 all         unoptimised, /MTd, full debug info
+	@echo  nmake check-forwarders    verify the generated .asm is current
+	@echo  nmake clean
+	@echo.
+	@echo  This prompt builds for $(ARCH). Run from a Visual Studio command
+	@echo  prompt: x86 Native Tools gives a 32-bit winwrap, x64 Native Tools a
+	@echo  64-bit one.
+
+# Both flavours. Two NMAKE invocations because the form decides FORMDEF and
+# OUTDIR and NMAKE settles macros at parse time, so one run cannot be both.
+# DEBUG is forwarded explicitly -- see its note above for why that is safe.
+all:
+	@$(MAKE) /nologo DEBUG=$(DEBUG) static
+	@$(MAKE) /nologo DEBUG=$(DEBUG) SHARED=1 dll-build
+	@echo.
+	@echo  Built both flavours for $(ARCH):
+	@echo    out\$(ARCH)\static\winwrap.lib   the archive
+	@echo    out\$(ARCH)\dll\winwrap.dll      the shared library
+	@echo    out\$(ARCH)\dll\winwrap.lib      its import library
+	@echo.
+	@echo  Separate directories on purpose: both flavours produce a
+	@echo  winwrap.lib, and they are not the same kind of file.
+
+static: $(STATICLIB)
 	@echo.
 	@echo  Built $(STATICLIB) for $(ARCH).
-	@echo  Link with /INCLUDE:$(ANCHOR) and $(SUBSYS)
+	@echo  Link with /INCLUDE:$(ANCHOR) $(SUBSYS) and advapi32.lib
 	@echo  -- see the header of this makefile.
 
-dll: $(SHAREDLIB)
+# Recursive for the reason given on `all`: this invocation was parsed without
+# SHARED, so it cannot produce the shared form itself.
+dll:
+	@$(MAKE) /nologo DEBUG=$(DEBUG) SHARED=1 dll-build
+
+dll-build: $(SHAREDLIB)
 	@echo.
-	@echo  Built $(SHAREDLIB) and $(OUTDIR)\winwrap.lib for $(ARCH).
+	@echo  Built $(SHAREDLIB) for $(ARCH),
+	@echo  with its import library at $(OUTDIR)\winwrap.lib.
 
 # /ignore:4221 because a couple of these translation units are legitimately
 # empty on some configurations, which lib warns about to no useful end.
@@ -195,9 +277,9 @@ $(OBJDIR)\forwarders.obj: src\forwarders_$(ARCH).asm
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	$(ASM) $(ASFLAGS) /Fo$@ src\forwarders_$(ARCH).asm
 
-$(OBJDIR)\winwrap.res: src\winwrap.rc
+$(OBJDIR)\winwrap.res: src\winwrap.rc src\winwrap_version.h
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
-	rc /nologo /fo$@ /I src src\winwrap.rc
+	rc /nologo $(FORMDEF) /DUSING_WINWRAP /fo$@ /I src src\winwrap.rc
 
 # Every object depends on every header. The set is small and they include one
 # another freely, so tracking it per file would be precision without value.
@@ -213,13 +295,3 @@ clean:
 	@if exist out rmdir /s /q out
 	@echo  Cleaned.
 
-help:
-	@echo  nmake                     winwrap.lib for this prompt's architecture
-	@echo  nmake dll                 winwrap.dll and its import library as well
-	@echo  nmake DEBUG=1             unoptimised, /MTd, full debug info
-	@echo  nmake check-forwarders    verify the generated .asm is current
-	@echo  nmake clean
-	@echo.
-	@echo  Run from a Visual Studio command prompt. The prompt's architecture
-	@echo  decides the build's: x86 Native Tools gives a 32-bit winwrap, x64
-	@echo  Native Tools a 64-bit one.
