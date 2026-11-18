@@ -21,6 +21,7 @@ extern "C" {
 // reaches it through the entry point, not the export table.
 // See https://www.transmissionzero.co.uk/computing/advanced-mingw-dll-topics/
 BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD dwReason, LPVOID lpvReserved) {
+  UNREFERENCED_PARAMETER(hInstDLL);
   switch (dwReason) {
     // Called on LoadLibrary or static import
     case DLL_PROCESS_ATTACH: {
