@@ -21,6 +21,12 @@
 ; wrong otherwise: ml64 rejects .model outright, and ml would quietly accept
 ; the x64 file and define undecorated 8-byte slots nothing references.
 
+IFNDEF WINWRAP_X86
+ IFNDEF WINWRAP_X64
+  .err <neither WINWRAP_X86 nor WINWRAP_X64 is defined; the build is not passing the architecture define to ml>
+ ENDIF
+ENDIF
+
 IFDEF WINWRAP_X86
 
 .386

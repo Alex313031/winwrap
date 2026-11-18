@@ -88,10 +88,34 @@ def read_redirects(path):
     return [(n, int(b)) for n, b in entries]
 
 
+def _neither_define_guard(other_guard, this_guard):
+    """Lines that make 'no architecture define at all' an assembler error.
+
+    Each file assembles empty when the *other* architecture is selected, which
+    is intended -- both are in the GYP source list and only one body may apply.
+    What must not be quiet is neither define arriving, because then both files
+    assemble empty, lib succeeds, and winwrap.lib ships with no slots and no
+    anchor. That has happened: the define is delivered through
+    msvs_settings.MASM.PreprocessorDefinitions, which gyp's ninja generator
+    does not read. Failing here costs a build; not failing costs a consumer a
+    link error at best and a binary that silently redirects nothing at worst.
+    """
+    return [
+        'IFNDEF %s' % this_guard,
+        ' IFNDEF %s' % other_guard,
+        '  .err <neither %s nor %s is defined; the build is not passing the '
+        'architecture define to ml>' % (this_guard, other_guard),
+        ' ENDIF',
+        'ENDIF',
+        '',
+    ]
+
+
 def generate_x86(entries):
     note = ('x86. Names carry a leading underscore and the __stdcall argument '
             'size, and a\n; slot is one 4-byte pointer, so dd.')
     out = [HEADER.format(arch_note=note, guard='WINWRAP_X86')]
+    out.extend(_neither_define_guard('WINWRAP_X64', 'WINWRAP_X86'))
     out.append('IFDEF WINWRAP_X86')
     out.append('')
     out.append('.386')
@@ -125,6 +149,7 @@ def generate_x64(entries):
     note = ('x64. One calling convention, so names are undecorated, and a slot '
             'is one\n; 8-byte pointer, so dq. No .model directive: ml64 rejects it.')
     out = [HEADER.format(arch_note=note, guard='WINWRAP_X64')]
+    out.extend(_neither_define_guard('WINWRAP_X86', 'WINWRAP_X64'))
     out.append('IFDEF WINWRAP_X64')
     out.append('')
     for name, _ in entries:

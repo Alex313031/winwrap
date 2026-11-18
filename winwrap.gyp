@@ -166,9 +166,27 @@
       # x86: link.exe defaults to /SAFESEH:YES there, and a MASM object
       # without the metadata fails the link with LNK2026, "module unsafe for
       # SAFESEH image". x64 keeps no such table and ml64 does not take it.
+      #
+      # Delivered twice, through two channels that do not overlap. The msvs
+      # generator reads msvs_settings.MASM and writes PreprocessorDefinitions
+      # into the project; the ninja generator does not read msvs_settings.MASM
+      # at all -- its assembler rule is `$asm $defines $includes $asmflags`,
+      # where $asmflags comes from GetAsmflags and carries only /safeseh, and
+      # $defines is the target's own 'defines'. So a ninja generation got
+      # neither WINWRAP_X86 nor WINWRAP_X64, both forwarders assembled empty,
+      # and winwrap.lib came out with no slots and no anchor. gyp_sawbuck.py
+      # offers --format=ninja explicitly and defaults to it off Windows, so
+      # that is a reachable configuration rather than a hypothetical one.
+      #
+      # Putting it in 'defines' as well costs an extra /D on the cl.exe command
+      # line for the .cc files, where nothing reads it. The .asm files now also
+      # refuse to assemble when neither define arrives, so a third generator
+      # with a third convention fails loudly instead of shipping an empty
+      # library.
       'configurations': {
         'x86_Base': {
           'abstract': 1,
+          'defines': ['WINWRAP_X86=1'],
           'msvs_settings': {
             'MASM': {
               'PreprocessorDefinitions': ['WINWRAP_X86=1'],
@@ -178,6 +196,7 @@
         },
         'x64_Base': {
           'abstract': 1,
+          'defines': ['WINWRAP_X64=1'],
           'msvs_settings': {
             'MASM': {
               'PreprocessorDefinitions': ['WINWRAP_X64=1'],
