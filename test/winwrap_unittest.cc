@@ -27,6 +27,12 @@
 
 #include <shlobj.h>
 
+// EventWriteTransfer and EVENT_DESCRIPTOR, likewise not in windows.h. Gated on
+// WINVER >= 0x0600, which this file is built at -- it deliberately does not
+// take winwrap's own lowered target, since it has to be able to call the Win32
+// names to test them.
+#include <evntprov.h>
+
 namespace {
 
   constexpr DWORD kThreads      = 16;
@@ -385,7 +391,7 @@ namespace {
   }
 
   void TestMisc() {
-    std::wcout << L"  InitOnceExecuteOnce, GetTickCount64, CompareStringOrdinal" << std::endl;
+    std::wcout << L"  InitOnceExecuteOnce, GetTickCount64" << std::endl;
 
     g_once_runs = 0;
     RunThreads(OnceCaller, kThreads);
@@ -397,6 +403,30 @@ namespace {
     CHECK(second >= first, L"GetTickCount64 went backwards");
     CHECK(second - first >= 30,
           L"GetTickCount64 advanced only " << (second - first) << L" ms over 50");
+  }
+
+  // --- Locale and string -----------------------------------------------------
+
+  // Whether `module` exports `name` itself, which decides whether a call went
+  // to the system or to winwrap's own code. Several of the checks below are
+  // only meaningful for one of those, so they have to know which happened.
+  //
+  // GetModuleHandleW rather than LoadLibraryW: every module asked about here
+  // is already loaded, and this way the probe cannot change what is in the
+  // process.
+  bool SystemHas(const wchar_t* module, const char* name) {
+    HMODULE loaded = ::GetModuleHandleW(module);
+    return loaded != nullptr && ::GetProcAddress(loaded, name) != nullptr;
+  }
+
+  // The LCID for en-US, spelled out. LocaleNameToLCID is itself Vista+, so
+  // asking for it would make this test depend on the thing it is testing
+  // around.
+  const LCID kEnUs = MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT);
+
+  void TestLocale() {
+    std::wcout << L"  CompareStringOrdinal, GetLocaleInfoEx, LCMapStringEx, CompareStringEx"
+               << std::endl;
 
     CHECK(::CompareStringOrdinal(L"abc", -1, L"abc", -1, FALSE) == CSTR_EQUAL,
           L"equal strings did not compare equal");
@@ -416,6 +446,254 @@ namespace {
       std::wcout << L"    GetLocaleInfoEx(en-US) -> \"" << buffer << L"\"" << std::endl;
     } else {
       std::wcout << L"    GetLocaleInfoEx(en-US) unavailable on this system" << std::endl;
+    }
+
+    // --- LCMapStringEx and CompareStringEx
+    //
+    // Both resolve the locale name to an LCID and then call the XP function,
+    // so the check that matters is that doing it by name gives the same answer
+    // as doing it by LCID. That is the premise the fallback rests on, and it
+    // can be verified anywhere -- unlike the fallback itself, which only runs
+    // on a Windows that lacks these, so a test machine never reaches it.
+
+    wchar_t upper_ex[16] = {};
+    wchar_t upper_w[16]  = {};
+    int ex_len = ::LCMapStringEx(L"en-US", LCMAP_UPPERCASE, L"straße", -1, upper_ex,
+                                 ARRAYSIZE(upper_ex), nullptr, nullptr, 0);
+    int w_len  = ::LCMapStringW(kEnUs, LCMAP_UPPERCASE, L"straße", -1, upper_w,
+                                ARRAYSIZE(upper_w));
+    CHECK(ex_len == w_len, L"LCMapStringEx returned " << ex_len << L" chars, LCMapStringW "
+                                                      << w_len);
+    if (ex_len > 0 && ex_len == w_len) {
+      CHECK(::wcscmp(upper_ex, upper_w) == 0,
+            L"LCMapStringEx gave \"" << upper_ex << L"\", LCMapStringW \"" << upper_w << L"\"");
+      std::wcout << L"    LCMapStringEx(en-US, UPPERCASE) -> \"" << upper_ex << L"\"" << std::endl;
+    }
+
+    // A sort order the ordinal comparison above would get wrong, so this is
+    // actually exercising the linguistic path rather than agreeing by accident.
+    const int ex_cmp = ::CompareStringEx(L"en-US", 0, L"apple", -1, L"Banana", -1,
+                                         nullptr, nullptr, 0);
+    const int w_cmp  = ::CompareStringW(kEnUs, 0, L"apple", -1, L"Banana", -1);
+    CHECK(ex_cmp == w_cmp,
+          L"CompareStringEx said " << ex_cmp << L", CompareStringW said " << w_cmp);
+    CHECK(ex_cmp == CSTR_LESS_THAN,
+          L"\"apple\" did not sort before \"Banana\" linguistically (" << ex_cmp << L")");
+
+    CHECK(::CompareStringEx(L"en-US", NORM_IGNORECASE, L"abc", -1, L"ABC", -1, nullptr, nullptr,
+                            0) == CSTR_EQUAL,
+          L"NORM_IGNORECASE was not honoured");
+
+    // The three arguments the Ex forms added, which winwrap refuses because XP
+    // has nothing to map them onto. Only assertable where winwrap is the one
+    // answering: where the system exports these, the call is forwarded and the
+    // real function decides, and it accepts a sort version perfectly well.
+    if (!SystemHas(L"kernel32.dll", "CompareStringEx")) {
+      ::SetLastError(ERROR_SUCCESS);
+      CHECK(::CompareStringEx(L"en-US", 0, L"a", -1, L"a", -1, nullptr,
+                              reinterpret_cast<LPVOID>(1), 0) == 0,
+            L"CompareStringEx accepted a non-null lpReserved");
+      CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"refusing lpReserved set last error to " << Hex(::GetLastError()));
+      std::wcout << L"    on the fallback path; refusal of the Ex-only arguments checked"
+                 << std::endl;
+    } else {
+      std::wcout << L"    forwarding to the system; Ex-only arguments are its business"
+                 << std::endl;
+    }
+  }
+
+  // --- ETW manifest-based providers ------------------------------------------
+
+  void TestEtw() {
+    std::wcout << L"  EventWriteTransfer" << std::endl;
+
+    const EVENT_DESCRIPTOR descriptor = {};
+
+    // REGHANDLE 0 is never a registered provider, so this has to fail -- and
+    // that is assertable on every Windows. On XP there is no manifest-based
+    // ETW at all and winwrap answers; everywhere else the real function
+    // answers, and both say the same thing about an invalid handle.
+    const ULONG result = ::EventWriteTransfer(0, &descriptor, nullptr, nullptr, 0, nullptr);
+    CHECK(result != ERROR_SUCCESS, L"writing through an unregistered handle reported success");
+
+    if (!SystemHas(L"advapi32.dll", "EventWriteTransfer")) {
+      // Where there is no system function, winwrap answered, and this is the
+      // contract it promises: ERROR_INVALID_HANDLE, because on such a Windows
+      // nothing could ever have produced a valid REGHANDLE.
+      CHECK(result == ERROR_INVALID_HANDLE,
+            L"the fallback returned " << Hex(result) << L", expected ERROR_INVALID_HANDLE");
+      std::wcout << L"    no manifest-based ETW here; winwrap answered" << std::endl;
+    } else {
+      std::wcout << L"    forwarded to the system's own EventWriteTransfer" << std::endl;
+    }
+    std::wcout << L"    unregistered handle -> " << Hex(result) << std::endl;
+  }
+
+  // --- Registry --------------------------------------------------------------
+
+  // RegGetValueW is the one shim here that is a reimplementation rather than a
+  // translation, so it gets a self-contained key rather than reading something
+  // the machine happens to have. Everything is written under HKCU and removed
+  // again, so the test needs no privilege and leaves nothing behind.
+  void TestRegGetValue() {
+    std::wcout << L"  RegGetValueW" << std::endl;
+
+    wchar_t subkey[64] = {};
+    ::wsprintfW(subkey, L"Software\\winwrap-test-%lu", ::GetCurrentProcessId());
+
+    HKEY key = nullptr;
+    if (::RegCreateKeyExW(HKEY_CURRENT_USER, subkey, 0, nullptr, 0, KEY_READ | KEY_WRITE, nullptr,
+                          &key, nullptr) != ERROR_SUCCESS) {
+      std::wcout << L"    could not create " << subkey << L"; skipped" << std::endl;
+      return;
+    }
+
+    const wchar_t kText[]     = L"winwrap";
+    const wchar_t kUnexpanded[] = L"%SystemRoot%\\explorer.exe";
+    const DWORD kNumber        = 0xC0FFEE;
+
+    ::RegSetValueExW(key, L"Text", 0, REG_SZ, reinterpret_cast<const BYTE*>(kText),
+                     sizeof(kText));
+    ::RegSetValueExW(key, L"Number", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&kNumber),
+                     sizeof(kNumber));
+    ::RegSetValueExW(key, L"Expandable", 0, REG_EXPAND_SZ,
+                     reinterpret_cast<const BYTE*>(kUnexpanded), sizeof(kUnexpanded));
+
+    // A plain string, with the type reported back.
+    wchar_t text[64] = {};
+    DWORD type       = 0;
+    DWORD size       = sizeof(text);
+    LSTATUS status   = ::RegGetValueW(key, nullptr, L"Text", RRF_RT_REG_SZ, &type, text, &size);
+    CHECK(status == ERROR_SUCCESS, L"reading Text failed with " << status);
+    CHECK(::wcscmp(text, kText) == 0, L"Text read back as \"" << text << L"\"");
+    CHECK(type == REG_SZ, L"Text reported type " << type);
+    CHECK(size == sizeof(kText), L"Text reported " << size << L" bytes, wrote " << sizeof(kText));
+
+    // The type filter, which is the whole reason this function exists rather
+    // than RegQueryValueExW.
+    size   = sizeof(text);
+    status = ::RegGetValueW(key, nullptr, L"Number", RRF_RT_REG_SZ, nullptr, text, &size);
+    CHECK(status == ERROR_UNSUPPORTED_TYPE,
+          L"asking for a string and getting a DWORD returned " << status);
+
+    DWORD number = 0;
+    size         = sizeof(number);
+    status = ::RegGetValueW(key, nullptr, L"Number", RRF_RT_REG_DWORD, &type, &number, &size);
+    CHECK(status == ERROR_SUCCESS, L"reading Number failed with " << status);
+    CHECK(number == kNumber, L"Number read back as " << Hex(number));
+    CHECK(type == REG_DWORD, L"Number reported type " << type);
+
+    // Environment expansion. RRF_RT_REG_SZ on a REG_EXPAND_SZ value is what
+    // asks for it; RRF_NOEXPAND is what declines.
+    wchar_t expanded[MAX_PATH] = {};
+    size                       = sizeof(expanded);
+    status = ::RegGetValueW(key, nullptr, L"Expandable", RRF_RT_REG_SZ, &type, expanded, &size);
+    CHECK(status == ERROR_SUCCESS, L"reading Expandable failed with " << status);
+    CHECK(::wcschr(expanded, L'%') == nullptr,
+          L"Expandable still contains a %: \"" << expanded << L"\"");
+
+    wchar_t literal[MAX_PATH] = {};
+    size                      = sizeof(literal);
+    status = ::RegGetValueW(key, nullptr, L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND,
+                            &type, literal, &size);
+    CHECK(status == ERROR_SUCCESS, L"reading Expandable unexpanded failed with " << status);
+    CHECK(::wcscmp(literal, kUnexpanded) == 0,
+          L"RRF_NOEXPAND gave \"" << literal << L"\" rather than the stored string");
+    std::wcout << L"    expanded \"" << literal << L"\" to \"" << expanded << L"\"" << std::endl;
+
+    // A size query, which is a null buffer and a non-null size.
+    size   = 0;
+    status = ::RegGetValueW(key, nullptr, L"Text", RRF_RT_REG_SZ, nullptr, nullptr, &size);
+    CHECK(status == ERROR_SUCCESS, L"a size query returned " << status);
+    CHECK(size == sizeof(kText), L"a size query reported " << size << L" bytes");
+
+    // And a buffer that cannot hold the answer.
+    wchar_t tiny[2] = {};
+    size            = sizeof(tiny);
+    status = ::RegGetValueW(key, nullptr, L"Text", RRF_RT_REG_SZ, nullptr, tiny, &size);
+    CHECK(status == ERROR_MORE_DATA, L"a short buffer returned " << status);
+    CHECK(size == sizeof(kText), L"a short buffer reported " << size << L" bytes needed");
+
+    // Where the system has its own RegGetValueW, ours must agree with it, the
+    // same way the GetErrorMode check above does. Ground truth rather than an
+    // expectation written here, and the only thing that can say this
+    // reimplementation matches what it reimplements.
+    using RegGetValueFunction = LSTATUS(APIENTRY*)(HKEY, LPCWSTR, LPCWSTR, DWORD, LPDWORD, PVOID,
+                                                   LPDWORD);
+    RegGetValueFunction system_version = nullptr;
+    if (HMODULE advapi32 = ::GetModuleHandleW(L"advapi32.dll")) {
+      system_version =
+          reinterpret_cast<RegGetValueFunction>(::GetProcAddress(advapi32, "RegGetValueW"));
+    }
+    if (system_version) {
+      struct Probe {
+        const wchar_t* value;
+        DWORD flags;
+      } probes[] = {
+          {L"Text", RRF_RT_REG_SZ},
+          {L"Number", RRF_RT_REG_DWORD},
+          {L"Expandable", RRF_RT_REG_SZ},
+          {L"Expandable", RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND},
+          {L"Number", RRF_RT_REG_SZ}, // the rejection path
+          {L"Absent", RRF_RT_ANY},    // the missing-value path
+      };
+      for (const Probe& probe : probes) {
+        BYTE ours[MAX_PATH * sizeof(wchar_t)]   = {};
+        BYTE theirs[MAX_PATH * sizeof(wchar_t)] = {};
+        DWORD our_type = 0, their_type = 0;
+        DWORD our_size = sizeof(ours), their_size = sizeof(theirs);
+
+        LSTATUS our_status = ::RegGetValueW(key, nullptr, probe.value, probe.flags, &our_type,
+                                            ours, &our_size);
+        LSTATUS their_status = system_version(key, nullptr, probe.value, probe.flags, &their_type,
+                                              theirs, &their_size);
+
+        CHECK(our_status == their_status, L"on " << probe.value << L"/" << Hex(probe.flags)
+                                                << L" winwrap returned " << our_status
+                                                << L", the system " << their_status);
+        if (our_status == ERROR_SUCCESS && their_status == ERROR_SUCCESS) {
+          CHECK(our_type == their_type, L"on " << probe.value << L" winwrap said type "
+                                               << our_type << L", the system " << their_type);
+          CHECK(our_size == their_size, L"on " << probe.value << L" winwrap said " << our_size
+                                               << L" bytes, the system " << their_size);
+          CHECK(::memcmp(ours, theirs, our_size < their_size ? our_size : their_size) == 0,
+                L"on " << probe.value << L" the two disagreed on the data");
+        }
+      }
+      std::wcout << L"    agrees with the system's own RegGetValueW" << std::endl;
+    } else {
+      std::wcout << L"    no system RegGetValueW to compare against" << std::endl;
+    }
+
+    ::RegCloseKey(key);
+    ::RegDeleteKeyW(HKEY_CURRENT_USER, subkey);
+  }
+
+  // --- DPI awareness ---------------------------------------------------------
+
+  void TestDpiAware() {
+    std::wcout << L"  SetProcessDPIAware" << std::endl;
+
+    // This one changes the calling process for good, and cannot be undone --
+    // so it runs last of the process-wide tests, and nothing after it may
+    // depend on the old state. Harmless here: this is a console program with
+    // no windows to be scaled.
+    const BOOL result = ::SetProcessDPIAware();
+
+    if (::GetModuleHandleW(L"user32.dll") != nullptr &&
+        SystemHas(L"user32.dll", "SetProcessDPIAware")) {
+      // Forwarded. FALSE is a legitimate answer: the real function refuses if
+      // awareness has already been set, which an application manifest may well
+      // have done before main() ran. So the only wrong outcome is a crash.
+      std::wcout << L"    forwarded to the system -> " << (result ? L"TRUE" : L"FALSE")
+                 << std::endl;
+    } else {
+      // winwrap answered, and it promises success: XP has no DPI
+      // virtualisation to opt out of, so the state it is asked for already
+      // holds.
+      CHECK(result, L"the fallback reported failure");
+      std::wcout << L"    no system SetProcessDPIAware; winwrap reported success" << std::endl;
     }
   }
 
@@ -1079,6 +1357,8 @@ int wmain(int argc, WCHAR* argv[]) {
   TestConditionVariableBroadcast();
   TestFls();
   TestMisc();
+  TestLocale();
+  TestEtw();
 
   TestFileInformationQuery();
   TestFileInformationSet();
@@ -1093,6 +1373,10 @@ int wmain(int argc, WCHAR* argv[]) {
   TestIoCancellation();
   TestCompletionPort();
   TestAppUserModelId();
+  TestRegGetValue();
+
+  // Last: it alters the process irreversibly.
+  TestDpiAware();
 
   if (g_failures == 0) {
     std::wcout << L"\nAll Passed!" << std::endl;
