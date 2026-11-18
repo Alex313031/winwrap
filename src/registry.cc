@@ -165,7 +165,25 @@ LSTATUS APIENTRY winwrap_RegGetValueFallbackW(HKEY hkey,
           if (expanded_chars == 0) {
             status = ::GetLastError();
           } else {
-            const DWORD needed = expanded_chars * static_cast<DWORD>(sizeof(WCHAR));
+            const DWORD expanded = expanded_chars * static_cast<DWORD>(sizeof(WCHAR));
+
+            // The larger of the expanded form and what is stored, which is
+            // what the real RegGetValueW reports. Measured rather than
+            // reasoned out: for %SystemRoot%\explorer.exe it answers 52 bytes
+            // -- the stored string with its terminator -- where the expanded
+            // result is 48, because %SystemRoot% is longer than C:\Windows.
+            // Reporting the expanded size alone was more precise and did not
+            // match, which the unit test's comparison against advapi32 caught
+            // the first time it ran.
+            //
+            // Taking the maximum rather than simply the stored size, because
+            // one observation cannot distinguish "always reports the stored
+            // size" from "reports whichever is bigger", and only the latter is
+            // safe: %PATH% expands to far more than it occupies, and a caller
+            // told the stored size would allocate too little. The maximum
+            // agrees with the measurement and cannot under-report.
+            const DWORD needed = expanded > stored_size ? expanded : stored_size;
+
             if (pvData == nullptr) {
               if (pcbData) {
                 *pcbData = needed;
