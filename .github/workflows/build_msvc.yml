@@ -18,11 +18,17 @@
 #      different things, and when it goes wrong nothing says so -- the binary
 #      links, passes its tests on the runner, and fails at load on the old
 #      Windows it was built for.
+#
+#      It checks only the names winwrap covers, which it reads from
+#      static_redirects.cc, so it says nothing about an import winwrap has no
+#      shim for. That limit barely bites here, where the test binaries call
+#      little beyond the covered set, but it is the same tool a consumer runs
+#      over a whole application -- see the note in sawbuck-ng's workflow.
 #   4. The tests pass. Four of them: two architectures by two flavours, since
 #      the static form and the shared form reach winwrap by different
 #      mechanisms and only running both tests either.
 
-name: Build with MSVC
+name: Build Winwrap
 
 on:
   workflow_dispatch:
@@ -39,12 +45,15 @@ env:
 
 jobs:
   build:
+    name: Build with MSVC
     # Pinned rather than windows-latest, which has moved to 2025 and will move
     # again. Visual Studio 2022 is what this is for.
     runs-on: windows-2022
+    timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Record the revision
         id: rev
@@ -184,7 +193,8 @@ jobs:
       #
       # obj\ is excluded: it is the intermediate objects for four flavours and
       # dwarfs everything anyone would want out of this.
-      - uses: actions/upload-artifact@v4
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: winwrap-${{ steps.rev.outputs.short }}
           path: |
