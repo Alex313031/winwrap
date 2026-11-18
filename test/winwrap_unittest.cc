@@ -749,8 +749,30 @@ namespace {
                                                << L", the system " << their_type);
           CHECK(our_size == their_size, L"on " << probe.value << L" winwrap said " << our_size
                                                << L" bytes, the system " << their_size);
-          CHECK(::memcmp(ours, theirs, our_size < their_size ? our_size : their_size) == 0,
-                L"on " << probe.value << L" the two disagreed on the data");
+
+          // The content, compared as whatever the type says it is. For a single
+          // string that means up to the terminator and no further, because past
+          // it neither implementation defines what the buffer holds -- and they
+          // differ there. The real RegGetValueW reads the stored value into the
+          // caller's buffer and expands in place, so for
+          // %SystemRoot%\explorer.exe the bytes after the expanded terminator
+          // still carry the tail of the unexpanded form, where winwrap leaves
+          // them as the caller had them. Comparing those compares a leftover.
+          // The reported size is checked exactly just above, which is the part
+          // a caller can act on.
+          //
+          // REG_MULTI_SZ keeps the full comparison: its embedded terminators
+          // are content, so stopping at the first would check almost nothing.
+          if (our_type == REG_SZ || our_type == REG_EXPAND_SZ) {
+            auto* ours_str   = reinterpret_cast<const wchar_t*>(ours);
+            auto* theirs_str = reinterpret_cast<const wchar_t*>(theirs);
+            CHECK(::wcscmp(ours_str, theirs_str) == 0,
+                  L"on " << probe.value << L" winwrap gave \"" << Printable(ours_str)
+                         << L"\", the system \"" << Printable(theirs_str) << L"\"");
+          } else {
+            CHECK(::memcmp(ours, theirs, our_size < their_size ? our_size : their_size) == 0,
+                  L"on " << probe.value << L" the two disagreed on the data");
+          }
         }
       }
       std::wcout << L"    agrees with the system's own RegGetValueW" << std::endl;
