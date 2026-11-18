@@ -1,10 +1,11 @@
 # winwrap lib
 
-Win32 Legacy support library, designed for Chromium/Electron usage.
+Win32 Legacy support library, designed for XP/Vista.
 
 This is similar to [Supermium's](https://www.supermium.net/) [`progwrp.dll`](https://github.com/win32ss/supermium/blob/bf7e71c95f9a5a9a3ae5206ef8274633255de50b/.github/README.md#this-supermium-component-receives-enhancements-and-improvements-from-time-to-time-primarily-for-operating-systems-prior-to-windows-vista).
 
-It was originally created as a component of [Electron Legacy](https://github.com/Alex313031/electron-legacy#synopsis) to allow it to run on Windows XP/Vista (7/8/8.1 support out of the box).
+It was originally created as a component of [Electron Legacy](https://github.com/Alex313031/electron-legacy#synopsis) to allow it to run on Windows XP/Vista (7/8/8.1 support out of the box),
+though it has now expanded to be a general library to help with building/porting apps for old Windows.
 
 ## Building
 For building winwrap from source, see [BUILDING.md](./docs/BUILDING.md).
