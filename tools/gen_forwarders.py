@@ -75,6 +75,16 @@ def read_redirects(path):
     entries = re.findall(r'WINWRAP_REDIRECT\((\w+),\s*(\d+)\)', text)
     if not entries:
         sys.exit('error: no WINWRAP_REDIRECT entries found in %s' % path)
+    # Every use has to match, not merely most of them. The pattern accepts only
+    # a literal decimal count, so a redirect written with a macro or in hex
+    # parses as nothing at all and its slot never reaches the .asm -- which
+    # surfaces as a consumer failing to load on XP, nowhere near here. Counting
+    # the uses separately is what turns a silent omission into an error.
+    uses = len(re.findall(r'WINWRAP_REDIRECT\(', text))
+    if uses != len(entries):
+        sys.exit('error: %s has %d WINWRAP_REDIRECT uses but %d parsed; a count '
+                 'that is not a literal decimal does not match'
+                 % (path, uses, len(entries)))
     return [(n, int(b)) for n, b in entries]
 
 
