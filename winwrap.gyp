@@ -32,9 +32,10 @@
 #
 # Two things this file cannot do for you.
 #
-# 1. Link order. winwrap works by defining the __imp_<name> slots that
-#    dllimport call sites load through, which only captures the call if
-#    winwrap is searched before the import library it stands in front of.
+# 1. Forcing the redirects into the link. winwrap works by defining the
+#    __imp_<name> slots that dllimport call sites load through, which only
+#    captures the call if winwrap is searched before the import library it
+#    stands in front of.
 #    static_redirects.cc explains that kernel32.lib arrives through
 #    /DEFAULTLIB directives, which are processed after libraries named on the
 #    command line, so an explicitly linked winwrap wins -- and that is true of
@@ -47,16 +48,61 @@
 #    still bound to kernel32 in the finished binary -- Fls*, the SRWLOCK pair,
 #    InitializeCriticalSectionEx, the condition variables, all of them.
 #
-#    So the consumer should add, on the executable that links winwrap:
+#    So the consumer has to force winwrap's redirects into the link itself,
+#    with /INCLUDE: on the executable that links winwrap. Name the anchor
+#    static_redirects.cc provides for this, winwrap_static_redirects, which
+#    takes the usual decoration -- so x86 wants a leading underscore and x64
+#    does not, and it therefore has to be set per configuration:
 #
-#      'msvs_settings': {
-#        'VCLinkerTool': {
-#          'AdditionalOptions': ['/WHOLEARCHIVE:winwrap.lib'],
+#      'configurations': {
+#        'x86_Base': {
+#          'abstract': 1,
+#          'msvs_settings': {
+#            'VCLinkerTool': {
+#              'AdditionalOptions': ['/INCLUDE:_winwrap_static_redirects'],
+#            },
+#          },
+#        },
+#        'x64_Base': {
+#          'abstract': 1,
+#          'msvs_settings': {
+#            'VCLinkerTool': {
+#              'AdditionalOptions': ['/INCLUDE:winwrap_static_redirects'],
+#            },
+#          },
 #        },
 #      },
 #
-#    which pulls every winwrap object in up front, so the slots are defined
-#    before kernel32 is ever consulted.
+#    One symbol is enough, and any symbol in that object would do: every
+#    WINWRAP_REDIRECT lives in static_redirects.cc, so a single object carries
+#    all of them, and its initialisers reference the ww_* implementations,
+#    which pulls those in turn. The anchor exists so the contract is a symbol
+#    of winwrap's own rather than whichever shim a consumer happened to pick --
+#    naming __imp__GetTickCount64@0 works, but it breaks with LNK2001 if that
+#    shim is ever dropped, and a consumer should not have to track which
+#    functions winwrap covers.
+#
+#    Not /WHOLEARCHIVE:winwrap.lib, which was the first attempt and does
+#    nothing. It is recorded here because everything about it looks right and
+#    someone will reach for it again: the option was on the link line, the
+#    archive held every member including static_redirects.obj, and dumpbin
+#    confirmed the symbols were correctly decorated -- and the import table
+#    did not change by a single entry.
+#
+#    That last part is what proves the option matched nothing, rather than
+#    matching and losing a race. /WHOLEARCHIVE promotes an archive's members
+#    to command-line objects, and objects are loaded unconditionally before
+#    any library is searched -- so had it matched, winwrap's members would
+#    have been in the link whether or not anything referenced them, bringing
+#    their own imports along: SleepEx, SwitchToThread, CreateFiber,
+#    ConvertThreadToFiber, SetErrorMode, CancelIo, ExpandEnvironmentStringsW.
+#    Those all appeared the moment /INCLUDE: worked. Under /WHOLEARCHIVE not
+#    one of them did. The likely cause is that it matches the library by the
+#    name as written while MSBuild passes a quoted absolute path; either way
+#    there is no warning and no error, and the result is indistinguishable
+#    from never having linked winwrap. /INCLUDE: sidesteps the matching
+#    question entirely, because an undefined-symbol reference makes the linker
+#    go find whichever member defines it.
 #
 # 2. The subsystem version, which is the other half of running on XP. winwrap
 #    supplies the imports XP does not export; MinimumRequiredVersion is what
@@ -101,7 +147,7 @@
       # Mixing toolsets within one solution is fine here. Symbol names are
       # ABI, not compiler-specific, so MSVC-compiled call sites reference
       # __imp__Foo@4 and this object defines it; winwrap's whole surface is
-      # extern "C", so no C++ ABI crosses the boundary. /WHOLEARCHIVE is a
+      # extern "C", so no C++ ABI crosses the boundary. /INCLUDE: is a
       # link.exe flag and is unaffected.
       #
       # The cost is that a GYP consumer needs the "C++ Clang Compiler for

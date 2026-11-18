@@ -12,10 +12,21 @@
 // because archive members are only pulled to satisfy *still undefined*
 // references, and no source change at any call site.
 //
-// kernel32.lib is never named in Chromium's GN: it arrives through the
-// /DEFAULTLIB directives the SDK headers embed in every object file, and those
-// are processed after libraries given on the command line. So an explicitly
-// linked winwrap wins without having to reorder anything.
+// That only holds if winwrap is searched before whatever else can satisfy
+// `__imp_<name>`. In Chromium's GN build it is, for free: kernel32.lib is
+// never named there, it arrives through the /DEFAULTLIB directives the SDK
+// headers embed in every object file, and those are processed after libraries
+// given on the command line. So an explicitly linked winwrap wins without
+// having to reorder anything.
+//
+// That is a fact about Chromium's GN build and not about linking in general,
+// which is worth saying because it reads like the latter. A build that names
+// kernel32.lib explicitly puts it on the command line too, and then order
+// decides -- kernel32 resolves `__imp_<name>` first, this object is never
+// extracted because nothing is left undefined to pull it, and winwrap
+// contributes nothing while appearing to be linked. GYP-era Chromium is
+// exactly that case; see the note in winwrap.gyp for how a consumer forces
+// this object in.
 //
 // The symbol name is decorated differently per architecture:
 //
@@ -54,6 +65,22 @@
 #define WINWRAP_REDIRECT(name, bytes)                                                           \
   extern "C" decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = \
       &ww_##name
+
+// The anchor a consumer names in /INCLUDE: to force this object into the link,
+// for the builds described in winwrap.gyp where something else would otherwise
+// satisfy every `__imp_<name>` first and leave this object unextracted.
+//
+// It exists so that contract is a symbol of winwrap's own rather than one of
+// the shims. Naming a shim works just as well -- any symbol in this object
+// pulls all of it -- but it couples every consumer to that particular function
+// still being here, and a consumer should not have to care which functions
+// winwrap happens to cover this release.
+//
+// Not `const`: at namespace scope that would give it internal linkage and
+// there would be nothing for /INCLUDE: to find. Decorated the usual way, so
+// x86 wants a leading underscore and x64 does not -- unlike the redirects
+// above, which carry asm labels precisely to avoid being decorated.
+extern "C" int winwrap_static_redirects = 0;
 
 // --- Available on Vista and later, missing on XP ---------------------------
 WINWRAP_REDIRECT(GetTickCount64, 0);
