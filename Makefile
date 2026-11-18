@@ -227,6 +227,24 @@ TESTEXE   = $(OUTDIR)\winwrap_unittests.exe
 # exercises what that form actually produces.
 WINWRAPLIB = $(OUTDIR)\winwrap.lib
 
+# What has to be built before the test can link, which is not the same thing.
+# In the static form it is the archive. In the shared form it is the DLL,
+# because the import library the test links against is a by-product of that
+# link rather than a target in its own right -- so naming $(WINWRAPLIB) as the
+# dependency asks nmake to produce the import library directly, and the only
+# rule matching that path is the one that builds a static archive from
+# $(OBJECTS). It would take it: `nmake SHARED=1 test` with the import library
+# missing or older than the objects ran lib over it, leaving an archive where
+# the import library had been. Nothing reported that, and because
+# FORCEREDIRECTS is empty for SHARED the test then linked the archive with no
+# /INCLUDE: anchor, never extracted forwarders.obj, and exercised the OS while
+# reporting on winwrap. `nmake all` hid it by running dll-build first.
+!IFDEF SHARED
+LIBTARGET = $(SHAREDLIB)
+!ELSE
+LIBTARGET = $(STATICLIB)
+!ENDIF
+
 # Forcing the redirect object in is a static-form concern only. In the shared
 # form the import library generated from winwrap.def already provides every
 # __imp_<name>, so there is nothing to force -- and the anchor is deliberately
@@ -311,7 +329,7 @@ test: $(TESTEXE)
 	@echo  Built $(TESTEXE).
 	@echo  Run it from that directory; nothing needs installing.
 
-$(TESTEXE): $(OBJDIR)\winwrap_unittest.obj $(WINWRAPLIB)
+$(TESTEXE): $(OBJDIR)\winwrap_unittest.obj $(LIBTARGET)
 	link /nologo /OUT:$@ /DEBUG /PDB:$(OUTDIR)\winwrap_unittests.pdb \
 		$(SUBSYSCON) $(FORCEREDIRECTS) \
 		$(OBJDIR)\winwrap_unittest.obj $(WINWRAPLIB) $(LIBS) $(TESTLIBS)
@@ -322,9 +340,16 @@ $(OBJDIR)\winwrap_unittest.obj: test\winwrap_unittest.cc test\winwrap_unittest.h
 
 # /ignore:4221 because a couple of these translation units are legitimately
 # empty on some configurations, which lib warns about to no useful end.
+#
+# Guarded, because under SHARED $(STATICLIB) and the DLL's /IMPLIB are the same
+# path and this rule would be a way to overwrite one with the other. With it
+# absent, `nmake SHARED=1 static` fails with "don't know how to make" instead,
+# which is the right answer: there is no static archive in the shared form.
+!IFNDEF SHARED
 $(STATICLIB): $(OBJECTS)
 	@if not exist $(OUTDIR) mkdir $(OUTDIR)
 	lib /nologo /ignore:4221 /OUT:$@ $(OBJECTS)
+!ENDIF
 
 # The shared form. winwrap.def exports the public Win32 names aliased onto the
 # ww_ implementations, so the generated import library provides __imp_<name>
@@ -358,13 +383,18 @@ $(OBJDIR)\winwrap.res: src\winwrap.rc src\winwrap_version.h
 
 # Every object depends on every header. The set is small and they include one
 # another freely, so tracking it per file would be precision without value.
+#
+# winwrap_dll.obj needs its own line: it is built only in the shared form and
+# so is deliberately not in $(OBJECTS), which meant editing winwrap.h or
+# winwrap_version.h left a stale object linked into the DLL.
 $(OBJECTS): $(HEADERS)
+$(OBJDIR)\winwrap_dll.obj: $(HEADERS)
 
 # forwarders_$(ARCH).asm is generated from static_redirects.cc and checked in,
 # so this build needs no Python. This target only verifies the two agree, which
 # is why it is not a dependency of anything.
 check-forwarders:
-	python3 tools\gen_forwarders.py --check
+	python tools\gen_forwarders.py --check
 
 clean:
 	@if exist out rmdir /s /q out
