@@ -5,9 +5,10 @@
 # NMAKE makefile for winwrap. For MSVC, deliberately -- not MinGW.
 #
 #   nmake                     print usage and build nothing
-#   nmake all                 both flavours, static and shared
+#   nmake all                 both flavours, and the tests for each
 #   nmake static              only out\<arch>\static\winwrap.lib
 #   nmake dll                 only out\<arch>\dll\winwrap.dll
+#   nmake test                only the unit tests for this flavour
 #   nmake DEBUG=1 all         unoptimised, /MTd, with full debug info
 #   nmake check-forwarders    verify the generated .asm is current
 #   nmake clean
@@ -68,17 +69,19 @@
 # with LNK2026, "module unsafe for SAFESEH image". x64 has no such table and
 # ml64 does not take the flag.
 !IF "$(VSCMD_ARG_TGT_ARCH)" == "x64" || "$(PLATFORM)" == "x64"
-ARCH    = x64
-ASM     = ml64
-ASFLAGS = /nologo /c /DWINWRAP_X64=1
-ANCHOR  = winwrap_static_redirects
-SUBSYS  = /SUBSYSTEM:WINDOWS,5.02
+ARCH      = x64
+ASM       = ml64
+ASFLAGS   = /nologo /c /DWINWRAP_X64=1
+ANCHOR    = winwrap_static_redirects
+SUBSYS    = /SUBSYSTEM:WINDOWS,5.02
+SUBSYSCON = /SUBSYSTEM:CONSOLE,5.02
 !ELSE
-ARCH    = x86
-ASM     = ml
-ASFLAGS = /nologo /c /coff /safeseh /DWINWRAP_X86=1
-ANCHOR  = _winwrap_static_redirects
-SUBSYS  = /SUBSYSTEM:WINDOWS,5.01
+ARCH      = x86
+ASM       = ml
+ASFLAGS   = /nologo /c /coff /safeseh /DWINWRAP_X86=1
+ANCHOR    = _winwrap_static_redirects
+SUBSYS    = /SUBSYSTEM:WINDOWS,5.01
+SUBSYSCON = /SUBSYSTEM:CONSOLE,5.01
 !ENDIF
 
 # --- The three macros, which form they select, and where it goes -----------
@@ -162,11 +165,19 @@ CXXFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /GR- /EHs-c- \
 # every release build into a debug one.
 DEBUG = 0
 
+# Split out so the test below compiles with the same optimisation level and,
+# more to the point, the same CRT. A /MT library linked into a /MTd executable
+# is two CRTs in one image, which the linker reports as a pile of duplicate
+# symbols if you are lucky.
 !IF "$(DEBUG)" != "0"
-CXXFLAGS = $(CXXFLAGS) /Od /MTd /Zi /D_DEBUG
+OPTFLAGS = /Od /Zi /D_DEBUG
+CRTFLAG  = /MTd
 !ELSE
-CXXFLAGS = $(CXXFLAGS) /O2 /Oi /MT /Zi /DNDEBUG
+OPTFLAGS = /O2 /Oi /Zi /DNDEBUG
+CRTFLAG  = /MT
 !ENDIF
+
+CXXFLAGS = $(CXXFLAGS) $(OPTFLAGS) $(CRTFLAG)
 
 # Every source except static_redirects.cc, whose job forwarders_$(ARCH).asm
 # does here, and winwrap_dll.cc, which holds what only a DLL wants and would
@@ -208,14 +219,48 @@ HEADERS = \
 
 STATICLIB = $(OUTDIR)\winwrap.lib
 SHAREDLIB = $(OUTDIR)\winwrap.dll
+TESTEXE   = $(OUTDIR)\winwrap_unittests.exe
+
+# The library the test links against. Whichever form was built, it is the
+# winwrap.lib in this form's directory -- the archive itself for the static
+# form, the import library beside the DLL for the shared one -- so the test
+# exercises what that form actually produces.
+WINWRAPLIB = $(OUTDIR)\winwrap.lib
+
+# Forcing the redirect object in is a static-form concern only. In the shared
+# form the import library generated from winwrap.def already provides every
+# __imp_<name>, so there is nothing to force -- and the anchor is deliberately
+# not exported, so naming it there would fail with LNK2001.
+!IFDEF SHARED
+FORCEREDIRECTS =
+!ELSE
+FORCEREDIRECTS = /INCLUDE:$(ANCHOR)
+!ENDIF
+
+# The test compiles against the CURRENT SDK, not winwrap's lowered one: it
+# calls the Win32 names in order to test them, and includes evntprov.h for
+# EventWriteTransfer, which is gated on WINVER >= 0x0600. So TARGETDEFS is
+# deliberately absent here. /EHsc because the harness streams to std::wcout
+# and formats through std::wostringstream, which the library's /EHs-c- would
+# not support.
+TESTFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /EHsc \
+	/DUSING_WINWRAP /DUNICODE /D_UNICODE /I src /I test \
+	$(OPTFLAGS) $(CRTFLAG) \
+	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_unittests.pdb
+
+# advapi32 for the registry test, user32 for wsprintfW, ole32 for
+# CoTaskMemFree in the AppUserModelID test. A Chromium-derived tree links all
+# three by default, which is why test/BUILD.gn names none of them.
+TESTLIBS = advapi32.lib user32.lib ole32.lib
 
 # FIRST, and so the default: a bare `nmake` prints usage and builds nothing.
 # Building is always something you asked for by name.
 help:
 	@echo  nmake                     this message
-	@echo  nmake all                 both flavours, static and shared
+	@echo  nmake all                 both flavours, and the tests for each
 	@echo  nmake static              only out\$(ARCH)\static\winwrap.lib
 	@echo  nmake dll                 only out\$(ARCH)\dll\winwrap.dll
+	@echo  nmake test                only the unit tests for this flavour
 	@echo  nmake DEBUG=1 all         unoptimised, /MTd, full debug info
 	@echo  nmake check-forwarders    verify the generated .asm is current
 	@echo  nmake clean
@@ -229,12 +274,15 @@ help:
 # DEBUG is forwarded explicitly -- see its note above for why that is safe.
 all:
 	@$(MAKE) /nologo DEBUG=$(DEBUG) static
+	@$(MAKE) /nologo DEBUG=$(DEBUG) test
 	@$(MAKE) /nologo DEBUG=$(DEBUG) SHARED=1 dll-build
+	@$(MAKE) /nologo DEBUG=$(DEBUG) SHARED=1 test
 	@echo.
 	@echo  Built both flavours for $(ARCH):
 	@echo    out\$(ARCH)\static\winwrap.lib   the archive
 	@echo    out\$(ARCH)\dll\winwrap.dll      the shared library
 	@echo    out\$(ARCH)\dll\winwrap.lib      its import library
+	@echo  and winwrap_unittests.exe in each, linked against that flavour.
 	@echo.
 	@echo  Separate directories on purpose: both flavours produce a
 	@echo  winwrap.lib, and they are not the same kind of file.
@@ -254,6 +302,23 @@ dll-build: $(SHAREDLIB)
 	@echo.
 	@echo  Built $(SHAREDLIB) for $(ARCH),
 	@echo  with its import library at $(OUTDIR)\winwrap.lib.
+
+# The unit tests, beside the library they test. Console rather than windows,
+# and at the same subsystem floor, so the executable itself runs on XP -- which
+# is the only place several of its assertions mean anything.
+test: $(TESTEXE)
+	@echo.
+	@echo  Built $(TESTEXE).
+	@echo  Run it from that directory; nothing needs installing.
+
+$(TESTEXE): $(OBJDIR)\winwrap_unittest.obj $(WINWRAPLIB)
+	link /nologo /OUT:$@ /DEBUG /PDB:$(OUTDIR)\winwrap_unittests.pdb \
+		$(SUBSYSCON) $(FORCEREDIRECTS) \
+		$(OBJDIR)\winwrap_unittest.obj $(WINWRAPLIB) $(LIBS) $(TESTLIBS)
+
+$(OBJDIR)\winwrap_unittest.obj: test\winwrap_unittest.cc test\winwrap_unittest.h $(HEADERS)
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
+	cl $(TESTFLAGS) test\winwrap_unittest.cc
 
 # /ignore:4221 because a couple of these translation units are legitimately
 # empty on some configurations, which lib warns about to no useful end.

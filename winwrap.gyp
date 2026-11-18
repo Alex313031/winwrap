@@ -17,7 +17,7 @@
 #   '<(DEPTH)/third_party/winwrap/winwrap.gyp:winwrap'
 #
 # ---------------------------------------------------------------------------
-# Builds with MSVC. No clang-cl, no extra Visual Studio component
+# Builds with MSVC. No clang-cl, and no extra Visual Studio component
 #
 # src/static_redirects.cc is absent from the sources below, and
 # src/forwarders_x86.asm and src/forwarders_x64.asm are there instead. They are
@@ -29,13 +29,12 @@
 #
 # A build takes one or the other and never both: two definitions of a slot is
 # a duplicate symbol. BUILD.gn keeps static_redirects.cc because the GN build
-# is for Chromium and Electron, which compile with clang-cl anyway.
+# serves Chromium and Electron, which compile with clang-cl regardless.
 #
-# Both .asm files are listed, and each guards its body on an architecture
-# define this file supplies per configuration -- see the MASM settings on
-# x86_Base and x64_Base. A GYP project holds all four configurations at once,
-# so it cannot pick a source per architecture; the one that does not apply
-# assembles to an empty object instead.
+# One prerequisite, and it is on gyp-next rather than on the toolchain: its
+# MASM settings table has to know about PreprocessorDefinitions, or the
+# architecture define below is silently dropped. See the long note on the
+# target. sawbuck-ng carries that as patches/06-gyp-next-masm-settings.patch.
 #
 # ---------------------------------------------------------------------------
 # READ THIS BEFORE DEPENDING ON IT: the consumer has work to do
@@ -140,20 +139,33 @@
       'type': 'static_library',
 
       # The architecture define for the forwarders, and the setting most easily
-      # forgotten here: both .asm files guard their whole body on it, so the one
-      # that does not apply assembles to an empty object and the one that does
-      # has to be told which it is. Get this wrong and winwrap builds perfectly
-      # cleanly and does nothing at all.
+      # forgotten here: both .asm files guard their whole body on it, so the
+      # one that does not apply assembles to an empty object and the one that
+      # does has to be told which it is. Get this wrong and winwrap builds
+      # perfectly cleanly and does nothing at all -- or, as it actually
+      # presented, fails at the consumer's link with LNK2001 on the anchor
+      # symbol, because that sits inside the same guard.
+      #
+      # Which is worth knowing because gyp-next drops this setting unless it
+      # has been patched. Its MASM table carried one entry,
+      # UseSafeExceptionHandlers, and ConvertToMSBuildSettings keeps only what
+      # its table knows: anything else is reported as "unrecognized setting
+      # MASM/PreprocessorDefinitions while converting to MSBuild" and then
+      # silently omitted from the generated project. A consumer on an
+      # unpatched gyp-next sees four such warnings and a broken link. The fix
+      # is additive and upstream-shaped -- three _Same lines beside the
+      # existing one -- and sawbuck-ng carries it as
+      # patches/06-gyp-next-masm-settings.patch.
       #
       # On the abstract per-architecture configurations for the same reason
       # MinimumRequiredVersion is, on the consumer side: one generated project
-      # holds all four configurations, so nothing substituted at generation time
-      # can differ between them.
+      # holds all four configurations, so nothing substituted at generation
+      # time can differ between them.
       #
       # UseSafeExceptionHandlers is /safeseh, and required rather than tidy on
-      # x86: link.exe defaults to /SAFESEH:YES there, and a MASM object without
-      # the metadata fails the link with LNK2026, "module unsafe for SAFESEH
-      # image". x64 keeps no such table and ml64 does not take the flag.
+      # x86: link.exe defaults to /SAFESEH:YES there, and a MASM object
+      # without the metadata fails the link with LNK2026, "module unsafe for
+      # SAFESEH image". x64 keeps no such table and ml64 does not take it.
       'configurations': {
         'x86_Base': {
           'abstract': 1,
@@ -265,6 +277,81 @@
             # coming to depend on whichever one that is.
             '/std:c++17',
           ],
+        },
+      },
+    },
+    {
+      # The unit tests. Not built unless asked for: a consumer depends on
+      # ':winwrap', so adding this changes nothing for them.
+      #
+      #   gyp ... && msbuild winwrap.vcxproj /t:winwrap_unittests
+      #
+      'target_name': 'winwrap_unittests',
+      'type': 'executable',
+      'dependencies': [
+        'winwrap',
+      ],
+      'include_dirs': [
+        'test',
+      ],
+      'sources': [
+        'test/winwrap_unittest.cc',
+        'test/winwrap_unittest.h',
+      ],
+      'msvs_settings': {
+        'VCCLCompilerTool': {
+          # The test compiles against the CURRENT SDK, not winwrap's lowered
+          # one. It calls the Win32 names in order to test them, and includes
+          # evntprov.h for EventWriteTransfer, which is gated on
+          # WINVER >= 0x0600. That happens by itself here: winwrap's /U and /D
+          # pairs are on its own target rather than in
+          # direct_dependent_settings, so nothing lowers this one.
+          #
+          # Exceptions on, unlike the library. The harness streams to
+          # std::wcout and formats through std::wostringstream, which a
+          # Chromium-derived tree's ExceptionHandling 0 would not support.
+          'ExceptionHandling': '1',
+          'RuntimeTypeInfo': 'true',
+        },
+        'VCLinkerTool': {
+          # Console, so the harness output goes somewhere.
+          'SubSystem': 1,
+          # advapi32 for the registry test, user32 for wsprintfW, ole32 for
+          # CoTaskMemFree in the AppUserModelID test. Named explicitly because
+          # this file has to work outside a Chromium-derived tree, where they
+          # would already be on every link line -- which is why
+          # test/BUILD.gn names none of them.
+          'AdditionalDependencies': [
+            'advapi32.lib',
+            'user32.lib',
+            'ole32.lib',
+          ],
+        },
+      },
+      'configurations': {
+        # Same subsystem floor as the library's consumers, so the test
+        # executable itself runs on XP -- which is the only place several of
+        # its assertions mean anything. And the same /INCLUDE: anchor, for the
+        # same reason a consumer needs it: nothing here references a winwrap
+        # symbol by name, so without it the redirect object is never pulled in
+        # and the test would quietly measure the operating system instead.
+        'x86_Base': {
+          'abstract': 1,
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'MinimumRequiredVersion': '5.01',
+              'AdditionalOptions': ['/INCLUDE:_winwrap_static_redirects'],
+            },
+          },
+        },
+        'x64_Base': {
+          'abstract': 1,
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'MinimumRequiredVersion': '5.02',
+              'AdditionalOptions': ['/INCLUDE:winwrap_static_redirects'],
+            },
+          },
         },
       },
     },
