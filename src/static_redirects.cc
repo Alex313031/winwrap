@@ -22,11 +22,18 @@
 // That is a fact about Chromium's GN build and not about linking in general,
 // which is worth saying because it reads like the latter. A build that names
 // kernel32.lib explicitly puts it on the command line too, and then order
-// decides -- kernel32 resolves `__imp_<name>` first, this object is never
-// extracted because nothing is left undefined to pull it, and winwrap
+// decides -- kernel32 resolves `__imp_<name>` first, the redirect table is
+// never extracted because nothing is left undefined to pull it, and winwrap
 // contributes nothing while appearing to be linked. GYP-era Chromium is
-// exactly that case; see the note in winwrap.gyp for how a consumer forces
-// this object in.
+// exactly that case, and the consumer has to force the table in by naming
+// winwrap_static_redirects below in /INCLUDE:. See winwrap.gyp for the per
+// architecture spelling and for what was tried before that.
+//
+// Which table gets forced in depends on the build: this file in the GN one,
+// forwarders_x86.asm or forwarders_x64.asm in the MSVC one, since cl.exe has
+// no asm labels to name the decorated symbols with. They carry the same set
+// of slots and the same anchor, so the consumer-side instruction is the same
+// either way.
 //
 // The symbol name is decorated differently per architecture:
 //
