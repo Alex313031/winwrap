@@ -11,6 +11,7 @@
 *.json text eol=lf
 *.js text eol=lf
 *.ts text eol=lf
+*.asm text eol=crlf
 
 # Build system Files
 *.py text eol=lf
