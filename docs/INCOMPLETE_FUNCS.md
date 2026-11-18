@@ -82,18 +82,39 @@ stating only to dismiss it: an output parameter of a call that failed means
 nothing, so Windows 10 writing to it there is unremarkable. On Vista the call
 *succeeded*, and on the success path that count is authoritative — which is
 what makes this dangerous rather than merely different. A caller is told there
-is one completion to process when there was none, and no combination of return
-value and count distinguishes it from a real one.
+is one completion to process when there was none.
+
+What that entry contains, measured on Vista with the buffer zeroed first:
+
+```
+entries removed: 1
+first entry:     key 0, 0 bytes, overlapped null
+APC ran:         yes
+```
+
+So the APC really did run — the wait ended for the right reason and only the
+reporting is wrong — and the phantom entry is entirely zero rather than
+fabricated or stale. That narrows the hazard considerably, because a zeroed
+entry with a null `lpOverlapped` is indistinguishable from a hand-posted
+`PostQueuedCompletionStatus` wake-up. A caller that dispatches on
+`lpOverlapped` therefore treats it as "something woke me, go round again",
+which is accidentally the correct response. A caller that dereferences
+`lpOverlapped` without checking, or that attaches meaning to completion key 0,
+is the one that breaks. The unit test asserts the null pointer specifically,
+since a non-null one would be categorically worse.
 
 winwrap forwards to Vista's implementation rather than substituting, so a
 winwrap-linked binary sees this there.
 
-The practical defence is not to pass `fAlertable = TRUE` on Vista at all — use
-a separate alertable wait if APCs have to be delivered. Both of Electron's
-callers pass `FALSE`, so nothing in that tree is exposed. The unit test prints
-the entry's contents and whether the APC actually ran, rather than failing, so
-a Vista run stays legible; it is `TestCompletionPort` in
-`test/winwrap_unittest.cc` if the shape needs checking again on another build.
+The defence, if a caller cannot be sure it handles a null `lpOverlapped`, is
+not to pass `fAlertable = TRUE` on Vista at all — use a separate alertable
+wait if APCs have to be delivered. Both of Electron's callers pass `FALSE`, so
+nothing in that tree is exposed.
+
+The unit test reports this rather than failing on it, so a Vista run stays
+legible: it is not winwrap's defect, and a permanently red Vista run teaches
+people to stop reading the output. `TestCompletionPort` in
+`test/winwrap_unittest.cc` is where the shape above was measured.
 
 ### `GetFinalPathNameByHandleW`: two of the four name formats
 

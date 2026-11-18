@@ -1500,6 +1500,15 @@ namespace {
                  << static_cast<unsigned long long>(entries[0].lpCompletionKey) << L", "
                  << entries[0].dwNumberOfBytesTransferred << L" bytes, overlapped "
                  << (entries[0].lpOverlapped ? L"non-null" : L"null") << std::endl;
+      // The one thing worth failing on, now that Vista's shape is known: the
+      // phantom entry must not look like a real completion. Measured on Vista
+      // it is entirely zero, so lpOverlapped is NULL -- which is the shape of
+      // a hand-posted PostQueuedCompletionStatus packet, and a caller that
+      // dispatches on lpOverlapped treats it as a wake-up rather than I/O.
+      // A non-null pointer here would be categorically worse, because the
+      // caller would dereference whatever it found.
+      CHECK(entries[0].lpOverlapped == nullptr,
+            L"a phantom entry carried a non-null OVERLAPPED, which a caller would follow");
       std::wcout << L"      APC ran:         " << (apc_runs ? L"yes" : L"NO, still queued")
                  << std::endl;
     }
