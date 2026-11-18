@@ -63,12 +63,16 @@ jobs:
         run: python tools/gen_forwarders.py --check
 
       # Which SDK the build will use, before it uses it. vcvarsall below is
-      # given WINDOWS_SDK by name, so unlike sawbuck-ng's build there is no
-      # "newest installed" guess to reproduce -- the question is only whether
-      # that version is there. vcvarsall would fail on its own if it were not,
-      # but it reports the version it was asked for and not the ones it could
-      # have had, so this prints the list while there is still something useful
-      # to do with it.
+      # given WINDOWS_SDK by name, so there is nothing to predict here -- the
+      # only question is whether that version is present. vcvarsall would fail
+      # on its own if it were not, but it reports the version it was asked for
+      # and not the ones it could have had, so this prints the list while there
+      # is still something useful to do with it.
+      #
+      # Filtered to 10.*, because Include\ also holds a 'wdf' directory. That
+      # matters more in sawbuck-ng's workflow, where a first attempt at this
+      # sorted the names to guess which one GYP would take and 'wdf' sorted
+      # above every digit; here it is only noise in a listing.
       #
       # A failure here means the runner image changed its SDKs, which is
       # outside this repository's control: read the list and update
@@ -78,7 +82,7 @@ jobs:
         run: |
           set "KITS=%ProgramFiles(x86)%\Windows Kits\10\Include"
           echo Installed SDKs:
-          dir /b /o-n "%KITS%" || exit /b 1
+          dir /b /o-n "%KITS%\10.*" || exit /b 1
           echo.
           echo Building against %WINDOWS_SDK%
           if exist "%KITS%\%WINDOWS_SDK%\um\windows.h" exit /b 0
@@ -113,10 +117,18 @@ jobs:
         run: |
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
           call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x86 %WINDOWS_SDK% || exit /b 1
-          rem What vcvarsall actually resolved, which is what nmake will see --
-          rem the check above says the SDK is installed, this says it is the one
-          rem in use. WindowsSDKVersion carries a trailing backslash.
+          rem What vcvarsall actually resolved, which is what nmake will see
+          rem through INCLUDE and LIB -- the step above says the SDK is
+          rem installed, this says it is the one in use.
+          rem
+          rem Asserted rather than printed. vcvarsall errors out if the version
+          rem it is handed does not exist, so this should be unreachable; the
+          rem point is that nothing downstream can tell the difference if it
+          rem ever is not, because an SDK that resolved differently produces a
+          rem clean build against the wrong headers. Matched as a substring,
+          rem since WindowsSDKVersion carries a trailing backslash.
           echo SDK in use: %WindowsSDKVersion%  (%WindowsSdkDir%)
+          echo %WindowsSDKVersion% | findstr /c:"%WINDOWS_SDK%" >nul || (echo ERROR: resolved SDK is not %WINDOWS_SDK% & exit /b 1)
           nmake all || exit /b 1
 
       - name: Build x64
@@ -125,6 +137,7 @@ jobs:
           for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
           call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 %WINDOWS_SDK% || exit /b 1
           echo SDK in use: %WindowsSDKVersion%  (%WindowsSdkDir%)
+          echo %WindowsSDKVersion% | findstr /c:"%WINDOWS_SDK%" >nul || (echo ERROR: resolved SDK is not %WINDOWS_SDK% & exit /b 1)
           nmake all || exit /b 1
 
       - name: Show what was built
