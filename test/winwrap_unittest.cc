@@ -33,6 +33,12 @@
 // names to test them.
 #include <evntprov.h>
 
+// _getch, for holding the window open when this was double-clicked. A CRT
+// function rather than ReadConsoleInput so there is no console mode to save
+// and restore, and no risk of leaving the console in a different state than it
+// was found in.
+#include <conio.h>
+
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
 // because a linkage specification may only appear at namespace scope -- inside
@@ -1556,6 +1562,47 @@ namespace {
     }
   }
 
+  // --- Keeping the window open -----------------------------------------------
+
+  // Whether this process created the console it is printing to, rather than
+  // inheriting one that will outlive it.
+  //
+  // Double-clicked from Explorer, a console program gets a console of its own
+  // and that console closes when the process exits, so the results flash past
+  // unreadably. Run from a prompt, or by nmake, or by CI, the console belongs
+  // to the shell and holding it would block whatever ran us.
+  bool OwnsItsConsole() {
+    // No console at all: launched by a GUI parent with no handles, or with
+    // output redirected and no console allocated. Nothing to hold open.
+    if (::GetConsoleWindow() == nullptr) {
+      return false;
+    }
+
+    // Resolved rather than imported, which is winwrap's own habit and here for
+    // winwrap's own reason: this binary has to load on XP, and a statically
+    // imported function the OS does not export is fatal before any of this
+    // runs. check_imports.py would not catch that either -- it only knows the
+    // names winwrap covers, and this is not one of them. Treat an absent
+    // function as "not ours", which keeps the old behaviour rather than
+    // risking a wait nobody is there to satisfy.
+    using GetConsoleProcessListFn = DWORD(WINAPI*)(LPDWORD, DWORD);
+    auto* process_list            = reinterpret_cast<GetConsoleProcessListFn>(
+        ::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "GetConsoleProcessList"));
+    if (process_list == nullptr) {
+      return false;
+    }
+
+    // One attached process is this one, so the console came with it. Two or
+    // more means a shell is attached and owns the window's lifetime.
+    //
+    // The count is what the return value carries whether or not the buffer was
+    // big enough -- too small and it reports the number required and stores
+    // nothing -- so a two-element array answers the question for any number of
+    // processes.
+    DWORD pids[2] = {};
+    return process_list(pids, ARRAYSIZE(pids)) == 1;
+  }
+
 } // namespace
 
 int wmain(int argc, WCHAR* argv[]) {
@@ -1624,8 +1671,20 @@ int wmain(int argc, WCHAR* argv[]) {
 
   if (g_failures == 0) {
     std::wcout << L"\nAll Passed!" << std::endl;
-    return 0;
+  } else {
+    std::wcout << L"\n" << g_failures << L" Failure(s)" << std::endl;
   }
-  std::wcout << L"\n" << g_failures << L" Failure(s)" << std::endl;
-  return 1;
+
+  // After the summary and before the return, so there is something to read and
+  // the exit code is unaffected: the harness reports through its return value
+  // and CI checks it, so waiting must not become part of the result.
+  //
+  // Only when this process owns the console. From a prompt, from nmake, or
+  // from CI there is a shell attached and nothing waits.
+  if (OwnsItsConsole()) {
+    std::wcout << L"\nPress any key to exit." << std::endl;
+    ::_getch();
+  }
+
+  return g_failures == 0 ? 0 : 1;
 }
