@@ -1340,15 +1340,37 @@ namespace {
           L"an empty port reported success");
     CHECK(::GetLastError() == WAIT_TIMEOUT, L"an empty port gave error " << ::GetLastError());
 
-    // The alertable path: a queued APC must end the wait and be reported as
-    // such, which the non-alertable path cannot do at all.
+    // The alertable path: a queued APC must end the wait, which the
+    // non-alertable path cannot do at all.
+    //
+    // *How* it is reported turns out to be two different things, and the
+    // invariant worth holding both to is that nothing was dequeued. The
+    // documented shape -- FALSE with WAIT_IO_COMPLETION -- is what Windows 7
+    // and later do, and what winwrap's own implementation does, so XP agrees
+    // with 11 here.
+    //
+    // Vista does not. Its own GetQueuedCompletionStatusEx returns TRUE when an
+    // APC ends the wait, and sets no error: the last error observed after it
+    // was 258, the WAIT_TIMEOUT left behind by the empty-port call just above.
+    // So the test takes either answer and checks what actually matters, which
+    // is that no entry was reported. Failing here would be reporting a Vista
+    // bug as a winwrap one -- and would also have hidden the thing a reader
+    // needs to know, which is that a caller cannot use the return value alone
+    // on Vista and has to look at the count.
     ::QueueUserAPC(NoopApc, ::GetCurrentThread(), 0);
-    removed = 0;
-    BOOL alertable =
+    removed = 99;
+    const BOOL alertable =
         ::GetQueuedCompletionStatusEx(port, entries, ARRAYSIZE(entries), &removed, 1000, TRUE);
-    CHECK(!alertable, L"an empty port reported success while alertable");
-    CHECK(::GetLastError() == WAIT_IO_COMPLETION,
-          L"a queued APC gave error " << ::GetLastError() << L", expected WAIT_IO_COMPLETION");
+    const DWORD alertable_error = ::GetLastError();
+
+    CHECK(removed == 0, L"a queued APC reported " << removed << L" dequeued entries");
+    if (!alertable) {
+      CHECK(alertable_error == WAIT_IO_COMPLETION,
+            L"a queued APC gave error " << alertable_error << L", expected WAIT_IO_COMPLETION");
+    } else {
+      std::wcout << L"    a queued APC ended the wait as success with no entries"
+                 << L" (Vista's shape, not the documented one)" << std::endl;
+    }
 
     ::CloseHandle(port);
 

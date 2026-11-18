@@ -67,6 +67,15 @@ arriving mid-slice waits out the remainder, so the alertable path trades a few
 milliseconds of latency for being able to deliver APCs at all. Both of
 Electron's callers pass `FALSE` and never reach it.
 
+**Not winwrap's, but it lands on the same callers: Vista reports an APC-ended
+alertable wait differently.** Windows 7 and later return `FALSE` with
+`WAIT_IO_COMPLETION`, which is what the documentation says and what the
+emulation above does — so XP agrees with 11. Vista's own implementation returns
+`TRUE` with zero entries removed and sets no error, and winwrap forwards to it
+there rather than substituting, so a winwrap-linked binary sees that shape on
+Vista. A caller that only tests the return value will read it as "entries were
+dequeued" and then process an empty array. Test the count.
+
 ### `GetFinalPathNameByHandleW`: two of the four name formats
 
 `VOLUME_NAME_DOS` and `VOLUME_NAME_NT` only, via `NtQueryObject` and a
