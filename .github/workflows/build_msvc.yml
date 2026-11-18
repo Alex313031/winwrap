@@ -267,3 +267,84 @@ jobs:
             !out/**/*.ilk
             !out/**/*.exp
           if-no-files-found: error
+
+  # Roll the fixed "ci-build" prerelease to this commit so it always tracks the
+  # latest build under a stable tag, the same arrangement nano-win uses: a
+  # consumer or script fetches the newest library from a constant URL
+  # (.../releases/download/ci-build/winwrap_x86_static.zip and the other three)
+  # without having to know a commit hash.
+  #
+  # A separate job rather than more steps on the build, for two reasons. The
+  # build keeps contents: read -- only this job needs write, and it runs no
+  # compiler. And `needs` plus the default success() gate means a release is
+  # only ever rolled from a build whose four flavours all passed their unit
+  # tests, since those run before the upload.
+  #
+  # Restricted to main. This workflow is dispatch-only, so github.ref is
+  # whichever branch someone picked, and a run from a topic branch must not
+  # replace the rolling release with an unmerged commit.
+  publish:
+    name: Publish ci-build
+    needs: build
+    if: ${{ success() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      # For git log and src/winwrap_version.h, both of which go in the notes.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # By pattern rather than by name, so this does not need the build job's
+      # short-sha output plumbed through as a job output.
+      - name: Download the build output
+        uses: actions/download-artifact@v4
+        with:
+          path: out
+          pattern: winwrap-*
+          merge-multiple: true
+
+      # One zip per flavour, with fixed names. Release assets are served as
+      # uploaded -- unlike artifacts, GitHub does not re-zip them -- so unlike
+      # the artifact step above, zipping here is what makes the download a
+      # single file instead of four loose ones per flavour.
+      - name: Package each flavour
+        run: |
+          mkdir -p dist
+          for arch in x86 x64; do
+            for form in static dll; do
+              if [ -d "out/$arch/$form" ]; then
+                (cd "out/$arch/$form" && zip -q -r "$GITHUB_WORKSPACE/dist/winwrap_${arch}_${form}.zip" .)
+              else
+                echo "ERROR: out/$arch/$form is missing from the artifact"
+                exit 1
+              fi
+            done
+          done
+          ls -la dist
+
+      - name: Roll the ci-build prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n 's/^#define WINWRAP_\(MAJOR\|MINOR\|BUILD\)_VERSION *//p' \
+                    src/winwrap_version.h | paste -sd. -)
+          # Header, then the full commit message, so a multi-line message
+          # customises the notes the way it does for nano-win.
+          {
+            echo "Automated build of winwrap $VERSION at commit ${{ github.sha }}"
+            echo
+            echo "Built with MSVC 2022 against Windows SDK ${{ env.WINDOWS_SDK }}."
+            echo
+            echo "----"
+            git log -1 --format='%B'
+          } > release-notes.md
+          # Delete the old release and its tag, then recreate at this commit so
+          # the tag always points at what the assets were built from.
+          gh release delete ci-build --cleanup-tag --yes || true
+          gh release create ci-build dist/*.zip \
+            --target "${{ github.sha }}" \
+            --title "CI Build (latest)" \
+            --prerelease \
+            --notes-file release-notes.md
