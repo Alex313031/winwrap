@@ -18,6 +18,7 @@ EXPORTS
     AcquireSRWLockShared = ww_AcquireSRWLockShared
     CancelIoEx = ww_CancelIoEx
     CancelSynchronousIo = ww_CancelSynchronousIo
+    CompareStringEx = ww_CompareStringEx
     CompareStringOrdinal = ww_CompareStringOrdinal
     ConvertThreadToFiberEx = ww_ConvertThreadToFiberEx
     CreateFiberEx = ww_CreateFiberEx

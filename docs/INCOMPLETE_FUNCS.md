@@ -101,6 +101,20 @@ sort handle, neither of which exists before Vista, and `LCMAP_SORTHANDLE` makes
 which would answer a question the caller did not ask. `lpReserved` is specified
 as always null and is checked for the same reason.
 
+### `CompareStringEx`: no sort version, and three flags XP rejects
+
+Resolved the same way `GetLocaleInfoEx` is, so it inherits that entry's limit
+on script-tagged locale names, and the comparison itself is XP's
+`CompareStringW`.
+
+`lpVersionInformation`, `lpReserved` and `lParam` are refused with
+`ERROR_INVALID_PARAMETER`, as in `LCMapStringEx`. `dwCmpFlags` is passed
+through unfiltered, which means `LINGUISTIC_IGNORECASE`,
+`LINGUISTIC_IGNOREDIACRITIC` and `SORT_DIGITSASNUMBERS` fail with
+`ERROR_INVALID_FLAGS` from `CompareStringW` rather than being quietly dropped.
+That is deliberate: comparisons feed sorting and equality, so a silently
+different answer propagates further than a visible failure.
+
 ### `Fls*`: per thread, not per fiber
 
 Fiber-local storage built on thread-local storage. The callback half is

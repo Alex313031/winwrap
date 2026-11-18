@@ -136,7 +136,7 @@ BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                    LPVOID* Context);
 
 // --- Locale and string -----------------------------------------------------
-// All three Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
+// All four Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
 #if !defined(LOCALE_NAME_MAX_LENGTH)
  #define LOCALE_NAME_MAX_LENGTH 85
 #endif
@@ -156,6 +156,15 @@ int WINAPI ww_LCMapStringEx(LPCWSTR lpLocaleName,
                             LPNLSVERSIONINFO lpVersionInformation,
                             LPVOID lpReserved,
                             LPARAM sortHandle);
+int WINAPI ww_CompareStringEx(LPCWSTR lpLocaleName,
+                              DWORD dwCmpFlags,
+                              LPCWCH lpString1,
+                              int cchCount1,
+                              LPCWCH lpString2,
+                              int cchCount2,
+                              LPNLSVERSIONINFO lpVersionInformation,
+                              LPVOID lpReserved,
+                              LPARAM lParam);
 
 // --- ETW manifest-based providers ------------------------------------------
 // advapi32, Vista+. Not emulable -- XP's ETW has no manifest-based half at all

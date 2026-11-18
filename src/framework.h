@@ -48,6 +48,12 @@
 
 #include <cstdint> // uint32_t, uint64_t
 #include <cwchar>  // wcslen, wcsncmp
-#include <string>  // string, wstring
+// NOT <string>. It was here and unused -- nothing in winwrap names
+// std::string or std::wstring outside a comment -- and MSVC's <string> drags
+// in the locale machinery, which imports CompareStringEx, LCMapStringEx and
+// GetLocaleInfoEx. Those are Vista+, so an unused include was adding
+// load-time requirements to every consumer on the oldest target this library
+// exists to support. winwrap shims all three now, but it should not be
+// creating the need for its own shims.
 
 #endif // WINWRAP_FRAMEWORK_H_

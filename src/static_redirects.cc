@@ -99,6 +99,7 @@ WINWRAP_REDIRECT(ReleaseSRWLockShared, 4);
 WINWRAP_REDIRECT(CompareStringOrdinal, 20);
 WINWRAP_REDIRECT(GetLocaleInfoEx, 16);
 WINWRAP_REDIRECT(LCMapStringEx, 36);
+WINWRAP_REDIRECT(CompareStringEx, 36);
 
 WINWRAP_REDIRECT(GetQueuedCompletionStatusEx, 24);
 WINWRAP_REDIRECT(SetFileCompletionNotificationModes, 8);

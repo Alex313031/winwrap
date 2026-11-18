@@ -44,6 +44,7 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `CompareStringOrdinal` | kernel32 | Vista | Written out; binary comparison is not something `CompareStringW` can be asked for |
 | `GetLocaleInfoEx` | kernel32 | Vista | Resolves the locale name to an LCID by enumeration, then `GetLocaleInfoW` |
 | `LCMapStringEx` | kernel32 | Vista | The same name-to-LCID resolution, then `LCMapStringW`. Refuses a sort handle or a sort version, which XP has neither of |
+| `CompareStringEx` | kernel32 | Vista | The same name-to-LCID resolution, then `CompareStringW`. MSVC's own standard library imports this, so any C++ consumer needs it |
 | `CancelIoEx` | kernel32 | Vista | Best effort via `CancelIo`: same-thread only, and cannot target one request |
 | `CancelSynchronousIo` | kernel32 | Vista | Always fails with `ERROR_NOT_FOUND`; cross-thread by definition, impossible on XP |
 | `GetQueuedCompletionStatusEx` | kernel32 | Vista | `GetQueuedCompletionStatus` in a loop; `fAlertable` ignored, no alertable form exists |

@@ -2,15 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// CompareStringOrdinal, GetLocaleInfoEx and LCMapStringEx. kernel32, Vista.
+// CompareStringOrdinal, GetLocaleInfoEx, LCMapStringEx and CompareStringEx.
+// kernel32, Vista.
 //
-// All three are the "Ex" half of a pair whose older form XP does have, but they
+// All four are the "Ex" half of a pair whose older form XP does have, but they
 // are not the same shape underneath. CompareStringOrdinal is new behaviour --
 // binary comparison, which CompareStringW cannot be asked for -- so it is
-// written out here. GetLocaleInfoEx and LCMapStringEx are the old calls
-// addressed by locale *name* rather than LCID, so the work is turning one into
-// the other, and XP has no LocaleNameToLCID to do it with. LcidForName below is
-// therefore the shared part of both, and the rest of each is the original call.
+// written out here. The other three are the old calls addressed by locale
+// *name* rather than LCID, so the work is turning one into the other, and XP
+// has no LocaleNameToLCID to do it with. LcidForName below is therefore the
+// shared part of all three, and the rest of each is the original call.
+//
+// Worth knowing why this file matters more than its size suggests: MSVC's own
+// standard library reaches for this family. Any consumer that touches <string>
+// or the locale facets picks up CompareStringEx, LCMapStringEx and
+// GetLocaleInfoEx as load-time imports whether it meant to or not.
 
 #include "dispatch.h"
 #include "winwrap.h"
@@ -300,6 +306,45 @@ int WINAPI ww_LCMapStringEx(LPCWSTR lpLocaleName,
   // counts and the -1-means-null-terminated convention all carry over -- so
   // the rest is the original call.
   return ::LCMapStringW(lcid, dwMapFlags, lpSrcStr, cchSrc, lpDestStr, cchDest);
+}
+
+int WINAPI ww_CompareStringEx(LPCWSTR lpLocaleName,
+                              DWORD dwCmpFlags,
+                              LPCWCH lpString1,
+                              int cchCount1,
+                              LPCWCH lpString2,
+                              int cchCount2,
+                              LPNLSVERSIONINFO lpVersionInformation,
+                              LPVOID lpReserved,
+                              LPARAM lParam) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, CompareStringEx)) {
+    return system_fn(lpLocaleName, dwCmpFlags, lpString1, cchCount1, lpString2, cchCount2,
+                     lpVersionInformation, lpReserved, lParam);
+  }
+
+  // As in ww_LCMapStringEx above: the three parameters the Ex form added have
+  // nothing on XP to map onto, so they are refused rather than ignored.
+  if (lpVersionInformation != nullptr || lpReserved != nullptr || lParam != 0) {
+    ::SetLastError(ERROR_INVALID_PARAMETER);
+    return 0;
+  }
+
+  LCID lcid = 0;
+  if (!LcidForName(lpLocaleName, &lcid)) {
+    ::SetLastError(ERROR_INVALID_PARAMETER);
+    return 0;
+  }
+
+  // dwCmpFlags is passed through unfiltered on purpose. Most of it is shared
+  // with CompareStringW, but three flags are not: LINGUISTIC_IGNORECASE and
+  // LINGUISTIC_IGNOREDIACRITIC arrived with this function, and
+  // SORT_DIGITSASNUMBERS is Windows 7. XP's CompareStringW rejects an unknown
+  // flag with ERROR_INVALID_FLAGS, which is the right answer and better than
+  // anything this could invent -- masking them off would silently return a
+  // comparison the caller did not ask for, and comparisons feed sorting and
+  // equality tests where a wrong answer propagates quietly.
+  return ::CompareStringW(lcid, dwCmpFlags, lpString1, cchCount1, lpString2, cchCount2);
 }
 
 } // extern "C"
