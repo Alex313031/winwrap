@@ -71,21 +71,22 @@ Electron's callers pass `FALSE` and never reach it.
 different spelling: on Vista an APC-ended alertable wait is indistinguishable
 from a completion.**
 
-Windows 7 and later return `FALSE` with `WAIT_IO_COMPLETION` and nothing
-dequeued, which is what the documentation says and what the emulation above
-does — so XP agrees with 11. Vista's own implementation, measured on a port
-confirmed empty immediately beforehand:
+Windows 7 and later return `FALSE` with `WAIT_IO_COMPLETION`, which is what the
+documentation says and what the emulation above does — so XP agrees with 11.
+Vista's own implementation, measured on a port confirmed empty immediately
+beforehand, returns **`TRUE`** and sets no error; the error left afterwards was
+the previous call's `WAIT_TIMEOUT`.
 
-* returns `TRUE`,
-* sets no error — the error left afterwards was the previous call's
-  `WAIT_TIMEOUT`,
-* and reports **one entry removed**.
+Both of them also leave `1` in `lpNumberOfEntriesRemoved`, which is worth
+stating only to dismiss it: an output parameter of a call that failed means
+nothing, so Windows 10 writing to it there is unremarkable. On Vista the call
+*succeeded*, and on the success path that count is authoritative — which is
+what makes this dangerous rather than merely different. A caller is told there
+is one completion to process when there was none, and no combination of return
+value and count distinguishes it from a real one.
 
-winwrap forwards to it there rather than substituting, so a winwrap-linked
-binary sees this on Vista. There is no combination of return value and count
-that tells a caller the truth: success says there is work, the count says there
-is one item, and there was none. A caller that dispatches on
-`lpNumberOfEntriesRemoved` will process an entry that no I/O produced.
+winwrap forwards to Vista's implementation rather than substituting, so a
+winwrap-linked binary sees this there.
 
 The practical defence is not to pass `fAlertable = TRUE` on Vista at all — use
 a separate alertable wait if APCs have to be delivered. Both of Electron's

@@ -1460,13 +1460,14 @@ namespace {
     //   WAIT_TIMEOUT left behind by that previous call -- and reports one
     //   entry removed.
     //
-    // That count is the dangerous part, and the reason this prints the entry
-    // and whether the APC ran. A caller testing the return value sees success;
-    // a caller testing the count sees one completion; neither has any way to
-    // know there was none. entries is zeroed first so the contents are
-    // attributable: a zero entry means Vista wrote one, and the key from the
-    // dequeue further up means it left the buffer alone and only the count is
-    // wrong.
+    // The *success* is the dangerous half, not the count. Windows 10 leaves 1
+    // in the count too, which is unremarkable there because it fails the call
+    // and an output parameter of a failed call means nothing. Vista reports
+    // success, and on that path the count is authoritative: a caller is told
+    // there is one completion to process when there is none. That is why this
+    // prints the entry and whether the APC ran. entries is zeroed first so the
+    // contents are attributable -- a zero entry means Vista wrote one, and the
+    // key from the dequeue further up means it left the buffer alone.
     //
     // Not a failure here. It is not winwrap's defect, and a Vista run that is
     // permanently red teaches people to stop reading the output. See
@@ -1481,9 +1482,16 @@ namespace {
     const LONG apc_runs         = g_apc_runs;
 
     if (!alertable) {
+      // The error, and only the error. The count is an output parameter of a
+      // call that failed, so nothing defines it -- and Windows 10 does write
+      // to it: seeded at 99, it came back as 1 alongside a correct
+      // FALSE/WAIT_IO_COMPLETION. Asserting it was zero was this test's
+      // mistake, not the system's, and it is worth not repeating: an output
+      // parameter is part of the contract only on the success path.
       CHECK(alertable_error == WAIT_IO_COMPLETION,
             L"a queued APC gave error " << alertable_error << L", expected WAIT_IO_COMPLETION");
-      CHECK(removed == 0, L"a queued APC reported " << removed << L" dequeued entries");
+      std::wcout << L"    a queued APC ended the wait as documented; it also left " << removed
+                 << L" in the count, which means nothing on a failure" << std::endl;
     } else {
       std::wcout << L"    a queued APC ended the wait as SUCCESS, which is Vista's shape and"
                  << L" not the documented one:" << std::endl;
