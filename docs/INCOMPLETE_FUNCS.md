@@ -31,8 +31,17 @@ thread** issued on a handle. The real function cancels any thread's, and can
 cancel a single `OVERLAPPED`. So a cross-thread cancellation silently cancels
 nothing, and a request-specific cancellation takes its siblings with it.
 
-Returns `TRUE` where `CancelIo` succeeded and `ERROR_NOT_FOUND` where there was
-nothing to cancel, because that is the pair libuv's pipe code tests for.
+Returns `TRUE` wherever `CancelIo` succeeded, which **includes the case where
+there was nothing to cancel** — `CancelIo` reports success for both and gives
+no way to tell them apart. The real `CancelIoEx` answers `FALSE` with
+`ERROR_NOT_FOUND` when it finds no matching request. Callers that only need to
+know nothing is left pending cannot act on the difference, and libuv's pipe
+code accepts either (`r || GetLastError() == ERROR_NOT_FOUND`), which is why
+this is not worth a probe to tighten. A `CancelIo` that genuinely fails passes
+its own error through rather than being flattened into `ERROR_NOT_FOUND`.
+
+`CancelSynchronousIo` is the one that always answers `ERROR_NOT_FOUND`, since
+it can never do anything at all.
 
 **Known consequence, worth recognising rather than rediscovering:** libuv's
 `uv__pipe_interrupt_read()` spins on `CancelSynchronousIo` waiting for a
