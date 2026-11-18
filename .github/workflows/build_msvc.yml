@@ -1,0 +1,125 @@
+# Builds winwrap.lib and winwrap.dll with MSVC 2022 using the Makefile,
+# for both architectures, then checks and runs the unit tests.
+#
+# Manual only. There is no push or pull_request trigger on purpose: this builds
+# four flavours and runs four test binaries, and nothing here changes often
+# enough to want that on every commit.
+#
+# What it proves, in order, because each step is only meaningful if the one
+# before it passed:
+#
+#   1. The generated forwarders still match src/static_redirects.cc. They are
+#      generated and checked in, so nothing else would notice them drifting.
+#   2. Everything builds with plain MSVC -- no clang-cl, no extra Visual Studio
+#      component. That is the whole point of the Makefile existing alongside
+#      BUILD.gn.
+#   3. Each test binary actually imports winwrap rather than the system. This
+#      is the check that cannot be skipped: linking winwrap and *using* it are
+#      different things, and when it goes wrong nothing says so -- the binary
+#      links, passes its tests on the runner, and fails at load on the old
+#      Windows it was built for.
+#   4. The tests pass. Four of them: two architectures by two flavours, since
+#      the static form and the shared form reach winwrap by different
+#      mechanisms and only running both tests either.
+
+name: Build with MSVC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Pinned rather than windows-latest, which has moved to 2025 and will move
+    # again. Visual Studio 2022 is what this is for.
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the revision
+        id: rev
+        shell: cmd
+        run: |
+          rem Redirection first, deliberately. `echo short=%%i>> file` breaks when
+          rem the hash ends in a digit: cmd reads the trailing digit as a stream
+          rem number, so `...a1>> file` redirects stream 1 and writes "short=a".
+          for /f %%i in ('git rev-parse --short HEAD') do >>%GITHUB_OUTPUT% echo short=%%i
+
+      # Guards a generated, checked-in file. Cheap, and the only thing that
+      # would catch a WINWRAP_REDIRECT added to static_redirects.cc without
+      # regenerating the .asm -- which fails as a missing __imp_ slot much
+      # later, in somebody else's link.
+      - name: Check the generated forwarders are current
+        run: python tools/gen_forwarders.py --check
+
+      # vcvarsall rather than a third-party action, and called inside the same
+      # shell as nmake: each `run:` is a fresh process, so the environment it
+      # sets would not survive to a later step. The Makefile takes the
+      # architecture from VSCMD_ARG_TGT_ARCH, which vcvarsall sets, so the
+      # prompt is the only switch there is.
+      #
+      # `nmake all` builds both flavours and both test binaries for one
+      # architecture, so two invocations cover all four.
+      - name: Build x86
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x86 || exit /b 1
+          nmake all || exit /b 1
+
+      - name: Build x64
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set VSPATH=%%i
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64 || exit /b 1
+          nmake all || exit /b 1
+
+      - name: Show what was built
+        shell: cmd
+        run: dir /s /b out\*.lib out\*.dll out\*.exe
+
+      # The subsystem floor differs by architecture: 5.01 is Windows XP on x86,
+      # and 64-bit Windows begins at 5.02, which is as low as the linker goes
+      # for that machine. check_imports.py reads the covered-function list out
+      # of static_redirects.cc, so it cannot disagree with the library.
+      - name: Check imports, x86
+        run: |
+          python tools/check_imports.py --min-os 5.01 `
+            out/x86/static/winwrap_unittests.exe `
+            out/x86/dll/winwrap_unittests.exe
+
+      - name: Check imports, x64
+        run: |
+          python tools/check_imports.py --min-os 5.02 `
+            out/x64/static/winwrap_unittests.exe `
+            out/x64/dll/winwrap_unittests.exe
+
+      # Run each from its own directory, because the shared-flavour binaries
+      # need the winwrap.dll that sits beside them. The harness returns the
+      # number of failures, so a non-zero exit is a real failure rather than
+      # noise, and `exit /b 1` on each keeps one passing flavour from hiding
+      # another that did not.
+      - name: Run the unit tests
+        shell: cmd
+        run: |
+          for %%A in (x86 x64) do for %%F in (static dll) do (
+            echo.
+            echo ==== %%A %%F ====================================
+            pushd out\%%A\%%F || exit /b 1
+            winwrap_unittests.exe || (popd & echo FAILED: %%A %%F & exit /b 1)
+            popd
+          )
+
+      - name: Package
+        shell: cmd
+        run: |
+          powershell -NoLogo -NoProfile -Command "Compress-Archive -Path out\* -DestinationPath winwrap-${{ steps.rev.outputs.short }}.zip -CompressionLevel Optimal"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winwrap-${{ steps.rev.outputs.short }}
+          path: winwrap-${{ steps.rev.outputs.short }}.zip
+          if-no-files-found: error
