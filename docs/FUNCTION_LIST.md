@@ -29,6 +29,7 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetCurrentProcessorNumber` | kernel32 | Server 2003 | From the CPUID initial APIC ID; a hint, as the real one is too |
 | `SetProcessDPIAware` | user32 | Vista | Reports success: XP has no DPI virtualisation to opt out of, so the state already holds |
 | `RegGetValueW` | advapi32 | Vista | Built on `RegQueryValueExW`: type filter, guaranteed termination, environment expansion |
+| `EventSetInformation` | advapi32 | 8 | Always `ERROR_NOT_SUPPORTED`; XP has no manifest-based provider to describe, and Vista and 7 have the rest of the family but not this |
 | `EventWriteTransfer` | advapi32 | Vista | Always `ERROR_INVALID_HANDLE`; XP's ETW has no manifest-based provider model to write into |
 | `GetErrorMode` | kernel32 | Vista | Read from the process information NT already keeps, with the low bit inverted |
 | `RegisterApplicationRestart` | kernel32 | Vista | Always `E_NOTIMPL`; XP has no Restart Manager |

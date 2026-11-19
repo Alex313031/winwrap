@@ -33,6 +33,7 @@ EXPORTS
     CreateFiberEx = ww_CreateFiberEx
     CreateSymbolicLinkW = ww_CreateSymbolicLinkW
     DllGetVersion
+    EventSetInformation = ww_EventSetInformation
     EventWriteTransfer = ww_EventWriteTransfer
     FlsAlloc = ww_FlsAlloc
     FlsFree = ww_FlsFree

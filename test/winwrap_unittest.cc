@@ -564,6 +564,32 @@ namespace {
       std::wcout << L"    forwarded to the system's own EventWriteTransfer" << std::endl;
     }
     std::wcout << L"    unregistered handle -> " << Hex(result) << std::endl;
+
+    std::wcout << L"  EventSetInformation" << std::endl;
+
+    // Same shape, two Windows later: this arrived in Windows 8, so Vista and
+    // Windows 7 both reach winwrap for it while reaching the system for
+    // everything else in the family. An unregistered handle must fail here
+    // too, and that is assertable wherever this runs.
+    //
+    // EventProviderSetTraits is 2 in evntprov.h's EVENT_INFO_CLASS. Written as
+    // the enumerator so this breaks loudly if that ever stops being true,
+    // rather than passing a literal that silently means something else.
+    const ULONG info = ::EventSetInformation(0, EventProviderSetTraits, nullptr, 0);
+    CHECK(info != ERROR_SUCCESS, L"setting information on an unregistered handle reported success");
+
+    if (!SystemHas(L"advapi32.dll", "EventSetInformation")) {
+      // winwrap answered. ERROR_NOT_SUPPORTED and deliberately not the
+      // ERROR_INVALID_HANDLE above -- see src/etw.cc for why the two siblings
+      // differ, which comes down to Vista and 7 having a real EventRegister
+      // where XP has none.
+      CHECK(info == ERROR_NOT_SUPPORTED,
+            L"the fallback returned " << Hex(info) << L", expected ERROR_NOT_SUPPORTED");
+      std::wcout << L"    no provider information to set here; winwrap answered" << std::endl;
+    } else {
+      std::wcout << L"    forwarded to the system's own EventSetInformation" << std::endl;
+    }
+    std::wcout << L"    unregistered handle -> " << Hex(info) << std::endl;
   }
 
   // --- Registry --------------------------------------------------------------

@@ -167,9 +167,12 @@ int WINAPI ww_CompareStringEx(LPCWSTR lpLocaleName,
                               LPARAM lParam);
 
 // --- ETW manifest-based providers ------------------------------------------
-// advapi32, Vista+. Not emulable -- XP's ETW has no manifest-based half at all
-// -- so this always fails. See etw.cc for why, and for why only this one
-// function out of the family.
+// advapi32. Not emulable -- XP's ETW has no manifest-based half at all -- so
+// both of these always fail. See etw.cc for why, and for which siblings are
+// deliberately left alone.
+//
+// EventWriteTransfer is Vista+; EventSetInformation did not arrive until
+// Windows 8, so Vista and Windows 7 need the second and not the first.
 //
 // evntprov.h is gated in its entirety on WINVER >= 0x0600, so REGHANDLE comes
 // from here. Repeating a typedef with the same type is legal, which matters
@@ -190,6 +193,18 @@ ULONG WINAPI ww_EventWriteTransfer(REGHANDLE RegHandle,
                                    LPCGUID RelatedActivityId,
                                    ULONG UserDataCount,
                                    const void* UserData);
+
+// InformationClass is an int rather than EVENT_INFO_CLASS for the same reason
+// the descriptors above are void*: winwrap never reads it. Declaring it as the
+// enum would mean transcribing evntprov.h's definition here, and a second
+// typedef of an enum is not the harmless repetition that REGHANDLE's is -- it
+// would collide wherever the real header is visible. An enum is int-sized, so
+// the ABI is identical either way, and the x86 stdcall size is 20: eight for
+// REGHANDLE, four each for the rest.
+ULONG WINAPI ww_EventSetInformation(REGHANDLE RegHandle,
+                                    int InformationClass,
+                                    void* EventInformation,
+                                    ULONG InformationLength);
 
 // --- I/O completion ports --------------------------------------------------
 // Both Vista+. OVERLAPPED_ENTRY needs no declaration here: minwinbase.h

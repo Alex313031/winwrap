@@ -44,6 +44,7 @@ EXTERN ww_GetErrorMode : PROC
 EXTERN ww_SetProcessDPIAware : PROC
 EXTERN ww_RegGetValueW : PROC
 EXTERN ww_EventWriteTransfer : PROC
+EXTERN ww_EventSetInformation : PROC
 EXTERN ww_RegisterApplicationRestart : PROC
 EXTERN ww_UnregisterApplicationRestart : PROC
 EXTERN ww_ConvertThreadToFiberEx : PROC
@@ -109,6 +110,8 @@ PUBLIC __imp_RegGetValueW
 __imp_RegGetValueW dq ww_RegGetValueW
 PUBLIC __imp_EventWriteTransfer
 __imp_EventWriteTransfer dq ww_EventWriteTransfer
+PUBLIC __imp_EventSetInformation
+__imp_EventSetInformation dq ww_EventSetInformation
 PUBLIC __imp_RegisterApplicationRestart
 __imp_RegisterApplicationRestart dq ww_RegisterApplicationRestart
 PUBLIC __imp_UnregisterApplicationRestart

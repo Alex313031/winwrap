@@ -122,7 +122,15 @@ WINWRAP_REDIRECT(SetProcessDPIAware, 0);
 WINWRAP_REDIRECT(RegGetValueW, 28);
 
 // advapi32, and 28 rather than 24 because REGHANDLE is 64 bits even on x86.
+// EventSetInformation is 20 for the same reason: 8 + 4 + 4 + 4.
+//
+// EventSetInformation is also the one entry the heading above does not
+// describe: it arrived in Windows 8, so its slot is live on 7 too. It stays
+// beside its ETW sibling anyway, because what the two share -- the provider
+// API, the REGHANDLE, the byte count just above -- says more about this line
+// than the version each went missing on does. etw.cc has that per function.
 WINWRAP_REDIRECT(EventWriteTransfer, 28);
+WINWRAP_REDIRECT(EventSetInformation, 20);
 WINWRAP_REDIRECT(RegisterApplicationRestart, 8);
 WINWRAP_REDIRECT(UnregisterApplicationRestart, 0);
 
