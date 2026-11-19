@@ -34,7 +34,8 @@
 # One prerequisite, and it is on gyp-next rather than on the toolchain: its
 # MASM settings table has to know about PreprocessorDefinitions, or the
 # architecture define below is silently dropped. See the long note on the
-# target. sawbuck-ng carries that as patches/06-gyp-next-masm-settings.patch.
+# target. A consumer on an unpatched gyp-next needs to carry that fix as a
+# local patch.
 #
 # ---------------------------------------------------------------------------
 # READ THIS BEFORE DEPENDING ON IT: the consumer has work to do
@@ -154,8 +155,8 @@
       # silently omitted from the generated project. A consumer on an
       # unpatched gyp-next sees four such warnings and a broken link. The fix
       # is additive and upstream-shaped -- three _Same lines beside the
-      # existing one -- and sawbuck-ng carries it as
-      # patches/06-gyp-next-masm-settings.patch.
+      # existing one -- so a consumer can carry it as a local patch until it
+      # lands upstream.
       #
       # On the abstract per-architecture configurations for the same reason
       # MinimumRequiredVersion is, on the consumer side: one generated project
@@ -174,9 +175,10 @@
       # where $asmflags comes from GetAsmflags and carries only /safeseh, and
       # $defines is the target's own 'defines'. So a ninja generation got
       # neither WINWRAP_X86 nor WINWRAP_X64, both forwarders assembled empty,
-      # and winwrap.lib came out with no slots and no anchor. gyp_sawbuck.py
-      # offers --format=ninja explicitly and defaults to it off Windows, so
-      # that is a reachable configuration rather than a hypothetical one.
+      # and winwrap.lib came out with no slots and no anchor. Generating for
+      # ninja is a reachable configuration rather than a hypothetical one --
+      # it is the default off Windows for anything driving GYP there -- so
+      # this has to hold for both generators.
       #
       # Putting it in 'defines' as well costs an extra /D on the cl.exe command
       # line for the .cc files, where nothing reads it. The .asm files now also
@@ -254,6 +256,35 @@
         # hence both here and in direct_dependent_settings.
         'USING_WINWRAP',
       ],
+
+      # Drop the consuming tree's Windows version defines from this target, so
+      # that the /D flags further down are the only ones naming these macros on
+      # the command line.
+      #
+      # Purely to silence warning D9025, "overriding '/Dx' with '/Dy'", which
+      # cl emits once per superseded flag per translation unit whenever one
+      # command-line flag overrides another for the same macro. Three macros
+      # across every source file is a lot of noise for something working
+      # exactly as intended.
+      #
+      # An optimisation, not the mechanism. The /D flags below remain what
+      # guarantees the version winwrap compiles at, because they are emitted
+      # last and cl honours these in command-line order. If the values here
+      # stop matching what the consumer sets -- a Chromium roll moving
+      # common.gypi's numbers, or a tree that sets its own -- the exclusion
+      # matches nothing and the only consequence is that D9025 returns.
+      # Correctness does not depend on this list being accurate, which is what
+      # makes it safe to keep a copy of someone else's values here at all.
+      #
+      # These are build/common.gypi's values for a Chromium around M49:
+      # Windows 10. A tree that overrides them for its own targets usually
+      # does so in a file it includes only into those, which does not reach
+      # third_party, so this is what arrives here.
+      'defines!': [
+        '_WIN32_WINNT=0x0A00',
+        'WINVER=0x0A00',
+        'NTDDI_VERSION=0x0A000000',
+      ],
       'direct_dependent_settings': {
         'include_dirs': [
           'src',
@@ -275,26 +306,70 @@
             # oldest OS it supports, so it must not see a declaration the SDK
             # would only offer on something newer: that is the mistake it
             # exists to repair. This applies to winwrap's own sources only.
-            '/U_WIN32_WINNT',
+            #
+            # No /U before each /D, unlike BUILD.gn's copy of this, whose
+            # comment says the undef is needed "to avoid redefinition errors".
+            # It is not: /D on a command line is resolved by the driver rather
+            # than by the preprocessor, so a repeated one is not a macro
+            # redefinition. cl takes the last and says so with warning D9025,
+            # "overriding '/Dx' with '/Dy'" -- and a /U followed by a /D is the
+            # same override, which is where three D9025 lines per translation
+            # unit were coming from. The 'defines!' above removes the
+            # consuming tree's /D so that, in the common case, each of these
+            # is the only flag naming its macro and nothing is overridden.
+            #
+            # Should that exclusion stop matching, this still wins on being
+            # last, and D9025 comes back to say the list needs updating. That
+            # is the right failure: noisy, not wrong.
             '/D_WIN32_WINNT=0x0501',  # XP
             # NTDDI_VERSION too, or the guardrail only half works: plenty of
             # SDK headers gate on it rather than on _WIN32_WINNT.
             # OVERLAPPED_ENTRY is the case that caught this -- still visible
             # at _WIN32_WINNT=0x0501 until NTDDI came down as well.
-            '/UNTDDI_VERSION',
             '/DNTDDI_VERSION=0x05010300',  # NTDDI_WINXPSP3
             # WINVER as well, which winwrap_internal_config does not need to
             # touch because Chromium's GN build does not set it. GYP-era
             # common.gypi does, and some SDK headers gate on WINVER rather
             # than on either of the above.
-            '/UWINVER',
             '/DWINVER=0x0501',
-            # winwrap is a C++17 project. Appended rather than substituted:
-            # the last /std: on the command line is the one that counts, so
-            # this pins winwrap's sources without disturbing a consumer that
-            # builds at a different standard -- and without winwrap quietly
-            # coming to depend on whichever one that is.
+            # winwrap is a C++17 project. This pins winwrap's own sources
+            # without disturbing a consumer that builds at a different
+            # standard, and without winwrap quietly coming to depend on
+            # whichever one that is.
+            #
+            # Last on the command line is what makes it take effect, and the
+            # regex filter below is what keeps it from being an override: with
+            # any other /std: removed from this target, this is the only one
+            # cl sees.
             '/std:c++17',
+          ],
+
+          # Remove every /std: except winwrap's own, so that nothing is
+          # overridden and cl has no reason to emit D9025.
+          #
+          # Exclude-then-include rather than one pattern with a negative
+          # lookahead: it is GYP's own idiom for this -- see the docstring on
+          # ProcessListFiltersInDict -- and a later 'include' overriding an
+          # earlier 'exclude' is the documented behaviour rather than an
+          # implementation detail. It also reads as what it is.
+          #
+          # Written as a regex filter and not an 'AdditionalOptions!'
+          # exclusion list because that matches by exact string, so it would
+          # have to name every standard a consumer might have chosen.
+          # /std:c++14, c++20, c++latest and anything added later are all
+          # covered here without naming any of them.
+          #
+          # Applies to this target only. The filter runs after the consuming
+          # tree's target_defaults have been merged in, so the list it sees is
+          # the combined one -- and it is scoped to the dict it sits in, which
+          # is winwrap's. Nothing else in the tree changes standard.
+          #
+          # If this ever stops matching, the failure is the same as for the
+          # version defines above: /std:c++17 still wins on being last, and
+          # D9025 returns to say so.
+          'AdditionalOptions/': [
+            ['exclude', '^/std:'],
+            ['include', '^/std:c\\+\\+17$'],
           ],
         },
       },
