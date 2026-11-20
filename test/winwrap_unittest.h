@@ -20,10 +20,11 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 #include <type_traits>
 
-#include <sys.h>
 #include <winwrap.h>
+#include <winwrap_public.h>
 // clang-format on
 
 // A view, not a std::wstring. libc++ uses the allocated representation during

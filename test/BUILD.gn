@@ -29,5 +29,29 @@ executable("winwrap_unit_test") {
 }
 
 config("winwrap_unit_test_config") {
-  include_dirs = [ "." ]
+  defines = []
+  # ../src for winwrap.h, which this includes with angle brackets, and
+  # ../src/public for winwrap_public.h. The second is what a consumer gets on
+  # its own include path, and spelling it the same way here is deliberate: it
+  # means the test would stop compiling if that header moved out from under
+  # the public surface.
+  #
+  # Deliberately not winwrap_private_config, which would also bring that
+  # config's -D_WIN32_WINNT=0x0501 and -DNTDDI_VERSION=0x05010300. Those
+  # exist to keep winwrap's own sources from seeing post-XP declarations, and
+  # this file needs the opposite: it builds against the current SDK so that it
+  # can call the Win32 names it is testing. evntprov.h is the one that would
+  # fail first -- EventWriteTransfer is gated above XP and would simply vanish.
+  #
+  # This matches what the Makefile does for the same translation unit: /I src
+  # /I src\public /I test, and none of the version flags from CXXFLAGS.
+  include_dirs = [
+    ".",
+    "../src",
+    "../src/public",
+  ]
+
+  if (is_component_winwrap) {
+    defines += [ "WINWRAP_DLL" ]
+  }
 }

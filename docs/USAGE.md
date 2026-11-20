@@ -159,17 +159,55 @@ Ship `winwrap.dll` beside the executable, and run `check_imports.py` on the DLL
 as well — it has to load on the old Windows itself before anything it provides
 can matter.
 
-### Calling winwrap directly
-Rarely wanted, and required by none of the above. If you do want to call a shim
-explicitly — to test one, or to take winwrap's behaviour deliberately on a
-current OS — add `src` to your include path and include `winwrap.h`, which
-declares every implementation as `ww_<Win32Name>`, keeping the exact signature of
-the function it stands in for.
+### What a consumer can include
+Linking winwrap puts `src/public` on your include path, and that directory is
+the whole public surface:
+
+```c++
+#include "winwrap_public.h"
+```
+
+It declares the handful of functions winwrap supplies in its own right, rather
+than as stand-ins for Win32:
+
+| | |
+|---|---|
+| `GetRealNTVersion()` | The host's real NT version from `RtlGetNtVersionNumbers`, in the form `_WIN32_WINNT` takes — `0x0501` on XP. Unaffected by the manifest-based lying `GetVersionEx` does from Windows 8 on. Compare with `>=`, so an unknown version reads as older |
+| `IsRunningOnWine(const char** out = nullptr)` | Whether this is Wine, optionally with its version string. The pointer is into ntdll's own data and needs no freeing |
+| `GetWinWrapVersion(unsigned* major, unsigned* minor, unsigned* build)` | Which winwrap this is. Returns the version as a string, e.g. `L"0.3.8"`; every out parameter is optional, so pass three `nullptr`s to use the return value alone |
+
+`DllGetVersion` is **not** here, though `winwrap.dll` does export it. A dozen
+system DLLs export that name too and winwrap's is rarely the one a caller
+means, so a declaration on the include path would resolve to the wrong thing
+as easily as the right one. Use `GetProcAddress` on the module in question,
+with the SDK's own `DLLGETVERSIONPROC` for the pointer type — which is what
+`shlwapi.h` instructs where it declares the protocol:
+
+> The caller should always `GetProcAddress("DllGetVersion")`, not implicitly
+> link to it.
+
+It is a shared-build export only; there is no such entry point in
+`winwrap.lib`. `test/winwrap_unittest.cc` exercises it exactly that way, and
+only when built against the DLL.
 
 `USING_WINWRAP` is defined for anything that links winwrap, through
 `direct_dependent_settings` in `winwrap.gyp` and `winwrap_public_config` in
 `BUILD.gn`. Nothing inside winwrap reads it; it is there so that a consumer can
 test for it.
+
+### Calling a shim directly
+Rarely wanted, and required by none of the above: the shims are reached through
+the import table, so you write `GetTickCount64` and winwrap owns the `__imp_`
+slot behind it.
+
+`winwrap.h`, which declares every implementation as `ww_<Win32Name>` with the
+exact signature of the function it stands in for, is **not** on a consumer's
+include path — `winwrap_public_config` exposes `src/public` and nothing else.
+That is deliberate, so the only names offered are ones meant to be written. If
+you genuinely need one — to test a shim, or to take winwrap's behaviour
+deliberately on a current OS — add `src` to your own include path and include
+`winwrap.h` directly. winwrap's own unit test does exactly that, in
+`test/BUILD.gn`.
 
 ### A worked example
 [Sawbuck-ng](https://github.com/Alex313031/sawbuck-ng) does all five steps in

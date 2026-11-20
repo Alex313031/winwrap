@@ -1,6 +1,14 @@
 #ifndef WINWRAP_FRAMEWORK_H_
 #define WINWRAP_FRAMEWORK_H_
 
+#ifndef __cplusplus
+ #error This project requires a C++ compiler
+#else
+ #if __cplusplus < 201402L || !defined(__cpp_constexpr)
+  #error This project requires C++14 at a minimum
+ #endif
+#endif
+
 #ifndef UNICODE
  #define UNICODE
 #endif
@@ -13,6 +21,7 @@
    If you wish to build your application for a previous Windows platform, include WinSDKVer.h and
    set the _WIN32_WINNT macro to the platform you wish to support before including SDKDDKVer.h. */
 
+// clang-format off
 #include "winsdkver.h"
 
 #ifndef _WIN32_WINNT
@@ -27,11 +36,13 @@
  #ifndef _ATL_XP_TARGETING
   #define _ATL_XP_TARGETING // For using XP-compatible ATL/MFC functions
  #endif
+ #ifndef _USING_V110_SDK71_
+  #define _USING_V110_SDK71_
+ #endif
 #endif
 
 #include "sdkddkver.h"
 
-// clang-format off
 #ifdef _MSC_VER
  #define WIN32_NO_STATUS
 #endif
@@ -42,6 +53,9 @@
 #endif
 #include <winternl.h>
 #include <ntstatus.h> // Full NTSTATUS codes (e.g. STATUS_SUCCESS)
+#ifdef WINWRAP_DLL
+ #include <shlwapi.h> // DLLVERSIONINFO
+#endif // WINWRAP_DLL
 // clang-format on
 
 #include <stdlib.h> // wcstoul

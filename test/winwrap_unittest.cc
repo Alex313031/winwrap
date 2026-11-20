@@ -39,6 +39,24 @@
 // was found in.
 #include <conio.h>
 
+// memcmp, for comparing the two RegGetValueW results byte for byte. Named
+// because nothing else here declares it: framework.h carries <stdlib.h>,
+// <cstdint> and <cwchar>, but not this one -- so the only reason this has been
+// compiling is that windows.h happens to drag it in.
+#include <string.h>
+
+#ifdef WINWRAP_DLL
+// DLLVERSIONINFO, DLLVERSIONINFO2, MAKEDLLVERULL and DLLVER_PLATFORM_NT, for
+// the DllGetVersion coverage below. framework.h pulls this in under the same
+// condition, but named here because this file is what uses those four, and a
+// test should not depend on a private header's conditional includes.
+//
+// No shlwapi.lib needed: all four are a struct, a struct, a macro and a macro,
+// and DllGetVersion itself is reached through GetProcAddress. So neither
+// TESTLIBS in the Makefile nor the link settings in test/BUILD.gn change.
+#include <shlwapi.h>
+#endif // WINWRAP_DLL
+
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
 // because a linkage specification may only appear at namespace scope -- inside
@@ -1155,6 +1173,269 @@ namespace {
     }
   }
 
+#ifdef WINWRAP_DLL
+  // Reached through GetProcAddress rather than by linking the name, which is
+  // not a stylistic choice: shlwapi.h says so where it declares this protocol,
+  // in as many words -- "The caller should always GetProcAddress(
+  // \"DllGetVersion\"), not implicitly link to it." A dozen system DLLs export
+  // the name, so going through a module handle is the only spelling that says
+  // whose. It is also why winwrap_public.h does not declare it.
+  //
+  // DLLGETVERSIONPROC is the SDK's own typedef for the pointer, beside the
+  // structures, so there is no hand-written signature here to drift from it.
+  void TestDllGetVersion(HMODULE dll) {
+    std::wcout << L"  DllGetVersion" << std::endl;
+
+    const auto get_version =
+        reinterpret_cast<DLLGETVERSIONPROC>(::GetProcAddress(dll, "DllGetVersion"));
+    CHECK(get_version != nullptr, L"winwrap.dll does not export DllGetVersion");
+    if (get_version == nullptr) {
+      return;
+    }
+
+    // Null first: there is nowhere to report a size through, so this cannot be
+    // folded into the cbSize handling below.
+    const HRESULT null_hr = get_version(nullptr);
+    CHECK(null_hr == E_POINTER,
+          L"a null DLLVERSIONINFO returned " << Hex(null_hr) << L" rather than E_POINTER");
+
+    // DLLVERSIONINFO2, the larger of the two shapes. cbSize lives in the
+    // embedded info1, and the implementation fills the extended fields and
+    // then falls through to the base ones, so one call answers for both.
+    DLLVERSIONINFO2 info2 = {};
+    info2.info1.cbSize    = sizeof(info2);
+    const HRESULT hr2     = get_version(&info2.info1);
+
+    std::wcout << L"    DLLVERSIONINFO2 -> " << Hex(hr2) << L" ullVersion "
+               << Hex(info2.ullVersion) << L" dwFlags " << Hex(info2.dwFlags) << std::endl;
+    std::wcout << L"    version " << info2.info1.dwMajorVersion << L"."
+               << info2.info1.dwMinorVersion << L"." << info2.info1.dwBuildNumber
+               << L" platform " << Hex(info2.info1.dwPlatformID) << std::endl;
+
+    CHECK(hr2 == S_OK, L"the DLLVERSIONINFO2 call returned " << Hex(hr2));
+    if (hr2 == S_OK) {
+      // MAKEDLLVERULL packs major, minor, build and a fourth field winwrap has
+      // no component for, which is why the last argument is a literal zero
+      // here as it is in winwrap_dll.cc.
+      const ULONGLONG expect = MAKEDLLVERULL(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION,
+                                             WINWRAP_BUILD_VERSION, 0);
+      CHECK(info2.ullVersion == expect, L"ullVersion is " << Hex(info2.ullVersion)
+                                                          << L" but this test's headers pack "
+                                                          << Hex(expect));
+      CHECK(info2.info1.dwMajorVersion == WINWRAP_MAJOR_VERSION &&
+                info2.info1.dwMinorVersion == WINWRAP_MINOR_VERSION &&
+                info2.info1.dwBuildNumber == WINWRAP_BUILD_VERSION,
+            L"the base fields disagree with this test's headers");
+      CHECK(info2.info1.dwPlatformID == DLLVER_PLATFORM_NT,
+            L"dwPlatformID is " << Hex(info2.info1.dwPlatformID)
+                                << L" rather than DLLVER_PLATFORM_NT");
+    }
+
+    // DLLVERSIONINFO on its own: the backward-compatible shape a caller that
+    // predates the extended one passes, and it has to report the same numbers.
+    DLLVERSIONINFO info1 = {};
+    info1.cbSize         = sizeof(info1);
+    const HRESULT hr1    = get_version(&info1);
+    CHECK(hr1 == S_OK, L"the DLLVERSIONINFO call returned " << Hex(hr1));
+    if (hr1 == S_OK && hr2 == S_OK) {
+      CHECK(info1.dwMajorVersion == info2.info1.dwMajorVersion &&
+                info1.dwMinorVersion == info2.info1.dwMinorVersion &&
+                info1.dwBuildNumber == info2.info1.dwBuildNumber &&
+                info1.dwPlatformID == info2.info1.dwPlatformID,
+            L"the two structure sizes report different versions");
+    }
+
+    // Neither size. The switch has no case for it, so this is the only path
+    // that reaches the function's default.
+    DLLVERSIONINFO odd = {};
+    odd.cbSize         = sizeof(odd) + 1;
+    const HRESULT odd_hr = get_version(&odd);
+    CHECK(odd_hr == E_INVALIDARG,
+          L"an unrecognised cbSize returned " << Hex(odd_hr) << L" rather than E_INVALIDARG");
+  }
+#endif // WINWRAP_DLL
+
+  void TestWinWrapApi() {
+    std::wcout << L"  GetWinWrapVersion" << std::endl;
+
+    // Seeded with a value no version component can be, rather than with 0,
+    // because WINWRAP_MAJOR_VERSION is itself 0 -- so zero-initialising would
+    // let "wrote nothing at all" pass the major-version check below by
+    // accident.
+    constexpr unsigned int kUnset = 0xFFFFFFFFu;
+    unsigned int major = kUnset, minor = kUnset, build = kUnset;
+    const wchar_t* linked = GetWinWrapVersion(&major, &minor, &build);
+
+    CHECK(linked != nullptr, L"GetWinWrapVersion returned no string");
+    if (linked == nullptr) {
+      return;
+    }
+    std::wcout << L"    linked winwrap v" << linked << std::endl;
+
+    // Not a tautology, because kWinWrapVer comes from the winwrap_version.h
+    // this test compiled against while the string comes out of the library
+    // binary. A mismatch is a winwrap.lib or winwrap.dll from a different
+    // checkout than the headers beside it, which is otherwise silent until
+    // some shim behaves in a way its documentation does not describe.
+    CHECK(kWinWrapVer == linked, L"the linked winwrap reports v"
+                                     << linked << L" but this test was built against v"
+                                     << kWinWrapVer);
+    CHECK(major == WINWRAP_MAJOR_VERSION && minor == WINWRAP_MINOR_VERSION &&
+              build == WINWRAP_BUILD_VERSION,
+          L"numbers " << major << L"." << minor << L"." << build << L" disagree with the header's "
+                      << WINWRAP_MAJOR_VERSION << L"." << WINWRAP_MINOR_VERSION << L"."
+                      << WINWRAP_BUILD_VERSION);
+
+    // Every out parameter is documented as optional, so all three omitted has
+    // to work rather than fault.
+    CHECK(GetWinWrapVersion(nullptr, nullptr, nullptr) != nullptr,
+          L"the string is not returned when no numbers are asked for");
+
+    // Which form of winwrap this is linked against, and -- more usefully --
+    // that the two ways of knowing agree. WINWRAP_DLL is what the build said
+    // at compile time; winwrap.dll being in the process is what is actually
+    // true. A disagreement means the library form and the test's defines were
+    // chosen independently, and the half of the coverage that only exists in
+    // one form was silently skipped.
+    const HMODULE dll = ::GetModuleHandleW(L"winwrap.dll");
+#ifdef WINWRAP_DLL
+    std::wcout << L"    linked form: winwrap.dll (shared)" << std::endl;
+    CHECK(dll != nullptr,
+          L"built against the shared winwrap, but winwrap.dll is not loaded in this process");
+    if (dll != nullptr) {
+      TestDllGetVersion(dll);
+    }
+#else
+    std::wcout << L"    linked form: winwrap.lib (static)" << std::endl;
+    // Nothing builds winwrap.dll when the static form is selected, so its
+    // presence here means WINWRAP_DLL was not passed to a test that is in fact
+    // running against the DLL -- the exact wiring mistake that leaves
+    // DllGetVersion untested while the run reports success.
+    CHECK(dll == nullptr,
+          L"winwrap.dll is loaded but WINWRAP_DLL was not defined for this test, so "
+          L"DllGetVersion went untested -- check is_component_winwrap in test/BUILD.gn "
+          L"or FORMDEF in the Makefile");
+#endif // WINWRAP_DLL
+  }
+
+  // Set bits in an affinity mask, for comparing against what the topology
+  // entries claim to cover.
+  DWORD CountBits(DWORD_PTR mask) {
+    DWORD n = 0;
+    for (; mask != 0; mask &= mask - 1)
+      ++n;
+    return n;
+  }
+
+  void TestLogicalProcessorInformation() {
+    std::wcout << L"  GetLogicalProcessorInformation" << std::endl;
+
+    using Entry = SYSTEM_LOGICAL_PROCESSOR_INFORMATION;
+
+    // A null length is rejected before anything else is looked at.
+    CHECK(!::GetLogicalProcessorInformation(nullptr, nullptr),
+          L"a null ReturnedLength was accepted");
+
+    // The documented two-step call. A zero length must fail, must say how much
+    // is needed, and that figure must be a whole number of entries.
+    DWORD length = 0;
+    BOOL ok      = ::GetLogicalProcessorInformation(nullptr, &length);
+    DWORD err    = ok ? ERROR_SUCCESS : ::GetLastError();
+
+    CHECK(!ok, L"the zero-length probe succeeded, leaving no length to use");
+    CHECK(err == ERROR_INSUFFICIENT_BUFFER,
+          L"probe reported " << err << L" rather than ERROR_INSUFFICIENT_BUFFER");
+    CHECK(length > 0, L"probe asked for a zero-byte buffer");
+    CHECK(length % sizeof(Entry) == 0,
+          L"required length " << length << L" is not a multiple of the entry size "
+                              << sizeof(Entry));
+
+    if (length == 0 || length % sizeof(Entry) != 0) {
+      return; // Nothing trustworthy to allocate from.
+    }
+
+    // std::vector<Entry> rather than of bytes: the entries carry pointer-sized
+    // members, and a byte vector guarantees only one-byte alignment.
+    std::vector<Entry> entries(length / sizeof(Entry));
+    DWORD filled = length;
+    ok           = ::GetLogicalProcessorInformation(entries.data(), &filled);
+
+    CHECK(ok, L"the sized call failed with " << ::GetLastError());
+    if (!ok) {
+      return;
+    }
+    CHECK(filled <= length,
+          L"filled " << filled << L" bytes into a " << length << L" byte buffer");
+    CHECK(filled % sizeof(Entry) == 0,
+          L"returned length " << filled << L" is not a whole number of entries");
+
+    entries.resize(filled / sizeof(Entry));
+
+    // Every entry's mask must be a subset of the active processors, and the
+    // union of the core entries must cover all of them. That is the part the
+    // fallback in system.cc has to get right: it is what a caller counting
+    // processors actually reads.
+    SYSTEM_INFO info = {};
+    ::GetSystemInfo(&info);
+
+    DWORD_PTR covered = 0;
+    DWORD cores = 0, caches = 0, packages = 0, nodes = 0, other = 0;
+    for (const Entry& e : entries) {
+      switch (e.Relationship) {
+        case RelationProcessorCore:
+          ++cores;
+          covered |= e.ProcessorMask;
+          break;
+        case RelationCache:
+          ++caches;
+          break;
+        case RelationProcessorPackage:
+          ++packages;
+          break;
+        case RelationNumaNode:
+          ++nodes;
+          break;
+        default:
+          ++other;
+          break;
+      }
+      CHECK((e.ProcessorMask & ~info.dwActiveProcessorMask) == 0,
+            L"an entry names processors outside the active mask: entry 0x"
+                << std::hex << e.ProcessorMask << L" active 0x"
+                << info.dwActiveProcessorMask << std::dec);
+    }
+
+    CHECK(cores > 0, L"no RelationProcessorCore entries at all");
+    CHECK(covered == info.dwActiveProcessorMask,
+          L"core entries cover 0x" << std::hex << covered << L" but the active mask is 0x"
+                                   << info.dwActiveProcessorMask << std::dec);
+
+    std::wcout << L"    " << entries.size() << L" entries: " << cores << L" core, " << caches
+               << L" cache, " << packages << L" package, " << nodes << L" numa";
+    if (other != 0) {
+      std::wcout << L", " << other << L" other";
+    }
+    std::wcout << std::endl;
+
+    // Which implementation answered, and so which result was just checked.
+    // Below XP SP3 it is winwrap's, which reports no caches and no SMT -- see
+    // system.cc. Saying so keeps a thin-looking result on an old machine from
+    // reading as a failure.
+    const bool is_system_impl = SystemHas(L"kernel32.dll", "GetLogicalProcessorInformation");
+    if (is_system_impl) {
+      std::wcout << L"    answered by kernel32" << std::endl;
+    } else {
+      std::wcout << L"    answered by winwrap: counts exact, topology approximated"
+                 << std::endl;
+      CHECK(caches == 0,
+            L"the fallback reported " << caches << L" cache entries, which it cannot know");
+      CHECK(cores == CountBits(info.dwActiveProcessorMask),
+            L"the fallback reported " << cores << L" cores for "
+                                      << CountBits(info.dwActiveProcessorMask)
+                                      << L" active processors");
+    }
+  }
+
   void TestErrorModeAndRestart() {
     std::wcout << L"  GetErrorMode, RegisterApplicationRestart" << std::endl;
 
@@ -1683,6 +1964,10 @@ int wmain(int argc, WCHAR* argv[]) {
                << L" -- failures below may be Wine's, not winwrap's" << std::endl;
   }
 
+  // First: winwrap's own API rather than a shim, and a version mismatch
+  // between the library and these headers would explain anything below it.
+  TestWinWrapApi();
+
   TestExclusive();
   TestShared();
   TestTryAcquire();
@@ -1699,6 +1984,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFinalPathAndReOpen();
   TestNamedPipes();
   TestProcessorNumber();
+  TestLogicalProcessorInformation();
   TestErrorModeAndRestart();
   TestDirectories();
   TestFibers();

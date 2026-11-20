@@ -146,7 +146,12 @@ jobs:
             echo ---- -m%%b
             for %%f in (src\*.cc) do if /i not "%%~nxf"=="winwrap_dll.cc" "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% -DWINWRAP_STATIC "%%f" || exit /b 1
             "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% -DWINWRAP_DLL src\winwrap_dll.cc || exit /b 1
-            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /EHsc /I src /I test test\winwrap_unittest.cc || exit /b 1
+            rem Three include directories for the test and one for the sources,
+            rem matching the Makefile and both .gn/.gyp forms. winwrap's own
+            rem sources reach the public header as "public/winwrap_public.h",
+            rem relative to src; the test writes <winwrap_public.h> the way a
+            rem consumer does, which needs src\public on the path by itself.
+            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /EHsc /I src /I src\public /I test test\winwrap_unittest.cc || exit /b 1
           )
 
       # vcvarsall rather than a third-party action, and called inside the same

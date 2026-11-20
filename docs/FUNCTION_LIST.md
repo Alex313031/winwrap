@@ -27,6 +27,7 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetNamedPipeClientProcessId` | kernel32 | Vista | Asks npfs through the control code the real function uses; fails where the kernel has no answer |
 | `GetNamedPipeServerProcessId` | kernel32 | Vista | Always fails on XP: npfs records neither party and no inference is safe |
 | `GetCurrentProcessorNumber` | kernel32 | Server 2003 | From the CPUID initial APIC ID; a hint, as the real one is too |
+| `GetLogicalProcessorInformation` | kernel32 | XP SP3 | Hands over to the system where it exists. Where it does not, builds the result from `GetSystemInfo`: the processor count is exact, every processor is reported as its own core with no SMT, and no caches are reported. The only entry here whose floor is a service pack rather than a Windows version -- it is what stops a binary loading on SP2 |
 | `SetProcessDPIAware` | user32 | Vista | Reports success: XP has no DPI virtualisation to opt out of, so the state already holds |
 | `RegGetValueW` | advapi32 | Vista | Built on `RegQueryValueExW`: type filter, guaranteed termination, environment expansion |
 | `EventSetInformation` | advapi32 | 8 | Always `ERROR_NOT_SUPPORTED`; XP has no manifest-based provider to describe, and Vista and 7 have the rest of the family but not this |
@@ -83,6 +84,11 @@ Nothing, for Windows XP. The 29 functions a Chromium-based binary statically
 imports and XP SP3 does not export are all present above, measured against a
 real XP SP3 x86 `kernel32.dll` with Electron Legacy's
 `tools/check_win_imports.py`, which lives in that repo rather than this one.
+
+Note the floor that was measured against: XP **SP3**. SP2 is a shorter
+list but not an empty one -- `GetLogicalProcessorInformation` above is
+the first of it, and the method for finding the rest is the same
+`check_imports.py` run against an SP2 `kernel32.dll`.
 
 That is a statement about one binary's needs, not about Win32. A different
 consumer will import functions this list has never heard of, and adding one is

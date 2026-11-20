@@ -45,11 +45,13 @@ EXPORTS
     GetFileInformationByHandleEx = ww_GetFileInformationByHandleEx
     GetFinalPathNameByHandleW = ww_GetFinalPathNameByHandleW
     GetLocaleInfoEx = ww_GetLocaleInfoEx
+    GetLogicalProcessorInformation = ww_GetLogicalProcessorInformation
     GetNamedPipeClientProcessId = ww_GetNamedPipeClientProcessId
     GetNamedPipeServerProcessId = ww_GetNamedPipeServerProcessId
     GetQueuedCompletionStatusEx = ww_GetQueuedCompletionStatusEx
     GetRealNTVersion
     GetTickCount64 = ww_GetTickCount64
+    GetWinWrapVersion
     InitializeConditionVariable = ww_InitializeConditionVariable
     InitializeCriticalSectionEx = ww_InitializeCriticalSectionEx
     InitializeSRWLock = ww_InitializeSRWLock

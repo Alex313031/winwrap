@@ -204,6 +204,42 @@ returned, because the thread may be rescheduled onto another processor, but
 that is equally true of the real function, which is why callers use it to index
 a per-CPU cache rather than to make a decision.
 
+### `GetLogicalProcessorInformation`: the count, not the topology
+
+The one entry here whose floor is a service pack rather than a Windows
+version: XP SP3 and Server 2003 SP1 export this, so the fallback runs only on
+SP2 and earlier, and only on 32-bit — the oldest x64 Windows is Server 2003
+SP1 underneath and has it natively.
+
+What is exact is the processor *count*. It comes from `GetSystemInfo`'s active
+processor mask, which is the same number every other API reports, and the
+`RelationProcessorCore` entries cover exactly that mask.
+
+What is approximated is everything structural:
+
+- every active processor is reported as its own core, with
+  `ProcessorCore.Flags` zero. Telling a core from a hyperthread needs CPUID,
+  so the choice is between understating how many logical processors share a
+  core and overstating how many cores exist; understating is the safer error
+- no `RelationCache` entries at all. Cache sizes and sharing cannot be
+  discovered without CPUID, and inventing them would be worse than omitting
+  them, because a caller cannot tell a guess from a measurement. One that
+  finds no cache entries falls back to its own defaults, which is what a
+  failed call would have made it do anyway
+- one `RelationNumaNode` and one `RelationProcessorPackage`, both covering the
+  whole mask. Anything old enough to lack this function is a single socket
+  with no NUMA, so one entry each describes the machine
+
+The alternative is what YY-Thunks does: read CPUID leaves 0, 1, 0x0B and 0x1F,
+recover the APIC IDs and merge logical processors into real cores. That is
+several hundred lines of x86-only inline assembly, and worth having if
+something ever needs the topology rather than the count.
+
+Worth saying why a shim exists for a function most callers on these systems
+never reach: the MSVC CRT references it while guarding the call behind its own
+version check, so the usual case is a program that imports it and never calls
+it. The import alone stops the image loading on SP2.
+
 ### `SRWLOCK` and `CONDITION_VARIABLE`: a parking lot, not kernel objects
 
 A real reader/writer lock: readers are genuinely concurrent, writers are

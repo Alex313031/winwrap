@@ -2,14 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// System Information functions, including some of our own.
+// Extra functions winwrap supplies for consumers to use.
+//
+// The declarations live in public/winwrap_public.h and nowhere else: these are
+// the only functions here that a consumer calls by name, so the header they
+// are declared in is the one shipped to the consumer, and this file includes
+// that rather than a private copy of the same signatures.
 
-#include "sys.h"
+#include "public/winwrap_public.h"
 
 #include <atomic>
 
 #include "dispatch.h"
-#include "winwrap.h"
+#include "framework.h"
+#include "winwrap_version.h"
 
 namespace {
 
@@ -110,6 +116,26 @@ bool IsRunningOnWine(const char** outWineVer) {
     *outWineVer = wineVer;
   }
   return true;
+}
+
+const wchar_t* GetWinWrapVersion(unsigned int* major, unsigned int* minor,
+                                 unsigned int* build) {
+  // Every one optional, so a caller wanting only the string passes three
+  // nullptrs and a caller wanting only the numbers ignores the return.
+  if (major != nullptr) {
+    *major = WINWRAP_MAJOR_VERSION;
+  }
+  if (minor != nullptr) {
+    *minor = WINWRAP_MINOR_VERSION;
+  }
+  if (build != nullptr) {
+    *build = WINWRAP_BUILD_VERSION;
+  }
+  // A wide string literal, so static storage duration: there is nothing to
+  // free and the pointer outlives any caller. Built from the same three macros
+  // just returned, by winwrap_version.h, so the string and the numbers cannot
+  // disagree about which winwrap this is.
+  return WINWRAP_VERSION_STRING;
 }
 
 } // extern "C"

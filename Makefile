@@ -190,6 +190,7 @@ OBJECTS = \
 	$(OBJDIR)\directories.obj \
 	$(OBJDIR)\dispatch.obj \
 	$(OBJDIR)\etw.obj \
+	$(OBJDIR)\extra.obj \
 	$(OBJDIR)\fibers.obj \
 	$(OBJDIR)\files.obj \
 	$(OBJDIR)\fls.obj \
@@ -203,7 +204,7 @@ OBJECTS = \
 	$(OBJDIR)\process.obj \
 	$(OBJDIR)\registry.obj \
 	$(OBJDIR)\srwlock.obj \
-	$(OBJDIR)\sys.obj \
+	$(OBJDIR)\system.obj \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \
 	$(OBJDIR)\forwarders.obj
@@ -213,7 +214,7 @@ HEADERS = \
 	src\framework.h \
 	src\lock_family.h \
 	src\parking_lot.h \
-	src\sys.h \
+	src\public\winwrap_public.h \
 	src\winwrap.h \
 	src\winwrap_version.h
 
@@ -261,8 +262,14 @@ FORCEREDIRECTS = /INCLUDE:$(ANCHOR)
 # deliberately absent here. /EHsc because the harness streams to std::wcout
 # and formats through std::wostringstream, which the library's /EHs-c- would
 # not support.
-TESTFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /EHsc \
-	/DUSING_WINWRAP /DUNICODE /D_UNICODE /I src /I test \
+# $(FORMDEF) is here as well as in CXXFLAGS, so the test knows which form it
+# was linked against: WINWRAP_DLL for SHARED and WINWRAP_STATIC otherwise.
+# Without it a `nmake SHARED=1 test` compiles a test that cannot tell, and the
+# DllGetVersion coverage -- which only exists in the shared form -- would be
+# skipped while reporting success. test/BUILD.gn does the same through
+# is_component_winwrap.
+TESTFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /EHsc $(FORMDEF) \
+	/DUSING_WINWRAP /DUNICODE /D_UNICODE /I src /I src\public /I test \
 	$(OPTFLAGS) $(CRTFLAG) \
 	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_unittests.pdb
 

@@ -220,6 +220,7 @@
         'src/dispatch.cc',
         'src/dispatch.h',
         'src/etw.cc',
+        'src/extra.cc',
         'src/fibers.cc',
         'src/files.cc',
         'src/fls.cc',
@@ -234,12 +235,12 @@
         'src/parking_lot.h',
         'src/pipes.cc',
         'src/process.cc',
+        'src/public/winwrap_public.h',
         'src/registry.cc',
         'src/srwlock.cc',
         'src/forwarders_x86.asm',
         'src/forwarders_x64.asm',
-        'src/sys.cc',
-        'src/sys.h',
+        'src/system.cc',
         'src/threads.cc',
         'src/tick_count.cc',
         'src/winwrap.h',
@@ -286,8 +287,18 @@
         'NTDDI_VERSION=0x0A000000',
       ],
       'direct_dependent_settings': {
+        # src/public and not src, matching winwrap_public_config in BUILD.gn,
+        # so a consumer of either build system sees the same one header.
+        # Exposing src here instead would put winwrap.h on a GYP consumer's
+        # include path and not a GN one, and the documented
+        # #include "winwrap_public.h" would resolve in only one of them.
+        #
+        # The ww_* shims are reached through the import table rather than by
+        # name -- a consumer never writes ww_GetTickCount64, it writes
+        # GetTickCount64 and winwrap owns the __imp_ slot behind it -- so
+        # winwrap.h offers a consumer only names nobody should be calling.
         'include_dirs': [
-          'src',
+          'src/public',
         ],
         'defines': [
           'USING_WINWRAP',
@@ -296,7 +307,7 @@
       'msvs_settings': {
         'VCCLCompilerTool': {
           'AdditionalOptions': [
-            # The equivalent of winwrap_internal_config in BUILD.gn. These go
+            # The equivalent of winwrap_private_config in BUILD.gn. These go
             # in AdditionalOptions rather than 'defines', and in this order,
             # because MSBuild emits AdditionalOptions last on the command line
             # and cl honours /D and /U in command-line order -- so these are
@@ -327,7 +338,7 @@
             # OVERLAPPED_ENTRY is the case that caught this -- still visible
             # at _WIN32_WINNT=0x0501 until NTDDI came down as well.
             '/DNTDDI_VERSION=0x05010300',  # NTDDI_WINXPSP3
-            # WINVER as well, which winwrap_internal_config does not need to
+            # WINVER as well, which winwrap_private_config does not need to
             # touch because Chromium's GN build does not set it. GYP-era
             # common.gypi does, and some SDK headers gate on WINVER rather
             # than on either of the above.
@@ -342,6 +353,8 @@
             # any other /std: removed from this target, this is the only one
             # cl sees.
             '/std:c++17',
+            # Make MSVC emit the real C++ standard, not 199711L
+            '/Zc:__cplusplus',
           ],
 
           # Remove every /std: except winwrap's own, so that nothing is
@@ -385,8 +398,18 @@
       'dependencies': [
         'winwrap',
       ],
+      # All three named here rather than leaning on the dependency, which
+      # supplies src/public and nothing else -- that is the consumer's view,
+      # and this test is not a consumer: it includes <winwrap.h> to reach the
+      # ww_* shims by name. src/public is still listed because the test
+      # includes <winwrap_public.h> the way a consumer writes it, so that
+      # moving that header out from under the public surface breaks the test
+      # rather than passing quietly. Matches test/BUILD.gn, which names the
+      # same three.
       'include_dirs': [
         'test',
+        'src',
+        'src/public',
       ],
       'sources': [
         'test/winwrap_unittest.cc',

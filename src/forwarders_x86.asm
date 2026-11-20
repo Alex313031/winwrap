@@ -76,6 +76,7 @@ EXTERN _ww_FlsAlloc@4 : PROC
 EXTERN _ww_FlsGetValue@4 : PROC
 EXTERN _ww_FlsSetValue@8 : PROC
 EXTERN _ww_FlsFree@4 : PROC
+EXTERN _ww_GetLogicalProcessorInformation@8 : PROC
 EXTERN _ww_TryAcquireSRWLockExclusive@4 : PROC
 EXTERN _ww_TryAcquireSRWLockShared@4 : PROC
 EXTERN _ww_SetCurrentProcessExplicitAppUserModelID@4 : PROC
@@ -171,6 +172,8 @@ PUBLIC __imp__FlsSetValue@8
 __imp__FlsSetValue@8 dd _ww_FlsSetValue@8
 PUBLIC __imp__FlsFree@4
 __imp__FlsFree@4 dd _ww_FlsFree@4
+PUBLIC __imp__GetLogicalProcessorInformation@8
+__imp__GetLogicalProcessorInformation@8 dd _ww_GetLogicalProcessorInformation@8
 PUBLIC __imp__TryAcquireSRWLockExclusive@4
 __imp__TryAcquireSRWLockExclusive@4 dd _ww_TryAcquireSRWLockExclusive@4
 PUBLIC __imp__TryAcquireSRWLockShared@4

@@ -168,6 +168,20 @@ WINWRAP_REDIRECT(FlsGetValue, 4);
 WINWRAP_REDIRECT(FlsSetValue, 8);
 WINWRAP_REDIRECT(FlsFree, 4);
 
+// --- Present on XP SP3, missing on SP2 and earlier -------------------------
+//
+// Its own section because the heading above does not describe it: XP SP3 and
+// Server 2003 SP1 export this, so the slot is dead on every system the rest of
+// this file is for. The floor it moves is a service pack rather than a Windows
+// version, which is why the measurement in FUNCTION_LIST.md says XP SP3 -- and
+// why finding the others like it means running check_imports.py against an SP2
+// kernel32 rather than against XP's.
+//
+// 8 because both parameters are pointers. See system.cc for what the fallback
+// can and cannot know; on x64 it never runs, the oldest x64 Windows being
+// Server 2003 SP1 underneath.
+WINWRAP_REDIRECT(GetLogicalProcessorInformation, 8);
+
 // --- Missing on XP and Vista alike -----------------------------------------
 WINWRAP_REDIRECT(TryAcquireSRWLockExclusive, 4);
 WINWRAP_REDIRECT(TryAcquireSRWLockShared, 4);

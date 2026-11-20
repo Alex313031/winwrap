@@ -4,21 +4,22 @@
 
 // winwrap.dll functions
 
-// clang-format off
 #include "winwrap.h"
 
-#include <shlwapi.h>
-// clang-format on
+#ifdef WINWRAP_STATIC
+ #error This file should only be built in shared dll winwrap builds
+#endif // WINWRAP_STATIC
 
 extern "C" {
 
+// Maybe use later to change load behavior
 [[maybe_unused]] static bool was_static_load = false;
 
 // Main entry point when loading/unloading .DLL from address space of another process/thread.
 // MUST have exact function signature BOOL WINAPI, and C linkage: the CRT's
 // DllMainCRTStartup looks for the unmangled name, and would silently fall back
-// to its own do-nothing DllMain if this one were mangled. Not an export: the loader
-// reaches it through the entry point, not the export table.
+// to its own do-nothing DllMain if this one were mangled. Not an export and no public definition:
+// the loader reaches it through the entry point, not the export table.
 // See https://www.transmissionzero.co.uk/computing/advanced-mingw-dll-topics/
 BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD dwReason, LPVOID lpvReserved) {
   UNREFERENCED_PARAMETER(hInstDLL);
@@ -59,6 +60,11 @@ BOOL WINAPI DllMain(HINSTANCE hInstDLL, DWORD dwReason, LPVOID lpvReserved) {
 // expects): STDAPI shape, i.e. C linkage + stdcall, exported undecorated via
 // the .def. Fills whichever of DLLVERSIONINFO / DLLVERSIONINFO2 the caller
 // sized. No exceptions cross this boundary - a bad size is a return code.
+// No public definition for DllGetVersion - multiple system dlls use the same
+// function name - use GetProcAddress on the .dll in question instead. That is
+// shlwapi.h's own instruction where it declares the protocol, not a preference
+// of ours: "The caller should always GetProcAddress("DllGetVersion"), not
+// implicitly link to it."
 HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi) {
   if (pDvi == nullptr) {
     return E_POINTER;

@@ -18,8 +18,11 @@
 // signature of the function it stands in for, so the redirect in
 // static_redirects.cc is a plain assignment with no casting.
 
+// Deliberately not public/winwrap_public.h. This header is the shims, and the
+// three functions in that one are winwrap's own API; nothing here calls them,
+// so including it would only re-export a consumer header through a private one
+// and give two paths to the same declarations.
 #include "framework.h"
-#include "sys.h"
 #include "winwrap_version.h"
 
 extern "C" {
@@ -134,6 +137,15 @@ BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                    PINIT_ONCE_FN InitFn,
                                    PVOID Parameter,
                                    LPVOID* Context);
+
+// --- System information ----------------------------------------------------
+// GetLogicalProcessorInformation: XP SP3 and Server 2003 SP1. Its absence is
+// what stops an otherwise-fine binary loading on XP SP2, and the CRT imports
+// it whether or not anything ever calls it. See system.cc for what the fallback
+// can and cannot know.
+BOOL WINAPI ww_GetLogicalProcessorInformation(
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
+    PDWORD ReturnedLength);
 
 // --- Locale and string -----------------------------------------------------
 // All four Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
@@ -263,6 +275,10 @@ BOOL WINAPI ww_FlsFree(DWORD dwFlsIndex);
 // own sources compile at _WIN32_WINNT=0x0501, where the SDK hides them.
 HRESULT WINAPI ww_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID);
 HRESULT WINAPI ww_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID);
+
+#ifdef WINWRAP_DLL
+HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi);
+#endif // WINWRAP_DLL
 
 } // extern "C"
 
