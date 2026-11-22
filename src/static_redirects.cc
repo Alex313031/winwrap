@@ -155,6 +155,17 @@ WINWRAP_REDIRECT(GetLocaleInfoEx, 16);
 WINWRAP_REDIRECT(LCMapStringEx, 36);
 WINWRAP_REDIRECT(CompareStringEx, 36);
 
+// The LCID/name mapping and the four formatters built on it. ResolveLocaleName
+// is Windows 7 rather than Vista, so its slot is live one Windows later than
+// the rest of this group -- see locale.cc.
+WINWRAP_REDIRECT(LocaleNameToLCID, 8);
+WINWRAP_REDIRECT(LCIDToLocaleName, 16);
+WINWRAP_REDIRECT(ResolveLocaleName, 12);
+WINWRAP_REDIRECT(GetDateFormatEx, 28);
+WINWRAP_REDIRECT(GetTimeFormatEx, 24);
+WINWRAP_REDIRECT(GetNumberFormatEx, 24);
+WINWRAP_REDIRECT(GetCurrencyFormatEx, 24);
+
 WINWRAP_REDIRECT(GetQueuedCompletionStatusEx, 24);
 WINWRAP_REDIRECT(SetFileCompletionNotificationModes, 8);
 

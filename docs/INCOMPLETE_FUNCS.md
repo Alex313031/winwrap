@@ -204,6 +204,54 @@ returned, because the thread may be rescheduled onto another processor, but
 that is equally true of the real function, which is why callers use it to index
 a per-CPU cache rather than to make a decision.
 
+### `ResolveLocaleName`: normalises, but does not fall back
+
+Built from `LocaleNameToLCID` and `LCIDToLocaleName`, so a name goes to an LCID
+and comes back as whatever the installed locale calls itself. That normalises
+what can be normalised -- case, and a name whose pieces are in the right order:
+`EN-us` resolves to `en-US`.
+
+The half that is missing is the one the name promises. The real function walks
+up a tag until something matches, so `en-XY` on a machine with no such locale
+resolves to `en`, and a script-tagged or three-letter tag resolves to its
+nearest relative. This resolves a name the system has and fails on one it does
+not.
+
+Returning a wrong neighbour would be worse than failing. A caller handed the
+wrong locale formats dates and numbers in it with no sign that anything went
+amiss, where a zero is visible at the call site. ICU, the only caller in the
+tree, reads a zero as `U_UNSUPPORTED_ERROR` and carries on with its own data --
+which is a better outcome than a plausible-looking wrong locale, and one a
+partial answer would have denied it.
+
+The same applies to `LocaleNameToLCID` and `LCIDToLocaleName`, which resolve
+only the names `NameForLcid` can rebuild out of `LOCALE_SISO639LANGNAME` and
+`LOCALE_SISO3166CTRYNAME` -- language, or language plus country. A name whose
+Windows spelling carries a script, such as `zh-Hans` or `sr-Latn-RS`, is not
+one of those. See the note in `locale.cc` for why asking the running system
+beats carrying a table of every name, and what it costs.
+
+`LOCALE_ALLOW_NEUTRAL_NAMES` is accepted rather than rejected as an unknown
+flag, and then ignored, which is not a gap: the flag's effect on a real Windows
+is to permit a name with no region instead of failing, and that is what this
+does with or without it, because a locale with no country simply produces no
+country. ICU passes the flag on every call, so refusing it would have failed
+the only caller there is.
+
+### `GetDateFormatEx`: `lpCalendar` is refused
+
+The one parameter the `Ex` form added that has no older counterpart. It selects
+a calendar for that call alone, and on XP a calendar is a property of the
+locale, set through `LOCALE_ICALENDARTYPE` -- there is no argument to
+`GetDateFormatW` for it.
+
+So a non-null `lpCalendar` fails with `ERROR_INVALID_PARAMETER` rather than
+being dropped. A caller that asked for the Hijri calendar and silently got the
+Gregorian one has a wrong date, not an approximate one, and dates are copied
+into records and compared. The other three formatters take nothing that needs
+refusing: every parameter past the locale name means the same thing to the `Ex`
+form and to the call underneath it.
+
 ### `GetLogicalProcessorInformation`: the count, not the topology
 
 The one entry here whose floor is a service pack rather than a Windows

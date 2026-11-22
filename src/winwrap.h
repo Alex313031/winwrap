@@ -148,9 +148,16 @@ BOOL WINAPI ww_GetLogicalProcessorInformation(
     PDWORD ReturnedLength);
 
 // --- Locale and string -----------------------------------------------------
-// All four Vista+. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
+// All Vista+ except where noted. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
 #if !defined(LOCALE_NAME_MAX_LENGTH)
  #define LOCALE_NAME_MAX_LENGTH 85
+#endif
+
+// Gated on WINVER >= 0x0601 in winnls.h, and needed at XP's level because ICU
+// passes it to LCIDToLocaleName -- see locale.cc. Spelled out rather than
+// relied on, for the same reason as LOCALE_NAME_MAX_LENGTH above.
+#if !defined(LOCALE_ALLOW_NEUTRAL_NAMES)
+ #define LOCALE_ALLOW_NEUTRAL_NAMES 0x08000000
 #endif
 
 int WINAPI ww_CompareStringOrdinal(LPCWCH lpString1,
@@ -177,6 +184,42 @@ int WINAPI ww_CompareStringEx(LPCWSTR lpLocaleName,
                               LPNLSVERSIONINFO lpVersionInformation,
                               LPVOID lpReserved,
                               LPARAM lParam);
+
+// The two halves of the LCID/name mapping, and the resolver built on both.
+// LCIDToLocaleName and LocaleNameToLCID are Vista; ResolveLocaleName is
+// Windows 7, and is the odd one out of this file in that respect.
+LCID WINAPI ww_LocaleNameToLCID(LPCWSTR lpName, DWORD dwFlags);
+int WINAPI ww_LCIDToLocaleName(LCID Locale, LPWSTR lpName, int cchName, DWORD dwFlags);
+int WINAPI ww_ResolveLocaleName(LPCWSTR lpNameToResolve, LPWSTR lpLocaleName, int cchLocaleName);
+
+// The four formatters, all Vista and all the older call addressed by locale
+// name. NUMBERFMTW, CURRENCYFMTW and SYSTEMTIME are all available at XP's
+// level, so only the functions needed shimming.
+int WINAPI ww_GetDateFormatEx(LPCWSTR lpLocaleName,
+                              DWORD dwFlags,
+                              const SYSTEMTIME* lpDate,
+                              LPCWSTR lpFormat,
+                              LPWSTR lpDateStr,
+                              int cchDate,
+                              LPCWSTR lpCalendar);
+int WINAPI ww_GetTimeFormatEx(LPCWSTR lpLocaleName,
+                              DWORD dwFlags,
+                              const SYSTEMTIME* lpTime,
+                              LPCWSTR lpFormat,
+                              LPWSTR lpTimeStr,
+                              int cchTime);
+int WINAPI ww_GetNumberFormatEx(LPCWSTR lpLocaleName,
+                                DWORD dwFlags,
+                                LPCWSTR lpValue,
+                                const NUMBERFMTW* lpFormat,
+                                LPWSTR lpNumberStr,
+                                int cchNumber);
+int WINAPI ww_GetCurrencyFormatEx(LPCWSTR lpLocaleName,
+                                  DWORD dwFlags,
+                                  LPCWSTR lpValue,
+                                  const CURRENCYFMTW* lpFormat,
+                                  LPWSTR lpCurrencyStr,
+                                  int cchCurrency);
 
 // --- ETW manifest-based providers ------------------------------------------
 // advapi32. Not emulable -- XP's ETW has no manifest-based half at all -- so
