@@ -138,6 +138,33 @@ BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                    PVOID Parameter,
                                    LPVOID* Context);
 
+// --- Thread pool timers and waits ------------------------------------------
+// All Vista+, and built on XP's timer queues rather than wrapped. TP_TIMER,
+// TP_WAIT, TP_CALLBACK_INSTANCE and both callback types are plain typedefs in
+// winnt.h with no version gate, so only the functions needed declaring.
+//
+// A handle from these is winwrap's own structure and not an OS object, so it
+// must be closed by the copy of winwrap that made it, and the
+// PTP_CALLBACK_INSTANCE a callback receives is not a real one. See
+// threadpool.cc, which is also where the Concurrency Runtime's part in all
+// this is written down.
+PTP_TIMER WINAPI ww_CreateThreadpoolTimer(PTP_TIMER_CALLBACK pfnti,
+                                          PVOID pv,
+                                          PTP_CALLBACK_ENVIRON pcbe);
+VOID WINAPI ww_SetThreadpoolTimer(PTP_TIMER pti,
+                                  PFILETIME pftDueTime,
+                                  DWORD msPeriod,
+                                  DWORD msWindowLength);
+VOID WINAPI ww_WaitForThreadpoolTimerCallbacks(PTP_TIMER pti, BOOL fCancelPendingCallbacks);
+VOID WINAPI ww_CloseThreadpoolTimer(PTP_TIMER pti);
+PTP_WAIT WINAPI ww_CreateThreadpoolWait(PTP_WAIT_CALLBACK pfnwa,
+                                        PVOID pv,
+                                        PTP_CALLBACK_ENVIRON pcbe);
+VOID WINAPI ww_SetThreadpoolWait(PTP_WAIT pwa, HANDLE h, PFILETIME pftTimeout);
+VOID WINAPI ww_WaitForThreadpoolWaitCallbacks(PTP_WAIT pwa, BOOL fCancelPendingCallbacks);
+VOID WINAPI ww_CloseThreadpoolWait(PTP_WAIT pwa);
+VOID WINAPI ww_FreeLibraryWhenCallbackReturns(PTP_CALLBACK_INSTANCE pci, HMODULE mod);
+
 // --- System information ----------------------------------------------------
 // GetLogicalProcessorInformation: XP SP3 and Server 2003 SP1. Its absence is
 // what stops an otherwise-fine binary loading on XP SP2, and the CRT imports

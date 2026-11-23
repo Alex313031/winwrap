@@ -174,6 +174,21 @@ WINWRAP_REDIRECT(CancelSynchronousIo, 4);
 
 WINWRAP_REDIRECT(InitializeCriticalSectionEx, 12);
 
+// The thread pool timer and wait objects. These are the entries whose handles
+// are winwrap's own allocations rather than OS objects, so a process with two
+// statically linked copies of winwrap has two incompatible sets -- see the
+// note at the top of threadpool.cc. Nothing about the redirects themselves is
+// unusual; the coupling is in what the handles mean.
+WINWRAP_REDIRECT(CreateThreadpoolTimer, 12);
+WINWRAP_REDIRECT(SetThreadpoolTimer, 16);
+WINWRAP_REDIRECT(WaitForThreadpoolTimerCallbacks, 8);
+WINWRAP_REDIRECT(CloseThreadpoolTimer, 4);
+WINWRAP_REDIRECT(CreateThreadpoolWait, 12);
+WINWRAP_REDIRECT(SetThreadpoolWait, 12);
+WINWRAP_REDIRECT(WaitForThreadpoolWaitCallbacks, 8);
+WINWRAP_REDIRECT(CloseThreadpoolWait, 4);
+WINWRAP_REDIRECT(FreeLibraryWhenCallbackReturns, 8);
+
 WINWRAP_REDIRECT(FlsAlloc, 4);
 WINWRAP_REDIRECT(FlsGetValue, 4);
 WINWRAP_REDIRECT(FlsSetValue, 8);

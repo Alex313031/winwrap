@@ -61,6 +61,15 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetTickCount64` | kernel32 | Vista | Built on the 32-bit counter plus a wrap extension |
 | `InitializeCriticalSectionEx` | kernel32 | Vista | Forwards to `InitializeCriticalSectionAndSpinCount`, flag folded into the spin count |
 | `InitOnceExecuteOnce` | kernel32 | Vista | Tagged-pointer state machine. libuv's `uv_once()` is built directly on this |
+| `CreateThreadpoolTimer` | kernel32 | Vista | Allocates winwrap's own `TP_TIMER`; the callback pool is `CreateTimerQueueTimer`'s. Handles do not cross modules -- see INCOMPLETE_FUNCS.md |
+| `SetThreadpoolTimer` | kernel32 | Vista | `CreateTimerQueueTimer` or `ChangeTimerQueueTimer`. A null due time cancels, and does so synchronously so no queued callback slips through |
+| `WaitForThreadpoolTimerCallbacks` | kernel32 | Vista | Waits on an idle event the trampoline maintains, since the legacy API has no wait of its own short of deleting the timer |
+| `CloseThreadpoolTimer` | kernel32 | Vista | Waits for a running callback rather than racing it. Called from inside one, it hands the teardown to a work item, which is the only context able to wait for the dispatcher |
+| `CreateThreadpoolWait` | kernel32 | Vista | Allocates winwrap's own `TP_WAIT`; same module caveat as the timer |
+| `SetThreadpoolWait` | kernel32 | Vista | `RegisterWaitForSingleObject` with `WT_EXECUTEONLYONCE`, which is the Vista object's one-shot contract rather than a simplification |
+| `WaitForThreadpoolWaitCallbacks` | kernel32 | Vista | The wait's counterpart to the timer's, on the same idle event |
+| `CloseThreadpoolWait` | kernel32 | Vista | `UnregisterWaitEx`, waiting for the callback unless called from it, which takes the same work item as the timer |
+| `FreeLibraryWhenCallbackReturns` | kernel32 | Vista | Records the module against the running callback, and the trampoline unloads it once that callback returns -- the deferral is what makes the function worth having. Per callback, so two concurrent ones do not overwrite each other |
 | `InitializeSRWLock` | kernel32 | Vista | Real reader/writer lock; whole state is the one pointer, waiters park by address |
 | `AcquireSRWLockExclusive` | kernel32 | Vista | |
 | `ReleaseSRWLockExclusive` | kernel32 | Vista | |

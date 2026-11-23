@@ -27,11 +27,15 @@ EXPORTS
     AcquireSRWLockShared = ww_AcquireSRWLockShared
     CancelIoEx = ww_CancelIoEx
     CancelSynchronousIo = ww_CancelSynchronousIo
+    CloseThreadpoolTimer = ww_CloseThreadpoolTimer
+    CloseThreadpoolWait = ww_CloseThreadpoolWait
     CompareStringEx = ww_CompareStringEx
     CompareStringOrdinal = ww_CompareStringOrdinal
     ConvertThreadToFiberEx = ww_ConvertThreadToFiberEx
     CreateFiberEx = ww_CreateFiberEx
     CreateSymbolicLinkW = ww_CreateSymbolicLinkW
+    CreateThreadpoolTimer = ww_CreateThreadpoolTimer
+    CreateThreadpoolWait = ww_CreateThreadpoolWait
     DllGetVersion
     EventSetInformation = ww_EventSetInformation
     EventWriteTransfer = ww_EventWriteTransfer
@@ -39,6 +43,7 @@ EXPORTS
     FlsFree = ww_FlsFree
     FlsGetValue = ww_FlsGetValue
     FlsSetValue = ww_FlsSetValue
+    FreeLibraryWhenCallbackReturns = ww_FreeLibraryWhenCallbackReturns
     GetCurrencyFormatEx = ww_GetCurrencyFormatEx
     GetCurrentProcessExplicitAppUserModelID = ww_GetCurrentProcessExplicitAppUserModelID
     GetCurrentProcessorNumber = ww_GetCurrentProcessorNumber
@@ -76,11 +81,15 @@ EXPORTS
     SetFileCompletionNotificationModes = ww_SetFileCompletionNotificationModes
     SetFileInformationByHandle = ww_SetFileInformationByHandle
     SetProcessDPIAware = ww_SetProcessDPIAware
+    SetThreadpoolTimer = ww_SetThreadpoolTimer
+    SetThreadpoolWait = ww_SetThreadpoolWait
     SleepConditionVariableCS = ww_SleepConditionVariableCS
     SleepConditionVariableSRW = ww_SleepConditionVariableSRW
     TryAcquireSRWLockExclusive = ww_TryAcquireSRWLockExclusive
     TryAcquireSRWLockShared = ww_TryAcquireSRWLockShared
     UnregisterApplicationRestart = ww_UnregisterApplicationRestart
+    WaitForThreadpoolTimerCallbacks = ww_WaitForThreadpoolTimerCallbacks
+    WaitForThreadpoolWaitCallbacks = ww_WaitForThreadpoolWaitCallbacks
     WakeAllConditionVariable = ww_WakeAllConditionVariable
     WakeConditionVariable = ww_WakeConditionVariable
     winwrap_RegGetValueFallbackW

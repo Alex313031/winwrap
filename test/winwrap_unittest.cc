@@ -1376,6 +1376,381 @@ namespace {
     ::CloseHandle(server);
   }
 
+  // --- Thread pool timers and waits ------------------------------------------
+  //
+  // The most directly testable group in this file. Unlike most shims, whether
+  // these work is observable from the outside: a timer either fires or it does
+  // not. So these check behaviour rather than refusals, and they check the same
+  // behaviour on both paths -- the system's implementation on a current
+  // Windows, winwrap's timer-queue one below Vista.
+
+  // A thread pool callback carries no state of its own, so observations land
+  // here. Read only after the completion event has been waited on, which is
+  // the barrier that makes plain reads of the rest safe.
+  struct TimerSighting {
+    HANDLE done;
+    PVOID context;
+    PTP_TIMER timer;
+    PTP_CALLBACK_INSTANCE instance;
+    LONG calls;
+  };
+  TimerSighting g_timer = {};
+
+  VOID NTAPI TimerSeen(PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_TIMER timer) {
+    g_timer.context  = context;
+    g_timer.timer    = timer;
+    g_timer.instance = instance;
+    ::InterlockedIncrement(&g_timer.calls);
+    ::SetEvent(g_timer.done);
+  }
+
+  struct WaitSighting {
+    HANDLE done;
+    PVOID context;
+    PTP_WAIT wait;
+    TP_WAIT_RESULT result;
+    LONG calls;
+  };
+  WaitSighting g_wait = {};
+
+  VOID NTAPI WaitSeen(PTP_CALLBACK_INSTANCE /*instance*/,
+                      PVOID context,
+                      PTP_WAIT wait,
+                      TP_WAIT_RESULT result) {
+    g_wait.context = context;
+    g_wait.wait    = wait;
+    g_wait.result  = result;
+    ::InterlockedIncrement(&g_wait.calls);
+    ::SetEvent(g_wait.done);
+  }
+
+  // For the overlapping-callback case, which is the one a single "current
+  // callback" field cannot represent. Counts how many callbacks of the same
+  // timer are inside at once, and the highest that ever got.
+  struct OverlapSighting {
+    LONG inside;
+    LONG peak;
+    LONG calls;
+  };
+  OverlapSighting g_overlap = {};
+
+  VOID NTAPI OverlapSeen(PTP_CALLBACK_INSTANCE /*instance*/,
+                         PVOID /*context*/,
+                         PTP_TIMER /*timer*/) {
+    const LONG now = ::InterlockedIncrement(&g_overlap.inside);
+    for (LONG seen = g_overlap.peak; now > seen; seen = g_overlap.peak) {
+      if (::InterlockedCompareExchange(&g_overlap.peak, now, seen) == seen) {
+        break;
+      }
+    }
+    ::InterlockedIncrement(&g_overlap.calls);
+    // Longer than the period it will be armed with, which is what makes the
+    // next firing land on top of this one.
+    ::Sleep(120);
+    ::InterlockedDecrement(&g_overlap.inside);
+  }
+
+  // For closing a timer from inside its own callback, which the API permits
+  // and which is the one teardown that can neither free nor wait on the spot.
+  struct SelfCloseSighting {
+    HANDLE done;
+    LONG calls;
+    LONG closed;
+  };
+  SelfCloseSighting g_self_close = {};
+
+  VOID NTAPI SelfClosing(PTP_CALLBACK_INSTANCE /*instance*/, PVOID /*context*/, PTP_TIMER timer) {
+    ::InterlockedIncrement(&g_self_close.calls);
+    // Once only. A period already queued behind this one may still run, on
+    // Windows as much as here, and closing a second time would be this test's
+    // bug rather than anything it was looking for.
+    if (::InterlockedCompareExchange(&g_self_close.closed, 1, 0) == 0) {
+      ::CloseThreadpoolTimer(timer);
+      ::SetEvent(g_self_close.done);
+    }
+  }
+
+  // A due time the way both the real function and the shim read it: negative
+  // means relative, in 100ns units.
+  FILETIME RelativeDueTime(LONGLONG ms) {
+    LARGE_INTEGER due;
+    due.QuadPart = -(ms * 10000);
+    FILETIME ft;
+    ft.dwLowDateTime  = due.LowPart;
+    ft.dwHighDateTime = static_cast<DWORD>(due.HighPart);
+    return ft;
+  }
+
+  void TestThreadpoolTimer() {
+    std::wcout << L"  CreateThreadpoolTimer, SetThreadpoolTimer, CloseThreadpoolTimer"
+               << std::endl;
+
+    const bool winwrap_answers = !SystemHas(L"kernel32.dll", "CreateThreadpoolTimer");
+
+    g_timer      = TimerSighting{};
+    g_timer.done = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    CHECK(g_timer.done != nullptr, L"could not create the completion event");
+    if (g_timer.done == nullptr) {
+      return;
+    }
+
+    int marker  = 0;
+    PTP_TIMER t = ::CreateThreadpoolTimer(TimerSeen, &marker, nullptr);
+    CHECK(t != nullptr, L"CreateThreadpoolTimer failed with " << Hex(::GetLastError()));
+    if (t == nullptr) {
+      ::CloseHandle(g_timer.done);
+      return;
+    }
+
+    // One shot, soon. A generous wait, because this is a pool thread being
+    // scheduled rather than a tight loop, and a slow machine is not a defect.
+    FILETIME due = RelativeDueTime(50);
+    ::SetThreadpoolTimer(t, &due, 0, 0);
+    const DWORD fired = ::WaitForSingleObject(g_timer.done, 10000);
+    CHECK(fired == WAIT_OBJECT_0,
+          L"the one-shot timer did not fire; wait returned " << Hex(fired));
+
+    if (fired == WAIT_OBJECT_0) {
+      CHECK(g_timer.calls == 1, L"fired " << g_timer.calls << L" times, expected once");
+      CHECK(g_timer.context == &marker, L"the callback got the wrong context");
+      // The Timer argument has to be the handle the caller holds, or a callback
+      // cannot re-arm or close the thing that called it.
+      CHECK(g_timer.timer == t, L"the callback was handed a different PTP_TIMER");
+      CHECK(g_timer.instance != nullptr, L"the callback got a null callback instance");
+    }
+
+    // Armed again with nothing in between -- no cancel, no drain. The handle
+    // underneath is a one-shot that has already expired, which the legacy
+    // ChangeTimerQueueTimer will not move, so an implementation that reaches
+    // for it here loses the re-arm without any error to show for it.
+    ::ResetEvent(g_timer.done);
+    g_timer.calls = 0;
+    due           = RelativeDueTime(50);
+    ::SetThreadpoolTimer(t, &due, 0, 0);
+    const DWORD refired = ::WaitForSingleObject(g_timer.done, 10000);
+    CHECK(refired == WAIT_OBJECT_0,
+          L"a one-shot re-armed after firing never fired again; wait returned " << Hex(refired));
+
+    ::WaitForThreadpoolTimerCallbacks(t, TRUE);
+
+    // Cancellation has to mean it. Arm, cancel with a null due time, and
+    // confirm nothing arrives -- this is the case where a non-blocking teardown
+    // lets one already-queued callback through anyway.
+    ::ResetEvent(g_timer.done);
+    g_timer.calls = 0;
+    due           = RelativeDueTime(60);
+    ::SetThreadpoolTimer(t, &due, 0, 0);
+    ::SetThreadpoolTimer(t, nullptr, 0, 0);
+    const DWORD after_cancel = ::WaitForSingleObject(g_timer.done, 500);
+    CHECK(after_cancel == WAIT_TIMEOUT,
+          L"a cancelled timer fired anyway (" << g_timer.calls << L" call(s))");
+
+    // Periodic, then stopped. Two firings is enough to show the period is
+    // honoured without making the test depend on timing precision.
+    ::ResetEvent(g_timer.done);
+    g_timer.calls = 0;
+    due           = RelativeDueTime(20);
+    ::SetThreadpoolTimer(t, &due, 25, 0);
+    ::Sleep(600);
+    ::SetThreadpoolTimer(t, nullptr, 0, 0);
+    ::WaitForThreadpoolTimerCallbacks(t, TRUE);
+    const LONG periodic = g_timer.calls;
+    std::wcout << L"    periodic timer fired " << periodic << L" time(s) in 600ms" << std::endl;
+    CHECK(periodic >= 2, L"a 25ms periodic timer fired only " << periodic << L" time(s)");
+
+    // And nothing more after it was stopped and drained.
+    const LONG settled = g_timer.calls;
+    ::Sleep(200);
+    CHECK(g_timer.calls == settled, L"the timer fired again after being stopped and drained");
+
+    ::CloseThreadpoolTimer(t);
+    ::CloseHandle(g_timer.done);
+
+    // A period shorter than the callback, so two callbacks of the same timer
+    // overlap. The real pool allows this and so does the emulation, and the
+    // bookkeeping either side of the callback has to be per invocation to
+    // survive it: with one "current callback thread" per object, the first to
+    // finish declares the object idle while the second is still inside it.
+    //
+    // The assertion is what that would break. Once the drain returns, no
+    // callback may still be running -- an early return there is what lets a
+    // close free the object under a live callback.
+    g_overlap   = OverlapSighting{};
+    PTP_TIMER o = ::CreateThreadpoolTimer(OverlapSeen, nullptr, nullptr);
+    CHECK(o != nullptr, L"CreateThreadpoolTimer failed with " << Hex(::GetLastError()));
+    if (o != nullptr) {
+      due = RelativeDueTime(20);
+      ::SetThreadpoolTimer(o, &due, 30, 0);
+      ::Sleep(500);
+      ::SetThreadpoolTimer(o, nullptr, 0, 0);
+      ::WaitForThreadpoolTimerCallbacks(o, TRUE);
+
+      CHECK(g_overlap.inside == 0, L"the drain returned with " << g_overlap.inside
+                                                               << L" callback(s) still running");
+      const LONG drained = g_overlap.calls;
+      ::Sleep(200);
+      CHECK(g_overlap.calls == drained,
+            L"a drained periodic timer fired again (" << drained << L" -> " << g_overlap.calls
+                                                      << L")");
+      std::wcout << L"    overlapping callbacks: " << g_overlap.calls << L" call(s), peak "
+                 << g_overlap.peak << L" at once" << std::endl;
+      if (g_overlap.peak < 2) {
+        // Not a failure: whether they overlap is the scheduler's business, and
+        // a single-processor or heavily loaded machine may serialise them.
+        std::wcout << L"    note: they did not overlap here, so that path went unexercised"
+                   << std::endl;
+      }
+      ::CloseThreadpoolTimer(o);
+    }
+
+    // Closed from inside its own callback, and periodic so there is something
+    // queued behind the callback doing the closing. Nothing to assert on the
+    // object itself -- it is gone, which is the point -- so what is checked is
+    // that the process survives the teardown and the firing stops. Under a
+    // debugger or page heap this is also where a premature free would show.
+    g_self_close      = SelfCloseSighting{};
+    g_self_close.done = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    PTP_TIMER s       = g_self_close.done != nullptr
+                            ? ::CreateThreadpoolTimer(SelfClosing, nullptr, nullptr)
+                            : nullptr;
+    CHECK(s != nullptr, L"could not set up the self-closing timer");
+    if (s != nullptr) {
+      due = RelativeDueTime(20);
+      ::SetThreadpoolTimer(s, &due, 20, 0);
+      const DWORD closed = ::WaitForSingleObject(g_self_close.done, 10000);
+      CHECK(closed == WAIT_OBJECT_0, L"the self-closing timer never fired; got " << Hex(closed));
+      // Long enough for anything already queued to run and for the deferred
+      // teardown to finish, then long enough again to see that it stayed quiet.
+      ::Sleep(300);
+      const LONG settled_calls = g_self_close.calls;
+      ::Sleep(300);
+      CHECK(g_self_close.calls == settled_calls,
+            L"a timer closed from its own callback kept firing (" << settled_calls << L" -> "
+                                                                  << g_self_close.calls << L")");
+      std::wcout << L"    closed from inside its callback after " << g_self_close.calls
+                 << L" call(s)" << std::endl;
+    }
+    if (g_self_close.done != nullptr) {
+      ::CloseHandle(g_self_close.done);
+    }
+
+    std::wcout << (winwrap_answers ? L"    answered by winwrap (timer queues)"
+                                   : L"    answered by kernel32")
+               << std::endl;
+  }
+
+  void TestThreadpoolWait() {
+    std::wcout << L"  CreateThreadpoolWait, SetThreadpoolWait, "
+                  L"WaitForThreadpoolWaitCallbacks, CloseThreadpoolWait"
+               << std::endl;
+
+    g_wait         = WaitSighting{};
+    g_wait.done    = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    HANDLE watched = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    CHECK(g_wait.done != nullptr && watched != nullptr, L"could not create the test events");
+    if (g_wait.done == nullptr || watched == nullptr) {
+      if (g_wait.done != nullptr) {
+        ::CloseHandle(g_wait.done);
+      }
+      if (watched != nullptr) {
+        ::CloseHandle(watched);
+      }
+      return;
+    }
+
+    int marker = 0;
+    PTP_WAIT w = ::CreateThreadpoolWait(WaitSeen, &marker, nullptr);
+    CHECK(w != nullptr, L"CreateThreadpoolWait failed with " << Hex(::GetLastError()));
+    if (w == nullptr) {
+      ::CloseHandle(g_wait.done);
+      ::CloseHandle(watched);
+      return;
+    }
+
+    // Signalled, so the callback should report WAIT_OBJECT_0.
+    ::SetThreadpoolWait(w, watched, nullptr);
+    ::SetEvent(watched);
+    DWORD fired = ::WaitForSingleObject(g_wait.done, 10000);
+    CHECK(fired == WAIT_OBJECT_0, L"the wait did not fire; got " << Hex(fired));
+    if (fired == WAIT_OBJECT_0) {
+      CHECK(g_wait.result == WAIT_OBJECT_0,
+            L"the callback reported " << Hex(g_wait.result) << L" for a signalled object");
+      CHECK(g_wait.context == &marker, L"the wait callback got the wrong context");
+      CHECK(g_wait.wait == w, L"the callback was handed a different PTP_WAIT");
+    }
+
+    // The wait's counterpart to WaitForThreadpoolTimerCallbacks. The event
+    // above says the callback started; this says it has finished, which is the
+    // only thing that makes the object safe to re-arm or close. Returning at
+    // all is most of the assertion -- the failure mode is a hang.
+    ::WaitForThreadpoolWaitCallbacks(w, FALSE);
+    CHECK(g_wait.calls == 1, L"after draining, the callback had run " << g_wait.calls
+                                                                     << L" time(s)");
+
+    // A TP_WAIT is one-shot, so re-arming is the caller's job. This is also the
+    // timeout path, which has to report WAIT_TIMEOUT rather than stay silent.
+    ::ResetEvent(g_wait.done);
+    ::ResetEvent(watched);
+    g_wait.calls     = 0;
+    g_wait.result    = 0xFFFFFFFF;
+    FILETIME timeout = RelativeDueTime(80);
+    ::SetThreadpoolWait(w, watched, &timeout);
+    fired = ::WaitForSingleObject(g_wait.done, 10000);
+    CHECK(fired == WAIT_OBJECT_0, L"the timing-out wait never called back; got " << Hex(fired));
+    if (fired == WAIT_OBJECT_0) {
+      CHECK(g_wait.result == WAIT_TIMEOUT,
+            L"a wait that timed out reported " << Hex(g_wait.result));
+    }
+
+    // Cancelling with a null handle has to stop it arriving at all.
+    ::ResetEvent(g_wait.done);
+    ::ResetEvent(watched);
+    g_wait.calls = 0;
+    ::SetThreadpoolWait(w, watched, nullptr);
+    ::SetThreadpoolWait(w, nullptr, nullptr);
+    ::SetEvent(watched);
+    const DWORD after_cancel = ::WaitForSingleObject(g_wait.done, 500);
+    CHECK(after_cancel == WAIT_TIMEOUT,
+          L"a cancelled wait fired anyway (" << g_wait.calls << L" call(s))");
+
+    // The cancelling form, on an object with nothing left to cancel. Has to be
+    // a no-op that returns rather than one that waits for a callback no longer
+    // registered.
+    ::WaitForThreadpoolWaitCallbacks(w, TRUE);
+    CHECK(g_wait.calls == 0, L"cancelling drain reported " << g_wait.calls << L" call(s)");
+
+    ::CloseThreadpoolWait(w);
+    ::CloseHandle(watched);
+    ::CloseHandle(g_wait.done);
+
+    // FreeLibraryWhenCallbackReturns is named rather than exercised: a real
+    // test would need a DLL built only to be unloaded, and the interesting half
+    // of the shim is that it defers rather than unloading underneath a running
+    // callback. What is assertable cheaply is that it ignores an instance that
+    // is not one of winwrap's instead of writing through the pointer.
+    //
+    // Only on the fallback. The system's own function takes the instance on
+    // trust and dereferences it, so handing it a null or a stack buffer is an
+    // access violation there -- which is how this test first failed, on
+    // Windows 10, having printed its heading and nothing else.
+    std::wcout << L"  FreeLibraryWhenCallbackReturns" << std::endl;
+    if (!SystemHas(L"kernel32.dll", "FreeLibraryWhenCallbackReturns")) {
+      // A real module handle, so the request gets as far as the signature
+      // check rather than being turned away for a null module first.
+      const HMODULE self = ::GetModuleHandleW(nullptr);
+      ::FreeLibraryWhenCallbackReturns(nullptr, self);
+      // Zeroed and comfortably larger than the header the shim reads, so the
+      // probe itself cannot run off the end of the buffer.
+      ULONG_PTR not_an_instance[16] = {};
+      ::FreeLibraryWhenCallbackReturns(
+          reinterpret_cast<PTP_CALLBACK_INSTANCE>(not_an_instance), self);
+      std::wcout << L"    survived a null and a foreign callback instance" << std::endl;
+    } else {
+      std::wcout << L"    forwarding to the system; a foreign instance is not safe to pass it"
+                 << std::endl;
+    }
+  }
+
   // --- Threads, error mode, restart ------------------------------------------
 
   void TestProcessorNumber() {
@@ -2222,6 +2597,8 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFibers();
   TestMainThreadFiberSequence();
   TestCriticalSectionEx();
+  TestThreadpoolTimer();
+  TestThreadpoolWait();
   TestIoCancellation();
   TestCompletionPort();
   TestAppUserModelId();

@@ -79,6 +79,15 @@ EXTERN _ww_SetFileCompletionNotificationModes@8 : PROC
 EXTERN _ww_CancelIoEx@8 : PROC
 EXTERN _ww_CancelSynchronousIo@4 : PROC
 EXTERN _ww_InitializeCriticalSectionEx@12 : PROC
+EXTERN _ww_CreateThreadpoolTimer@12 : PROC
+EXTERN _ww_SetThreadpoolTimer@16 : PROC
+EXTERN _ww_WaitForThreadpoolTimerCallbacks@8 : PROC
+EXTERN _ww_CloseThreadpoolTimer@4 : PROC
+EXTERN _ww_CreateThreadpoolWait@12 : PROC
+EXTERN _ww_SetThreadpoolWait@12 : PROC
+EXTERN _ww_WaitForThreadpoolWaitCallbacks@8 : PROC
+EXTERN _ww_CloseThreadpoolWait@4 : PROC
+EXTERN _ww_FreeLibraryWhenCallbackReturns@8 : PROC
 EXTERN _ww_FlsAlloc@4 : PROC
 EXTERN _ww_FlsGetValue@4 : PROC
 EXTERN _ww_FlsSetValue@8 : PROC
@@ -185,6 +194,24 @@ PUBLIC __imp__CancelSynchronousIo@4
 __imp__CancelSynchronousIo@4 dd _ww_CancelSynchronousIo@4
 PUBLIC __imp__InitializeCriticalSectionEx@12
 __imp__InitializeCriticalSectionEx@12 dd _ww_InitializeCriticalSectionEx@12
+PUBLIC __imp__CreateThreadpoolTimer@12
+__imp__CreateThreadpoolTimer@12 dd _ww_CreateThreadpoolTimer@12
+PUBLIC __imp__SetThreadpoolTimer@16
+__imp__SetThreadpoolTimer@16 dd _ww_SetThreadpoolTimer@16
+PUBLIC __imp__WaitForThreadpoolTimerCallbacks@8
+__imp__WaitForThreadpoolTimerCallbacks@8 dd _ww_WaitForThreadpoolTimerCallbacks@8
+PUBLIC __imp__CloseThreadpoolTimer@4
+__imp__CloseThreadpoolTimer@4 dd _ww_CloseThreadpoolTimer@4
+PUBLIC __imp__CreateThreadpoolWait@12
+__imp__CreateThreadpoolWait@12 dd _ww_CreateThreadpoolWait@12
+PUBLIC __imp__SetThreadpoolWait@12
+__imp__SetThreadpoolWait@12 dd _ww_SetThreadpoolWait@12
+PUBLIC __imp__WaitForThreadpoolWaitCallbacks@8
+__imp__WaitForThreadpoolWaitCallbacks@8 dd _ww_WaitForThreadpoolWaitCallbacks@8
+PUBLIC __imp__CloseThreadpoolWait@4
+__imp__CloseThreadpoolWait@4 dd _ww_CloseThreadpoolWait@4
+PUBLIC __imp__FreeLibraryWhenCallbackReturns@8
+__imp__FreeLibraryWhenCallbackReturns@8 dd _ww_FreeLibraryWhenCallbackReturns@8
 PUBLIC __imp__FlsAlloc@4
 __imp__FlsAlloc@4 dd _ww_FlsAlloc@4
 PUBLIC __imp__FlsGetValue@4
