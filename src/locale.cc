@@ -122,13 +122,28 @@ namespace {
   // how a name is matched without LocaleNameToLCID: "en" plus "US" is "en-US".
   //
   // The alternative, which YY-Thunks takes, is a static table of every name and
-  // LCID taken from the NLS reference. That resolves names this cannot --
-  // anything whose Windows name is not language plus country, such as the
-  // script-tagged zh-Hans or sr-Latn-RS -- at the cost of a few hundred lines of
-  // data that has to be right and stay right. Asking the running system instead
-  // cannot go stale and cannot disagree with it, and covers every locale the
-  // machine actually has. Worth revisiting if a consumer needs the script-tagged
-  // names, which neither Electron nor ICU's Windows formatters request.
+  // LCID taken from the NLS reference. That resolves names this cannot -- any
+  // name that is not language plus country -- at the cost of a few hundred
+  // lines of data that has to be right and stay right. Asking the running
+  // system instead cannot go stale and cannot disagree with it, and covers
+  // every locale the machine actually has.
+  //
+  // Two kinds of name are outside what this can rebuild. One is the
+  // script-tagged, zh-Hans or sr-Latn-RS. The other is the alternate-sort
+  // names, which Windows spells with a suffix -- es-ES_tradnl, de-DE_phoneb,
+  // ja-JP_radstr -- and a suffix is not something language plus country
+  // produces. Both merely fail to resolve, which is the safe direction.
+  //
+  // The sort names have a second effect that is not safe, and it is the reason
+  // to prefer failing. An alternate-sort locale and its default sibling can
+  // share a language and a country, so they rebuild to the *same* name:
+  // 0x040A is es-ES_tradnl and 0x0C0A is es-ES, and both answer "es" and "ES"
+  // here. A lookup of "es-ES" therefore lands on whichever of the two the
+  // enumeration reaches first, where Windows always means 0x0C0A -- and the
+  // wrong one of that pair collates ch and ll as single letters. See
+  // INCOMPLETE_FUNCS.md. A table would fix this, which is the strongest
+  // argument for carrying one; nothing in Electron or ICU's Windows
+  // formatters asks for a sort name today.
   bool NameForLcid(LCID lcid, wchar_t* out, int out_chars) {
     wchar_t language[16] = {};
     if (::GetLocaleInfoW(lcid, LOCALE_SISO639LANGNAME, language, ARRAYSIZE(language)) == 0) {
@@ -173,9 +188,24 @@ namespace {
   // LOCALE_NAME_SYSTEM_DEFAULT, spelled out because the SDK hides it below 0x0600.
   constexpr wchar_t kSystemDefaultName[] = L"!x-sys-default-locale";
 
+  // The three predefined names, then the enumeration.
+  //
+  // The two defaults resolve to the machine's real LCID rather than to the
+  // LOCALE_USER_DEFAULT and LOCALE_SYSTEM_DEFAULT sentinels that stand for
+  // them. Either would do for the callers in this file, since every NLS call
+  // below accepts a sentinel and means the same thing by it -- but one of
+  // these callers is ww_LocaleNameToLCID, which hands the result to someone
+  // else. That is a conversion function: a caller looking 0x0400 up in a table
+  // of real LCIDs finds nothing, and the real function's documented answer for
+  // a user default that is a custom locale is LOCALE_CUSTOM_DEFAULT, which is
+  // what GetUserDefaultLCID returns in that case and a sentinel never would.
+  //
+  // Resolved per call rather than once, so a locale changed underneath a
+  // running process is still picked up -- which is the one property the
+  // sentinels would have given for free.
   bool LcidForName(LPCWSTR name, LCID* out) {
     if (name == nullptr) {
-      *out = LOCALE_USER_DEFAULT; // LOCALE_NAME_USER_DEFAULT is a null pointer.
+      *out = ::GetUserDefaultLCID(); // LOCALE_NAME_USER_DEFAULT is a null pointer.
       return true;
     }
     if (name[0] == L'\0') {
@@ -183,7 +213,7 @@ namespace {
       return true;
     }
     if (NamesEqual(name, kSystemDefaultName)) {
-      *out = LOCALE_SYSTEM_DEFAULT;
+      *out = ::GetSystemDefaultLCID();
       return true;
     }
 
@@ -233,6 +263,13 @@ namespace {
       return needed; // Measuring call; out may be null and is not touched.
     }
     if (out_chars < needed) {
+      // Terminated before failing, which is what the real function does: the
+      // unit test caught Windows 10 writing into a one-character buffer it was
+      // about to reject, and the parameter is annotated _Out_writes_opt_ of
+      // the declared count, so one character is the buffer and writing it is
+      // within contract. Matching it means a caller that ignores the return
+      // reads an empty string rather than whatever was in the buffer already.
+      out[0] = L'\0';
       ::SetLastError(ERROR_INSUFFICIENT_BUFFER);
       return 0;
     }
@@ -519,14 +556,16 @@ int WINAPI ww_GetDateFormatEx(LPCWSTR lpLocaleName,
     return system_fn(lpLocaleName, dwFlags, lpDate, lpFormat, lpDateStr, cchDate, lpCalendar);
   }
 
-  // The one parameter the Ex form added, and the only one of these four with
-  // anything to refuse. It names a calendar for this call alone, which XP's
-  // GetDateFormatW has no parameter for -- a calendar there is a property of
-  // the locale, set through LOCALE_ICALENDARTYPE, not something a formatting
-  // call can override. Refused rather than ignored, as this file already does
-  // for LCMapStringEx's sort handle: a caller that asked for the Hijri
-  // calendar and silently got the Gregorian one has a wrong date, not a
-  // slightly different one.
+  // The one parameter the Ex form added, and it does nothing: it is documented
+  // as "Reserved; must set to NULL". So refusing a non-null one is not a gap
+  // this shim has, it is the contract -- a caller passing anything here is
+  // already outside what the real function accepts, and ERROR_INVALID_PARAMETER
+  // is among the errors that function documents.
+  //
+  // Nothing is lost by XP not having it, because there is nothing in it. The
+  // per-call lever for an alternate calendar is DATE_USE_ALT_CALENDAR in
+  // dwFlags, which XP's GetDateFormatW has had all along and which passes
+  // through below untouched with the rest of the flags.
   if (lpCalendar != nullptr) {
     ::SetLastError(ERROR_INVALID_PARAMETER);
     return 0;

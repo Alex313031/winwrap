@@ -560,7 +560,12 @@ namespace {
   void TestLocaleNames() {
     std::wcout << L"  LocaleNameToLCID, LCIDToLocaleName, ResolveLocaleName" << std::endl;
 
+    // Two flags, not one, because this covers two Windows versions: the pair
+    // is Vista and ResolveLocaleName is Windows 7, so on Vista exactly the
+    // third one is winwrap's. Keeping them apart is what stops the summary at
+    // the end claiming the system answered all three when it answered two.
     const bool winwrap_answers = !SystemHas(L"kernel32.dll", "LocaleNameToLCID");
+    const bool winwrap_resolves = !SystemHas(L"kernel32.dll", "ResolveLocaleName");
 
     // en-US both ways. Asserted against the spelled-out LCID rather than
     // against whatever the machine's default is, because this is the one
@@ -568,6 +573,32 @@ namespace {
     const LCID en_us = ::LocaleNameToLCID(L"en-US", 0);
     std::wcout << L"    en-US -> " << Hex(en_us) << std::endl;
     CHECK(en_us == kEnUs, L"en-US resolved to " << Hex(en_us) << L" rather than " << Hex(kEnUs));
+
+    // The two predefined default names. The fallback answers these with the
+    // machine's real LCID rather than with the LOCALE_USER_DEFAULT (0x0400) or
+    // LOCALE_SYSTEM_DEFAULT (0x0800) sentinel that stands for it, because this
+    // is a conversion function and a caller may look the result up -- see
+    // LcidForName.
+    //
+    // Which of the two a real Windows returns is not documented either way, so
+    // both values are printed next to what the dedicated calls say and only
+    // the fallback is held to it. If the system path ever prints a sentinel
+    // where the dedicated call prints a real LCID, that is the answer, and the
+    // fallback should follow it rather than this comment.
+    const LCID from_user_name   = ::LocaleNameToLCID(LOCALE_NAME_USER_DEFAULT, 0);
+    const LCID from_system_name = ::LocaleNameToLCID(LOCALE_NAME_SYSTEM_DEFAULT, 0);
+    std::wcout << L"    user default -> " << Hex(from_user_name) << L" (GetUserDefaultLCID "
+               << Hex(::GetUserDefaultLCID()) << L"), system default -> "
+               << Hex(from_system_name) << L" (GetSystemDefaultLCID "
+               << Hex(::GetSystemDefaultLCID()) << L")" << std::endl;
+    if (winwrap_answers) {
+      CHECK(from_user_name == ::GetUserDefaultLCID(),
+            L"the user default name gave " << Hex(from_user_name) << L" rather than "
+                                           << Hex(::GetUserDefaultLCID()));
+      CHECK(from_system_name == ::GetSystemDefaultLCID(),
+            L"the system default name gave " << Hex(from_system_name) << L" rather than "
+                                             << Hex(::GetSystemDefaultLCID()));
+    }
 
     wchar_t name[LOCALE_NAME_MAX_LENGTH] = {};
     int written = ::LCIDToLocaleName(kEnUs, name, ARRAYSIZE(name), 0);
@@ -587,9 +618,23 @@ namespace {
     const int needed = ::LCIDToLocaleName(kEnUs, nullptr, 0, 0);
     CHECK(needed == written, L"the measuring call wanted " << needed << L" but the real one wrote "
                                                            << written);
-    wchar_t tiny[2] = {L'!', L'!'};
-    CHECK(::LCIDToLocaleName(kEnUs, tiny, 1, 0) == 0, L"a one-character buffer was accepted");
-    CHECK(tiny[0] == L'!', L"the buffer was written past the length it declared");
+    // Three characters declared out of a four character buffer, so the fourth
+    // is a canary for a write past the count. The declared three are fair game
+    // and are not asserted: cchName is what the parameter is annotated to
+    // write, and a real Windows does write there -- it leaves the terminator
+    // in a buffer it is about to reject, which this test caught it doing and
+    // which ReturnName now matches. What neither may do is touch the element
+    // past the count.
+    wchar_t tiny[4] = {L'!', L'!', L'!', L'!'};
+    CHECK(::LCIDToLocaleName(kEnUs, tiny, 3, 0) == 0, L"a three-character buffer was accepted");
+    CHECK(tiny[3] == L'!', L"the buffer was written past the count it declared");
+    // The raw value rather than a guess at what it means: 0x21 is the fill, so
+    // untouched; 0 is a terminator; anything else is a partial copy. Printed
+    // and not interpreted, because it is a wrong answer on this line that
+    // would need reading carefully. Not Printable(), which would run off the
+    // end if nothing wrote a terminator.
+    std::wcout << L"    a short buffer left " << Hex(tiny[0])
+               << L" in the first declared character (0x21 is the fill)" << std::endl;
     if (winwrap_answers) {
       CHECK(::GetLastError() == ERROR_INSUFFICIENT_BUFFER,
             L"a short buffer set last error to " << Hex(::GetLastError()));
@@ -644,10 +689,14 @@ namespace {
             L"LocaleNameToLCID accepted an unsupported flag");
       CHECK(::GetLastError() == ERROR_INVALID_FLAGS,
             L"an unsupported flag set last error to " << Hex(::GetLastError()));
-      std::wcout << L"    on the fallback path; flag and buffer handling checked" << std::endl;
+      std::wcout << L"    LCID mapping on the fallback path; flag and buffer handling checked"
+                 << std::endl;
     } else {
-      std::wcout << L"    forwarding to the system" << std::endl;
+      std::wcout << L"    LCID mapping forwarding to the system" << std::endl;
     }
+    std::wcout << L"    ResolveLocaleName "
+               << (winwrap_resolves ? L"on the fallback path" : L"forwarding to the system")
+               << std::endl;
   }
 
   void TestLocaleFormatters() {
@@ -722,12 +771,14 @@ namespace {
           L"the measuring call wanted " << measured << L" but the real one wrote " << date_ex);
 
     if (winwrap_answers) {
-      // lpCalendar is the one parameter the Ex form added, and it is refused
-      // rather than ignored -- a caller that asked for a different calendar
-      // and silently got the locale's has a wrong date. Only assertable on the
-      // fallback, since a real Windows honours it.
+      // lpCalendar is documented as "Reserved; must set to NULL", so a
+      // non-null one is outside the contract and this says so rather than
+      // dropping it. Only assertable on the fallback -- not because a real
+      // Windows honours the parameter, which it does not, but because what it
+      // does with a reserved one it has been told to ignore is unspecified,
+      // and it may well succeed.
       CHECK(::GetDateFormatEx(L"en-US", 0, &when, L"yyyy", ex, ARRAYSIZE(ex), L"1") == 0,
-            L"GetDateFormatEx accepted a calendar it cannot select");
+            L"GetDateFormatEx accepted a non-null lpCalendar");
       CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
             L"refusing lpCalendar set last error to " << Hex(::GetLastError()));
       std::wcout << L"    on the fallback path; lpCalendar refusal checked" << std::endl;

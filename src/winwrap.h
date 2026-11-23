@@ -148,14 +148,19 @@ BOOL WINAPI ww_GetLogicalProcessorInformation(
     PDWORD ReturnedLength);
 
 // --- Locale and string -----------------------------------------------------
-// All Vista+ except where noted. LOCALE_NAME_MAX_LENGTH is gated below 0x0600.
-#if !defined(LOCALE_NAME_MAX_LENGTH)
- #define LOCALE_NAME_MAX_LENGTH 85
-#endif
-
-// Gated on WINVER >= 0x0601 in winnls.h, and needed at XP's level because ICU
-// passes it to LCIDToLocaleName -- see locale.cc. Spelled out rather than
-// relied on, for the same reason as LOCALE_NAME_MAX_LENGTH above.
+// All Vista+ except where noted.
+//
+// LOCALE_ALLOW_NEUTRAL_NAMES is gated on WINVER >= _WIN32_WINNT_WIN7 in
+// winnls.h, and winwrap compiles at WINVER=0x0501 everywhere except the GN
+// build -- the Makefile, winwrap.gyp and the clang-cl syntax check all lower
+// it -- so it has to be spelled out or three of the four builds fail to
+// compile. Needed at all because ICU passes it to LCIDToLocaleName on every
+// call; see locale.cc.
+//
+// LOCALE_NAME_MAX_LENGTH needs no such treatment and never did: it lives in
+// winnt.h with no version gate at all, so it is always visible. The one other
+// constant this family needs is LOCALE_NAME_SYSTEM_DEFAULT, which *is* gated
+// (WINVER >= 0x0600) and is spelled out where it is used, in locale.cc.
 #if !defined(LOCALE_ALLOW_NEUTRAL_NAMES)
  #define LOCALE_ALLOW_NEUTRAL_NAMES 0x08000000
 #endif
