@@ -39,8 +39,10 @@ EXPORTS
     FlsFree = ww_FlsFree
     FlsGetValue = ww_FlsGetValue
     FlsSetValue = ww_FlsSetValue
+    GetCurrencyFormatEx = ww_GetCurrencyFormatEx
     GetCurrentProcessExplicitAppUserModelID = ww_GetCurrentProcessExplicitAppUserModelID
     GetCurrentProcessorNumber = ww_GetCurrentProcessorNumber
+    GetDateFormatEx = ww_GetDateFormatEx
     GetErrorMode = ww_GetErrorMode
     GetFileInformationByHandleEx = ww_GetFileInformationByHandleEx
     GetFinalPathNameByHandleW = ww_GetFinalPathNameByHandleW
@@ -48,9 +50,11 @@ EXPORTS
     GetLogicalProcessorInformation = ww_GetLogicalProcessorInformation
     GetNamedPipeClientProcessId = ww_GetNamedPipeClientProcessId
     GetNamedPipeServerProcessId = ww_GetNamedPipeServerProcessId
+    GetNumberFormatEx = ww_GetNumberFormatEx
     GetQueuedCompletionStatusEx = ww_GetQueuedCompletionStatusEx
     GetRealNTVersion
     GetTickCount64 = ww_GetTickCount64
+    GetTimeFormatEx = ww_GetTimeFormatEx
     GetWinWrapVersion
     InitializeConditionVariable = ww_InitializeConditionVariable
     InitializeCriticalSectionEx = ww_InitializeCriticalSectionEx
@@ -58,13 +62,16 @@ EXPORTS
     InitOnceExecuteOnce = ww_InitOnceExecuteOnce
     IsRunningOnWine
     IsThreadAFiber = ww_IsThreadAFiber
+    LCIDToLocaleName = ww_LCIDToLocaleName
     LCMapStringEx = ww_LCMapStringEx
+    LocaleNameToLCID = ww_LocaleNameToLCID
     NeedCurrentDirectoryForExePathW = ww_NeedCurrentDirectoryForExePathW
     RegGetValueW = ww_RegGetValueW
     RegisterApplicationRestart = ww_RegisterApplicationRestart
     ReleaseSRWLockExclusive = ww_ReleaseSRWLockExclusive
     ReleaseSRWLockShared = ww_ReleaseSRWLockShared
     ReOpenFile = ww_ReOpenFile
+    ResolveLocaleName = ww_ResolveLocaleName
     SetCurrentProcessExplicitAppUserModelID = ww_SetCurrentProcessExplicitAppUserModelID
     SetFileCompletionNotificationModes = ww_SetFileCompletionNotificationModes
     SetFileInformationByHandle = ww_SetFileInformationByHandle

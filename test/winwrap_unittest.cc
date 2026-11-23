@@ -557,6 +557,236 @@ namespace {
     }
   }
 
+  void TestLocaleNames() {
+    std::wcout << L"  LocaleNameToLCID, LCIDToLocaleName, ResolveLocaleName" << std::endl;
+
+    // Two flags, not one, because this covers two Windows versions: the pair
+    // is Vista and ResolveLocaleName is Windows 7, so on Vista exactly the
+    // third one is winwrap's. Keeping them apart is what stops the summary at
+    // the end claiming the system answered all three when it answered two.
+    const bool winwrap_answers = !SystemHas(L"kernel32.dll", "LocaleNameToLCID");
+    const bool winwrap_resolves = !SystemHas(L"kernel32.dll", "ResolveLocaleName");
+
+    // en-US both ways. Asserted against the spelled-out LCID rather than
+    // against whatever the machine's default is, because this is the one
+    // locale every Windows install has and 0x0409 is what it has always been.
+    const LCID en_us = ::LocaleNameToLCID(L"en-US", 0);
+    std::wcout << L"    en-US -> " << Hex(en_us) << std::endl;
+    CHECK(en_us == kEnUs, L"en-US resolved to " << Hex(en_us) << L" rather than " << Hex(kEnUs));
+
+    // The two predefined default names. The fallback answers these with the
+    // machine's real LCID rather than with the LOCALE_USER_DEFAULT (0x0400) or
+    // LOCALE_SYSTEM_DEFAULT (0x0800) sentinel that stands for it, because this
+    // is a conversion function and a caller may look the result up -- see
+    // LcidForName.
+    //
+    // Which of the two a real Windows returns is not documented either way, so
+    // both values are printed next to what the dedicated calls say and only
+    // the fallback is held to it. If the system path ever prints a sentinel
+    // where the dedicated call prints a real LCID, that is the answer, and the
+    // fallback should follow it rather than this comment.
+    const LCID from_user_name   = ::LocaleNameToLCID(LOCALE_NAME_USER_DEFAULT, 0);
+    const LCID from_system_name = ::LocaleNameToLCID(LOCALE_NAME_SYSTEM_DEFAULT, 0);
+    std::wcout << L"    user default -> " << Hex(from_user_name) << L" (GetUserDefaultLCID "
+               << Hex(::GetUserDefaultLCID()) << L"), system default -> "
+               << Hex(from_system_name) << L" (GetSystemDefaultLCID "
+               << Hex(::GetSystemDefaultLCID()) << L")" << std::endl;
+    if (winwrap_answers) {
+      CHECK(from_user_name == ::GetUserDefaultLCID(),
+            L"the user default name gave " << Hex(from_user_name) << L" rather than "
+                                           << Hex(::GetUserDefaultLCID()));
+      CHECK(from_system_name == ::GetSystemDefaultLCID(),
+            L"the system default name gave " << Hex(from_system_name) << L" rather than "
+                                             << Hex(::GetSystemDefaultLCID()));
+    }
+
+    wchar_t name[LOCALE_NAME_MAX_LENGTH] = {};
+    int written = ::LCIDToLocaleName(kEnUs, name, ARRAYSIZE(name), 0);
+    std::wcout << L"    " << Hex(kEnUs) << L" -> " << Printable(name) << L" (" << written
+               << L" chars)" << std::endl;
+    CHECK(written > 0, L"LCIDToLocaleName failed with " << Hex(::GetLastError()));
+    if (written > 0) {
+      // The count includes the terminator, which is the half of this contract
+      // easiest to get wrong in either direction.
+      CHECK(written == static_cast<int>(::wcslen(name)) + 1,
+            L"returned " << written << L" for a " << ::wcslen(name) << L" character name");
+      CHECK(::CompareStringOrdinal(name, -1, L"en-US", -1, TRUE) == CSTR_EQUAL,
+            L"0x0409 named itself " << Printable(name) << L" rather than en-US");
+    }
+
+    // A zero count measures, and must not touch the buffer; a short one fails.
+    const int needed = ::LCIDToLocaleName(kEnUs, nullptr, 0, 0);
+    CHECK(needed == written, L"the measuring call wanted " << needed << L" but the real one wrote "
+                                                           << written);
+    // Three characters declared out of a four character buffer, so the fourth
+    // is a canary for a write past the count. The declared three are fair game
+    // and are not asserted: cchName is what the parameter is annotated to
+    // write, and a real Windows does write there -- it leaves the terminator
+    // in a buffer it is about to reject, which this test caught it doing and
+    // which ReturnName now matches. What neither may do is touch the element
+    // past the count.
+    wchar_t tiny[4] = {L'!', L'!', L'!', L'!'};
+    CHECK(::LCIDToLocaleName(kEnUs, tiny, 3, 0) == 0, L"a three-character buffer was accepted");
+    CHECK(tiny[3] == L'!', L"the buffer was written past the count it declared");
+    // The raw value rather than a guess at what it means: 0x21 is the fill, so
+    // untouched; 0 is a terminator; anything else is a partial copy. Printed
+    // and not interpreted, because it is a wrong answer on this line that
+    // would need reading carefully. Not Printable(), which would run off the
+    // end if nothing wrote a terminator.
+    std::wcout << L"    a short buffer left " << Hex(tiny[0])
+               << L" in the first declared character (0x21 is the fill)" << std::endl;
+    if (winwrap_answers) {
+      CHECK(::GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+            L"a short buffer set last error to " << Hex(::GetLastError()));
+    }
+
+    // LOCALE_ALLOW_NEUTRAL_NAMES has to be accepted rather than rejected as an
+    // unknown flag: ICU's locmap.cpp passes it on every call, so refusing it
+    // would fail the only caller in the tree.
+    wchar_t neutral[LOCALE_NAME_MAX_LENGTH] = {};
+    const int neutral_len =
+        ::LCIDToLocaleName(kEnUs, neutral, ARRAYSIZE(neutral), LOCALE_ALLOW_NEUTRAL_NAMES);
+    CHECK(neutral_len > 0, L"LOCALE_ALLOW_NEUTRAL_NAMES was rejected with "
+                               << Hex(::GetLastError()));
+
+    // The invariant locale's name is the empty string, which is the inverse of
+    // the mapping the name-to-LCID direction applies to it.
+    wchar_t invariant[LOCALE_NAME_MAX_LENGTH] = {L'!'};
+    const int invariant_len = ::LCIDToLocaleName(LOCALE_INVARIANT, invariant,
+                                                 ARRAYSIZE(invariant), 0);
+    CHECK(invariant_len == 1 && invariant[0] == L'\0',
+          L"LOCALE_INVARIANT named itself " << Printable(invariant) << L" (" << invariant_len
+                                            << L" chars) rather than the empty string");
+
+    // Round trip, which is the property that actually matters to a caller:
+    // whatever the system calls a locale has to map back to the same LCID.
+    wchar_t round[LOCALE_NAME_MAX_LENGTH] = {};
+    if (::LCIDToLocaleName(kEnUs, round, ARRAYSIZE(round), 0) > 0) {
+      CHECK(::LocaleNameToLCID(round, 0) == kEnUs,
+            L"round trip through " << Printable(round) << L" lost the LCID");
+    }
+
+    // ResolveLocaleName normalises a name the system has. Case is the part
+    // both implementations agree on; the fallback half of "resolve" -- walking
+    // up from a tag with no such locale -- is deliberately absent, see
+    // locale.cc, so an unresolvable name is not asserted either way.
+    wchar_t resolved[LOCALE_NAME_MAX_LENGTH] = {};
+    const int resolved_len = ::ResolveLocaleName(L"EN-us", resolved, ARRAYSIZE(resolved));
+    std::wcout << L"    EN-us resolves to " << Printable(resolved) << std::endl;
+    CHECK(resolved_len > 0, L"ResolveLocaleName failed with " << Hex(::GetLastError()));
+    if (resolved_len > 0) {
+      CHECK(resolved_len == static_cast<int>(::wcslen(resolved)) + 1,
+            L"ResolveLocaleName returned " << resolved_len << L" for a " << ::wcslen(resolved)
+                                           << L" character name");
+      CHECK(::CompareStringOrdinal(resolved, -1, L"en-US", -1, TRUE) == CSTR_EQUAL,
+            L"EN-us resolved to " << Printable(resolved) << L" rather than en-US");
+    }
+
+    if (winwrap_answers) {
+      // A flag neither function can honour. Only assertable on the fallback:
+      // a real Windows may add meaning to a bit this one has never heard of.
+      CHECK(::LocaleNameToLCID(L"en-US", 0x00000004) == 0,
+            L"LocaleNameToLCID accepted an unsupported flag");
+      CHECK(::GetLastError() == ERROR_INVALID_FLAGS,
+            L"an unsupported flag set last error to " << Hex(::GetLastError()));
+      std::wcout << L"    LCID mapping on the fallback path; flag and buffer handling checked"
+                 << std::endl;
+    } else {
+      std::wcout << L"    LCID mapping forwarding to the system" << std::endl;
+    }
+    std::wcout << L"    ResolveLocaleName "
+               << (winwrap_resolves ? L"on the fallback path" : L"forwarding to the system")
+               << std::endl;
+  }
+
+  void TestLocaleFormatters() {
+    std::wcout << L"  GetDateFormatEx, GetTimeFormatEx, GetNumberFormatEx, GetCurrencyFormatEx"
+               << std::endl;
+
+    const bool winwrap_answers = !SystemHas(L"kernel32.dll", "GetDateFormatEx");
+
+    // A fixed moment, so the expected output does not depend on the clock.
+    SYSTEMTIME when = {};
+    when.wYear = 2026, when.wMonth = 11, when.wDay = 21;
+    when.wHour = 14, when.wMinute = 30, when.wSecond = 45;
+    when.wDayOfWeek = 6; // A Saturday, and ignored by a picture string anyway.
+
+    // Each of the four against the LCID form of the same call. That is exactly
+    // what the fallback does internally, so on XP this confirms the name
+    // resolution; on a current Windows it confirms the system's Ex function
+    // and its own older one agree, which is the claim the shim rests on.
+    wchar_t ex[128]  = {};
+    wchar_t old[128] = {};
+
+    const int date_ex = ::GetDateFormatEx(L"en-US", 0, &when, L"yyyy'-'MM'-'dd", ex,
+                                          ARRAYSIZE(ex), nullptr);
+    const int date_old = ::GetDateFormatW(kEnUs, 0, &when, L"yyyy'-'MM'-'dd", old, ARRAYSIZE(old));
+    std::wcout << L"    date " << Printable(ex) << L" / " << Printable(old) << std::endl;
+    CHECK(date_ex > 0, L"GetDateFormatEx failed with " << Hex(::GetLastError()));
+    CHECK(date_ex == date_old && ::CompareStringOrdinal(ex, -1, old, -1, FALSE) == CSTR_EQUAL,
+          L"GetDateFormatEx gave " << Printable(ex) << L" where GetDateFormatW gave "
+                                   << Printable(old));
+    // The picture string is explicit, so the answer is not locale-dependent
+    // and can be named outright.
+    CHECK(::CompareStringOrdinal(ex, -1, L"2026-11-21", -1, FALSE) == CSTR_EQUAL,
+          L"the fixed date formatted as " << Printable(ex) << L" rather than 2026-11-21");
+
+    const int time_ex =
+        ::GetTimeFormatEx(L"en-US", 0, &when, L"HH':'mm':'ss", ex, ARRAYSIZE(ex));
+    const int time_old = ::GetTimeFormatW(kEnUs, 0, &when, L"HH':'mm':'ss", old, ARRAYSIZE(old));
+    std::wcout << L"    time " << Printable(ex) << L" / " << Printable(old) << std::endl;
+    CHECK(time_ex > 0, L"GetTimeFormatEx failed with " << Hex(::GetLastError()));
+    CHECK(time_ex == time_old && ::CompareStringOrdinal(ex, -1, old, -1, FALSE) == CSTR_EQUAL,
+          L"GetTimeFormatEx gave " << Printable(ex) << L" where GetTimeFormatW gave "
+                                   << Printable(old));
+    CHECK(::CompareStringOrdinal(ex, -1, L"14:30:45", -1, FALSE) == CSTR_EQUAL,
+          L"the fixed time formatted as " << Printable(ex) << L" rather than 14:30:45");
+
+    // Numbers and currency with a null format, which means the locale's own
+    // conventions -- so these are compared against the LCID call rather than
+    // against a literal, since the expected text depends on the machine.
+    const int num_ex = ::GetNumberFormatEx(L"en-US", 0, L"-1234567.891", nullptr, ex,
+                                           ARRAYSIZE(ex));
+    const int num_old = ::GetNumberFormatW(kEnUs, 0, L"-1234567.891", nullptr, old,
+                                           ARRAYSIZE(old));
+    std::wcout << L"    number " << Printable(ex) << L" / " << Printable(old) << std::endl;
+    CHECK(num_ex > 0, L"GetNumberFormatEx failed with " << Hex(::GetLastError()));
+    CHECK(num_ex == num_old && ::CompareStringOrdinal(ex, -1, old, -1, FALSE) == CSTR_EQUAL,
+          L"GetNumberFormatEx gave " << Printable(ex) << L" where GetNumberFormatW gave "
+                                     << Printable(old));
+
+    const int cur_ex = ::GetCurrencyFormatEx(L"en-US", 0, L"1234.5", nullptr, ex, ARRAYSIZE(ex));
+    const int cur_old = ::GetCurrencyFormatW(kEnUs, 0, L"1234.5", nullptr, old, ARRAYSIZE(old));
+    std::wcout << L"    currency " << Printable(ex) << L" / " << Printable(old) << std::endl;
+    CHECK(cur_ex > 0, L"GetCurrencyFormatEx failed with " << Hex(::GetLastError()));
+    CHECK(cur_ex == cur_old && ::CompareStringOrdinal(ex, -1, old, -1, FALSE) == CSTR_EQUAL,
+          L"GetCurrencyFormatEx gave " << Printable(ex) << L" where GetCurrencyFormatW gave "
+                                        << Printable(old));
+
+    // The measuring convention carries over from the older calls untouched,
+    // so a zero count has to report the length rather than format anything.
+    const int measured = ::GetDateFormatEx(L"en-US", 0, &when, L"yyyy'-'MM'-'dd", nullptr, 0,
+                                           nullptr);
+    CHECK(measured == date_ex,
+          L"the measuring call wanted " << measured << L" but the real one wrote " << date_ex);
+
+    if (winwrap_answers) {
+      // lpCalendar is documented as "Reserved; must set to NULL", so a
+      // non-null one is outside the contract and this says so rather than
+      // dropping it. Only assertable on the fallback -- not because a real
+      // Windows honours the parameter, which it does not, but because what it
+      // does with a reserved one it has been told to ignore is unspecified,
+      // and it may well succeed.
+      CHECK(::GetDateFormatEx(L"en-US", 0, &when, L"yyyy", ex, ARRAYSIZE(ex), L"1") == 0,
+            L"GetDateFormatEx accepted a non-null lpCalendar");
+      CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"refusing lpCalendar set last error to " << Hex(::GetLastError()));
+      std::wcout << L"    on the fallback path; lpCalendar refusal checked" << std::endl;
+    } else {
+      std::wcout << L"    forwarding to the system; lpCalendar is its business" << std::endl;
+    }
+  }
+
   // --- ETW manifest-based providers ------------------------------------------
 
   void TestEtw() {
@@ -1977,6 +2207,8 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFls();
   TestMisc();
   TestLocale();
+  TestLocaleNames();
+  TestLocaleFormatters();
   TestEtw();
 
   TestFileInformationQuery();

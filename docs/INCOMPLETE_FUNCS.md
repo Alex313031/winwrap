@@ -204,6 +204,57 @@ returned, because the thread may be rescheduled onto another processor, but
 that is equally true of the real function, which is why callers use it to index
 a per-CPU cache rather than to make a decision.
 
+### `ResolveLocaleName`: normalises, but does not fall back
+
+Built from `LocaleNameToLCID` and `LCIDToLocaleName`, so a name goes to an LCID
+and comes back as whatever the installed locale calls itself. That normalises
+what can be normalised -- case, and a name whose pieces are in the right order:
+`EN-us` resolves to `en-US`.
+
+The half that is missing is the one the name promises. The real function walks
+up a tag until something matches, so `en-XY` on a machine with no such locale
+resolves to `en`, and a script-tagged or three-letter tag resolves to its
+nearest relative. This resolves a name the system has and fails on one it does
+not.
+
+Returning a wrong neighbour would be worse than failing. A caller handed the
+wrong locale formats dates and numbers in it with no sign that anything went
+amiss, where a zero is visible at the call site. ICU, the only caller in the
+tree, reads a zero as `U_UNSUPPORTED_ERROR` and carries on with its own data --
+which is a better outcome than a plausible-looking wrong locale, and one a
+partial answer would have denied it.
+
+The same applies to `LocaleNameToLCID` and `LCIDToLocaleName`, which resolve
+only the names `NameForLcid` can rebuild out of `LOCALE_SISO639LANGNAME` and
+`LOCALE_SISO3166CTRYNAME` -- language, or language plus country. Two kinds of
+name are not that. One carries a script, such as `zh-Hans` or `sr-Latn-RS`. The
+other is an alternate sort order, which Windows spells with a suffix:
+`es-ES_tradnl`, `de-DE_phoneb`, `ja-JP_radstr`. Neither can be produced from a
+language and a country, so both fail to resolve. See the note in `locale.cc`
+for why asking the running system beats carrying a table of every name, and
+what it costs.
+
+The sort names cost more than a failure, and this is the one place in this
+family where a wrong answer is possible rather than a refusal. An
+alternate-sort locale shares its language and country with its default
+sibling, so the two rebuild to the same name here: **0x040A is `es-ES_tradnl`
+and 0x0C0A is `es-ES`**, and `LOCALE_SISO639LANGNAME` plus
+`LOCALE_SISO3166CTRYNAME` answers `es` and `ES` for both. A lookup of `es-ES`
+lands on whichever the enumeration reaches first, and Windows always means
+0x0C0A. Picking the other one is not a near miss: traditional Spanish
+collation treats *ch* and *ll* as single letters, so `CompareStringEx` would
+order Spanish text differently from every other Windows program on the
+machine. A static table is the only fix, and it is the strongest argument for
+carrying one -- but no caller in the tree asks for a sort name, and the
+collision needs a machine with both siblings installed to appear at all.
+
+`LOCALE_ALLOW_NEUTRAL_NAMES` is accepted rather than rejected as an unknown
+flag, and then ignored, which is not a gap: the flag's effect on a real Windows
+is to permit a name with no region instead of failing, and that is what this
+does with or without it, because a locale with no country simply produces no
+country. ICU passes the flag on every call, so refusing it would have failed
+the only caller there is.
+
 ### `GetLogicalProcessorInformation`: the count, not the topology
 
 The one entry here whose floor is a service pack rather than a Windows

@@ -47,6 +47,13 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetLocaleInfoEx` | kernel32 | Vista | Resolves the locale name to an LCID by enumeration, then `GetLocaleInfoW` |
 | `LCMapStringEx` | kernel32 | Vista | The same name-to-LCID resolution, then `LCMapStringW`. Refuses a sort handle or a sort version, which XP has neither of |
 | `CompareStringEx` | kernel32 | Vista | The same name-to-LCID resolution, then `CompareStringW`. MSVC's own standard library imports this, so any C++ consumer needs it |
+| `LocaleNameToLCID` | kernel32 | Vista | The name-to-LCID half of this family, which is the `LcidForName` the three above already needed. Language and country only -- not the script- or sort-suffixed names, see INCOMPLETE_FUNCS.md |
+| `LCIDToLocaleName` | kernel32 | Vista | The other half, rebuilt from `LOCALE_SISO639LANGNAME` plus `LOCALE_SISO3166CTRYNAME`, with the same limit. Accepts `LOCALE_ALLOW_NEUTRAL_NAMES`, which it satisfies by construction |
+| `ResolveLocaleName` | kernel32 | **7** | The two above composed, so it normalises a name the system has. It does not walk up a tag it does not have -- see INCOMPLETE_FUNCS.md |
+| `GetDateFormatEx` | kernel32 | Vista | The same name-to-LCID resolution, then `GetDateFormatW`. Requires a null `lpCalendar`, which is all the real function accepts -- it is documented as reserved. `DATE_USE_ALT_CALENDAR` is what actually selects a calendar, and XP has it |
+| `GetTimeFormatEx` | kernel32 | Vista | The same resolution, then `GetTimeFormatW`; every other parameter means the same to both |
+| `GetNumberFormatEx` | kernel32 | Vista | The same resolution, then `GetNumberFormatW` |
+| `GetCurrencyFormatEx` | kernel32 | Vista | The same resolution, then `GetCurrencyFormatW`. ICU reaches for this pair through winnmfmt.cpp |
 | `CancelIoEx` | kernel32 | Vista | Best effort via `CancelIo`: same-thread only, and cannot target one request |
 | `CancelSynchronousIo` | kernel32 | Vista | Always fails with `ERROR_NOT_FOUND`; cross-thread by definition, impossible on XP |
 | `GetQueuedCompletionStatusEx` | kernel32 | Vista | `GetQueuedCompletionStatus` in a loop; `fAlertable` ignored, no alertable form exists |

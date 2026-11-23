@@ -64,6 +64,13 @@ EXTERN ww_CompareStringOrdinal : PROC
 EXTERN ww_GetLocaleInfoEx : PROC
 EXTERN ww_LCMapStringEx : PROC
 EXTERN ww_CompareStringEx : PROC
+EXTERN ww_LocaleNameToLCID : PROC
+EXTERN ww_LCIDToLocaleName : PROC
+EXTERN ww_ResolveLocaleName : PROC
+EXTERN ww_GetDateFormatEx : PROC
+EXTERN ww_GetTimeFormatEx : PROC
+EXTERN ww_GetNumberFormatEx : PROC
+EXTERN ww_GetCurrencyFormatEx : PROC
 EXTERN ww_GetQueuedCompletionStatusEx : PROC
 EXTERN ww_SetFileCompletionNotificationModes : PROC
 EXTERN ww_CancelIoEx : PROC
@@ -151,6 +158,20 @@ PUBLIC __imp_LCMapStringEx
 __imp_LCMapStringEx dq ww_LCMapStringEx
 PUBLIC __imp_CompareStringEx
 __imp_CompareStringEx dq ww_CompareStringEx
+PUBLIC __imp_LocaleNameToLCID
+__imp_LocaleNameToLCID dq ww_LocaleNameToLCID
+PUBLIC __imp_LCIDToLocaleName
+__imp_LCIDToLocaleName dq ww_LCIDToLocaleName
+PUBLIC __imp_ResolveLocaleName
+__imp_ResolveLocaleName dq ww_ResolveLocaleName
+PUBLIC __imp_GetDateFormatEx
+__imp_GetDateFormatEx dq ww_GetDateFormatEx
+PUBLIC __imp_GetTimeFormatEx
+__imp_GetTimeFormatEx dq ww_GetTimeFormatEx
+PUBLIC __imp_GetNumberFormatEx
+__imp_GetNumberFormatEx dq ww_GetNumberFormatEx
+PUBLIC __imp_GetCurrencyFormatEx
+__imp_GetCurrencyFormatEx dq ww_GetCurrencyFormatEx
 PUBLIC __imp_GetQueuedCompletionStatusEx
 __imp_GetQueuedCompletionStatusEx dq ww_GetQueuedCompletionStatusEx
 PUBLIC __imp_SetFileCompletionNotificationModes
