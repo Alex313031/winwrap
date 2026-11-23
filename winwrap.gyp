@@ -241,6 +241,7 @@
         'src/forwarders_x86.asm',
         'src/forwarders_x64.asm',
         'src/system.cc',
+        'src/threadpool.cc',
         'src/threads.cc',
         'src/tick_count.cc',
         'src/winwrap.h',

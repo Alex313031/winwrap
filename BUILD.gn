@@ -44,6 +44,7 @@ _winwrap_sources = [
   "src/srwlock.cc",
   "src/static_redirects.cc",
   "src/system.cc",
+  "src/threadpool.cc",
   "src/threads.cc",
   "src/tick_count.cc",
   "src/winwrap.h",

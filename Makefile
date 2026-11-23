@@ -205,6 +205,7 @@ OBJECTS = \
 	$(OBJDIR)\registry.obj \
 	$(OBJDIR)\srwlock.obj \
 	$(OBJDIR)\system.obj \
+	$(OBJDIR)\threadpool.obj \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \
 	$(OBJDIR)\forwarders.obj

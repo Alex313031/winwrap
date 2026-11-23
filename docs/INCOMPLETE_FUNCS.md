@@ -255,6 +255,108 @@ does with or without it, because a locale with no country simply produces no
 country. ICU passes the flag on every call, so refusing it would have failed
 the only caller there is.
 
+That is winwrap's fallback, which runs on XP. Vista is different and not
+better: it has its own `LCIDToLocaleName`, so winwrap forwards to it, and that
+function predates the flag -- which arrived in Windows 7 -- and rejects it with
+`ERROR_INVALID_PARAMETER`. So the flag works on XP and on 7 and later, and
+fails on Vista alone. ICU expects exactly this and falls back to its own table
+on a zero; the unit test reports it there rather than failing.
+
+### Thread pool timers and waits: winwrap's objects, not the OS's
+
+The firing works, and the unit test checks it does: one-shot, periodic,
+cancellation, the wait result for a signal against a timeout, and that a
+cancelled timer or wait delivers nothing afterwards. What is partial is
+everything around the callback.
+
+**The handles are winwrap's allocations.** A `PTP_TIMER` or `PTP_WAIT` from
+here points at a winwrap structure, not at anything the kernel knows about, so
+it must be closed by the copy of winwrap that made it. Two modules that each
+link winwrap statically have two sets of these functions and two heaps, and
+passing an object between them is a wild pointer. One shared `winwrap.dll`
+serving the whole process does not have this problem, and is the better
+arrangement wherever there is a choice. YY-Thunks carries the same warning for
+the same reason.
+
+**The `PTP_CALLBACK_INSTANCE` is not a real one.** It is the object itself, so
+that `FreeLibraryWhenCallbackReturns` can find which callback it belongs to
+without a thread-local. The instance is therefore only meaningful to winwrap's
+own shims. Nothing else before Vista takes one, so there is nowhere wrong for
+it to go today -- but the rest of that family is not implemented, and a
+consumer that starts calling `CallbackMayRunLong`,
+`SetEventWhenCallbackReturns`, `LeaveCriticalSectionWhenCallbackReturns` or
+`DisassociateCurrentThreadFromCallback` needs those written before it can pass
+this instance to them. Each object carries a signature so a shim can reject a
+pointer that is not one of ours rather than write through it.
+
+**`PTP_CALLBACK_ENVIRON` is ignored.** The environment selects a private pool,
+a cleanup group, a callback priority and a few other things the legacy timer
+queues have no equivalent for; the default process pool is all there is.
+Refusing a non-null environment is what this library does elsewhere for a
+parameter it cannot honour -- see `LCMapStringEx`'s sort handle -- and it is
+the wrong choice here. An environment changes where a callback runs, not what
+it computes, and the caller is the Concurrency Runtime, which would meet a
+null return by failing outright rather than falling back. The visible
+consequence is that a cleanup group will not track these objects, so a
+consumer relying on `CloseThreadpoolCleanupGroupMembers` to tear them down has
+to close them itself.
+
+**`msWindowLength` is ignored.** It is a coalescing tolerance, letting Windows
+slide a firing to join other timers and save power. There is nothing to ask
+for it with before Vista. Firing on time is always within tolerance, so this
+is a hint lost rather than behaviour changed.
+
+**Two places this is deliberately *not* the same as Windows**, both of them
+narrowing a documented hazard rather than widening it:
+
+- `CloseThreadpoolTimer` and `CloseThreadpoolWait` wait for a callback already
+  running on another thread. The real functions document a race the caller is
+  expected to have closed by calling `WaitForThreadpoolTimerCallbacks` first.
+  Waiting costs a correct caller nothing and turns an incorrect one's
+  use-after-free into a short pause.
+- `WaitForThreadpoolTimerCallbacks` and `WaitForThreadpoolWaitCallbacks` called
+  from inside their own callback return instead of deadlocking, as does closing
+  from inside one. A caller asking "are the callbacks done" from inside one has
+  its answer already: all but this one.
+
+Cancelling *from* inside the callback is the one case that cannot be
+synchronous, because a blocking teardown there would be waiting for the
+calling thread to finish, which never comes. So one callback already queued
+behind the caller may still run, as it may on Windows.
+
+What matters is that the object outlives it, and a non-blocking
+`DeleteTimerQueueTimer` cannot promise that: it gives up the handle, and the
+handle is the only thing a later close can block on to learn the dispatcher has
+let go. A queued callback that has not started is invisible to everything else.
+So a live timer cancelled from its own callback is not deleted but *parked* --
+pushed as far out as the legacy API allows, with the handle kept for whoever
+tears the object down from a thread that may wait. A one-shot that has already
+fired has nothing behind it and is simply deleted.
+
+A close from inside a callback has the same problem and no later caller to
+leave it to, so it queues a work item, which blocks until the dispatcher has
+let go of both the object and the callback that asked for the close, and
+destroys it there. The one path that cannot do even that is a failure to queue
+the work item, which needs the process to be out of memory; it leaks the object
+rather than risk handing a queued callback a dangling pointer.
+
+The wait object has no equivalent of parking. Re-arming a wait and then
+cancelling it within the same callback is the remaining case where a
+registration is given up without a blocking unregister.
+
+The same bookkeeping is what makes re-arming a fired one-shot work at all:
+`ChangeTimerQueueTimer` leaves an expired one-shot untouched, so the shim
+remembers that the arming was used up and replaces the timer instead.
+
+A periodic timer is also why the per-callback bookkeeping is a list rather than
+a field. Two callbacks of the same object can run at once, so "the callback
+thread" and "the library to free when the callback returns" are per invocation,
+not per object. Getting that wrong is not a visible error: it is
+`WaitForThreadpoolTimerCallbacks` returning while a callback is still running,
+a close from the second callback mistaking itself for an outside caller and
+blocking on its own completion, or one of two `FreeLibraryWhenCallbackReturns`
+requests being quietly dropped.
+
 ### `GetLogicalProcessorInformation`: the count, not the topology
 
 The one entry here whose floor is a service pack rather than a Windows
