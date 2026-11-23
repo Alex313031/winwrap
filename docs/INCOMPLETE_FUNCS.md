@@ -255,6 +255,13 @@ does with or without it, because a locale with no country simply produces no
 country. ICU passes the flag on every call, so refusing it would have failed
 the only caller there is.
 
+That is winwrap's fallback, which runs on XP. Vista is different and not
+better: it has its own `LCIDToLocaleName`, so winwrap forwards to it, and that
+function predates the flag -- which arrived in Windows 7 -- and rejects it with
+`ERROR_INVALID_PARAMETER`. So the flag works on XP and on 7 and later, and
+fails on Vista alone. ICU expects exactly this and falls back to its own table
+on a zero; the unit test reports it there rather than failing.
+
 ### Thread pool timers and waits: winwrap's objects, not the OS's
 
 The firing works, and the unit test checks it does: one-shot, periodic,
