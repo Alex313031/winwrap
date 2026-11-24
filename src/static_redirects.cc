@@ -211,6 +211,10 @@ WINWRAP_REDIRECT(FlsFree, 4);
 // note on the Application User Model pair at the end of this file, which
 // applies here unchanged. 16: a reference is a pointer, then a DWORD, a
 // handle and a pointer.
+//
+// The slot is half of it. The SDK does not declare this function dllimport,
+// so most callers never touch the slot and reference the function by name
+// instead; shell32.cc defines that name as well, and says why at length.
 WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
 
 // --- Present on XP SP3, missing on SP2 and earlier -------------------------
