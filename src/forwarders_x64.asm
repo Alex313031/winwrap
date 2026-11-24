@@ -78,6 +78,9 @@ EXTERN ww_SetFileCompletionNotificationModes : PROC
 EXTERN ww_CancelIoEx : PROC
 EXTERN ww_CancelSynchronousIo : PROC
 EXTERN ww_InitializeCriticalSectionEx : PROC
+EXTERN ww_CreateEventExW : PROC
+EXTERN ww_CreateSemaphoreExW : PROC
+EXTERN ww_CreateWaitableTimerExW : PROC
 EXTERN ww_CreateThreadpoolTimer : PROC
 EXTERN ww_SetThreadpoolTimer : PROC
 EXTERN ww_WaitForThreadpoolTimerCallbacks : PROC
@@ -197,6 +200,12 @@ PUBLIC __imp_CancelSynchronousIo
 __imp_CancelSynchronousIo dq ww_CancelSynchronousIo
 PUBLIC __imp_InitializeCriticalSectionEx
 __imp_InitializeCriticalSectionEx dq ww_InitializeCriticalSectionEx
+PUBLIC __imp_CreateEventExW
+__imp_CreateEventExW dq ww_CreateEventExW
+PUBLIC __imp_CreateSemaphoreExW
+__imp_CreateSemaphoreExW dq ww_CreateSemaphoreExW
+PUBLIC __imp_CreateWaitableTimerExW
+__imp_CreateWaitableTimerExW dq ww_CreateWaitableTimerExW
 PUBLIC __imp_CreateThreadpoolTimer
 __imp_CreateThreadpoolTimer dq ww_CreateThreadpoolTimer
 PUBLIC __imp_SetThreadpoolTimer

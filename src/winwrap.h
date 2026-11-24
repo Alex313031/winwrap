@@ -155,7 +155,7 @@ BOOL WINAPI ww_InitOnceComplete(LPINIT_ONCE lpInitOnce, DWORD dwFlags, LPVOID lp
 // A handle from these is winwrap's own structure and not an OS object, so it
 // must be closed by the copy of winwrap that made it, and the
 // PTP_CALLBACK_INSTANCE a callback receives is not a real one. See
-// threadpool.cc, which is also where the Concurrency Runtime's part in all
+// thread_pool.cc, which is also where the Concurrency Runtime's part in all
 // this is written down.
 PTP_TIMER WINAPI ww_CreateThreadpoolTimer(PTP_TIMER_CALLBACK pfnti,
                                           PVOID pv,
@@ -325,6 +325,36 @@ BOOL WINAPI ww_SetFileCompletionNotificationModes(HANDLE FileHandle, UCHAR Flags
 // CancelSynchronousIo always fails. See cancel_io.cc.
 BOOL WINAPI ww_CancelIoEx(HANDLE hFile, LPOVERLAPPED lpOverlapped);
 BOOL WINAPI ww_CancelSynchronousIo(HANDLE hThread);
+
+// --- Events, semaphores and waitable timers ---------------------------------
+// The Ex forms: Vista+. Flags are translated onto the XP functions, and the
+// handle is then duplicated down to the access mask. See sync_objects.cc.
+// The SDK may hide the flag names below 0x0600.
+#if !defined(CREATE_EVENT_MANUAL_RESET)
+ #define CREATE_EVENT_MANUAL_RESET 0x00000001
+#endif
+#if !defined(CREATE_EVENT_INITIAL_SET)
+ #define CREATE_EVENT_INITIAL_SET 0x00000002
+#endif
+#if !defined(CREATE_WAITABLE_TIMER_MANUAL_RESET)
+ #define CREATE_WAITABLE_TIMER_MANUAL_RESET 0x00000001
+#endif
+
+HANDLE WINAPI ww_CreateEventExW(LPSECURITY_ATTRIBUTES lpEventAttributes,
+                                LPCWSTR lpName,
+                                DWORD dwFlags,
+                                DWORD dwDesiredAccess);
+HANDLE WINAPI ww_CreateSemaphoreExW(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes,
+                                    LONG lInitialCount,
+                                    LONG lMaximumCount,
+                                    LPCWSTR lpName,
+                                    DWORD dwFlags,
+                                    DWORD dwDesiredAccess);
+// CREATE_WAITABLE_TIMER_HIGH_RESOLUTION is refused, as before Windows 10 1803.
+HANDLE WINAPI ww_CreateWaitableTimerExW(LPSECURITY_ATTRIBUTES lpTimerAttributes,
+                                        LPCWSTR lpTimerName,
+                                        DWORD dwFlags,
+                                        DWORD dwDesiredAccess);
 
 // --- Critical sections -----------------------------------------------------
 // InitializeCriticalSectionEx: Vista+. The SDK hides the flag below 0x0600.

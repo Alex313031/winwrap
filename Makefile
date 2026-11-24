@@ -204,8 +204,9 @@ OBJECTS = \
 	$(OBJDIR)\process.obj \
 	$(OBJDIR)\registry.obj \
 	$(OBJDIR)\srwlock.obj \
+	$(OBJDIR)\sync_objects.obj \
 	$(OBJDIR)\system.obj \
-	$(OBJDIR)\threadpool.obj \
+	$(OBJDIR)\thread_pool.obj \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \
 	$(OBJDIR)\forwarders.obj

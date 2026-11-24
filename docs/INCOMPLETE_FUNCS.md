@@ -197,6 +197,19 @@ wrap period. Any running browser calls it many times a second. A process that
 slept for more than 49.7 days between two calls would miss a wrap. Every
 implementation of this shim has the same caveat.
 
+### `CreateWaitableTimerExW`: no high-resolution timers
+
+`CREATE_WAITABLE_TIMER_HIGH_RESOLUTION` fails with `ERROR_INVALID_PARAMETER`.
+That is not a gap particular to winwrap: the flag arrived in Windows 10 1803,
+and Vista through 1709 answer the same way, so callers that use it already
+handle the refusal.
+
+Nothing else about this function or its siblings `CreateEventExW` and
+`CreateSemaphoreExW` is reduced. The access mask is honoured — the handle from
+the XP function is duplicated down to it — with one exception that grants no
+more than the real call would: `MAXIMUM_ALLOWED` returns the full-access handle
+as it stands.
+
 ### `GetCurrentProcessorNumber`: a hint
 
 Derived from the CPUID initial APIC ID. It can be stale the moment it is

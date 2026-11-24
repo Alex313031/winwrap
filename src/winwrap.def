@@ -32,10 +32,13 @@ EXPORTS
     CompareStringEx = ww_CompareStringEx
     CompareStringOrdinal = ww_CompareStringOrdinal
     ConvertThreadToFiberEx = ww_ConvertThreadToFiberEx
+    CreateEventExW = ww_CreateEventExW
     CreateFiberEx = ww_CreateFiberEx
+    CreateSemaphoreExW = ww_CreateSemaphoreExW
     CreateSymbolicLinkW = ww_CreateSymbolicLinkW
     CreateThreadpoolTimer = ww_CreateThreadpoolTimer
     CreateThreadpoolWait = ww_CreateThreadpoolWait
+    CreateWaitableTimerExW = ww_CreateWaitableTimerExW
     DllGetVersion
     EventSetInformation = ww_EventSetInformation
     EventWriteTransfer = ww_EventWriteTransfer

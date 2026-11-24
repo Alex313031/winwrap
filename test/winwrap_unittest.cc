@@ -57,6 +57,10 @@
 #include <shlwapi.h>
 #endif // WINWRAP_DLL
 
+// ConvertStringSecurityDescriptorToSecurityDescriptorW, for the wait-only
+// event in TestSyncObjects. advapi32, which the registry tests already link.
+#include <sddl.h>
+
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
 // because a linkage specification may only appear at namespace scope -- inside
@@ -2493,6 +2497,259 @@ namespace {
     ::DeleteCriticalSection(&section);
   }
 
+  // --- Events, semaphores and waitable timers --------------------------------
+
+  bool Signalled(HANDLE handle, DWORD timeout_ms = 0) {
+    return ::WaitForSingleObject(handle, timeout_ms) == WAIT_OBJECT_0;
+  }
+
+  void TestSyncObjects() {
+    std::wcout << L"  CreateEventExW, CreateSemaphoreExW, CreateWaitableTimerExW" << std::endl;
+
+    // Flag validation is only pinned down where winwrap is the one answering.
+    const bool winwrap_answers = !SystemHas(L"kernel32.dll", "CreateEventExW");
+
+    // --- Events: the two flags, in the combinations that tell them apart ---
+    HANDLE event = ::CreateEventExW(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+    CHECK(event != nullptr, L"CreateEventExW failed (" << ::GetLastError() << L")");
+    if (event) {
+      CHECK(!Signalled(event), L"an event created without INITIAL_SET was signalled");
+      ::SetEvent(event);
+      CHECK(Signalled(event), L"SetEvent did not signal the event");
+      CHECK(!Signalled(event), L"an auto-reset event stayed signalled after a wait");
+      ::CloseHandle(event);
+    }
+
+    event = ::CreateEventExW(nullptr, nullptr, CREATE_EVENT_INITIAL_SET, EVENT_ALL_ACCESS);
+    CHECK(event != nullptr, L"CreateEventExW(INITIAL_SET) failed");
+    if (event) {
+      CHECK(Signalled(event), L"CREATE_EVENT_INITIAL_SET did not signal the event");
+      CHECK(!Signalled(event), L"INITIAL_SET alone produced a manual-reset event");
+      ::CloseHandle(event);
+    }
+
+    event = ::CreateEventExW(nullptr, nullptr,
+                             CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
+                             EVENT_ALL_ACCESS);
+    CHECK(event != nullptr, L"CreateEventExW(MANUAL_RESET | INITIAL_SET) failed");
+    if (event) {
+      CHECK(Signalled(event) && Signalled(event),
+            L"CREATE_EVENT_MANUAL_RESET did not keep the event signalled across a wait");
+      ::ResetEvent(event);
+      CHECK(!Signalled(event), L"ResetEvent did not clear a manual-reset event");
+      ::CloseHandle(event);
+    }
+
+    if (winwrap_answers) {
+      ::SetLastError(0);
+      event = ::CreateEventExW(nullptr, nullptr, 0x80, EVENT_ALL_ACCESS);
+      CHECK(event == nullptr && ::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"an unknown event flag was not refused with ERROR_INVALID_PARAMETER");
+      if (event) {
+        ::CloseHandle(event);
+      }
+    }
+
+    // --- A named event: the second create opens the first ---
+    wchar_t name[64] = {};
+    ::wsprintfW(name, L"winwrap-test-event-%lu", ::GetCurrentProcessId());
+    HANDLE first = ::CreateEventExW(nullptr, name, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
+    CHECK(first != nullptr && ::GetLastError() != ERROR_ALREADY_EXISTS,
+          L"creating a new named event failed or claimed it already existed");
+    ::SetLastError(0);
+    HANDLE second = ::CreateEventExW(nullptr, name, 0, EVENT_ALL_ACCESS);
+    CHECK(second != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS,
+          L"re-creating a named event did not report ERROR_ALREADY_EXISTS ("
+              << ::GetLastError() << L")");
+    if (first && second) {
+      ::SetEvent(first);
+      CHECK(Signalled(second), L"the two handles to one named event were different objects");
+    }
+    if (second) {
+      ::CloseHandle(second);
+    }
+    if (first) {
+      ::CloseHandle(first);
+    }
+
+    // --- A named event this caller may only wait on ---
+    //
+    // The descriptor grants Everyone SYNCHRONIZE and nothing else, so opening
+    // it for all access is refused. The Vista function asked for SYNCHRONIZE
+    // only and gets it; a shim that merely called CreateEventW would fail.
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    if (::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:(A;;0x00100000;;;WD)", SDDL_REVISION_1, &descriptor, nullptr)) {
+      SECURITY_ATTRIBUTES attributes = {sizeof(attributes), descriptor, FALSE};
+      ::wsprintfW(name, L"winwrap-test-waitonly-%lu", ::GetCurrentProcessId());
+      HANDLE guarded = ::CreateEventExW(&attributes, name,
+                                        CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
+                                        EVENT_ALL_ACCESS);
+      CHECK(guarded != nullptr, L"creating the wait-only event failed (" << ::GetLastError()
+                                                                         << L")");
+      if (guarded) {
+        ::SetLastError(0);
+        HANDLE waiter = ::CreateEventExW(nullptr, name, 0, SYNCHRONIZE);
+        CHECK(waiter != nullptr, L"an existing event could not be opened for SYNCHRONIZE alone ("
+                                     << ::GetLastError() << L")");
+        if (waiter) {
+          CHECK(::GetLastError() == ERROR_ALREADY_EXISTS,
+                L"opening the wait-only event did not report ERROR_ALREADY_EXISTS");
+          CHECK(Signalled(waiter), L"the SYNCHRONIZE-only handle could not be waited on");
+          ::CloseHandle(waiter);
+        }
+        ::CloseHandle(guarded);
+      }
+      ::LocalFree(descriptor);
+    } else {
+      std::wcout << L"    (no security descriptor, wait-only event not exercised)" << std::endl;
+    }
+
+    // --- Semaphores ---
+    HANDLE semaphore = ::CreateSemaphoreExW(nullptr, 1, 2, nullptr, 0, SEMAPHORE_ALL_ACCESS);
+    CHECK(semaphore != nullptr, L"CreateSemaphoreExW failed (" << ::GetLastError() << L")");
+    if (semaphore) {
+      CHECK(Signalled(semaphore), L"a semaphore with an initial count of 1 could not be taken");
+      CHECK(!Signalled(semaphore), L"a semaphore with an initial count of 1 was taken twice");
+      LONG previous = -1;
+      CHECK(::ReleaseSemaphore(semaphore, 2, &previous) && previous == 0,
+            L"releasing up to the maximum failed, or the previous count was " << previous);
+      CHECK(!::ReleaseSemaphore(semaphore, 1, nullptr),
+            L"a semaphore was released past its maximum count");
+      ::CloseHandle(semaphore);
+    }
+    if (winwrap_answers) {
+      ::SetLastError(0);
+      semaphore = ::CreateSemaphoreExW(nullptr, 0, 1, nullptr, 1, SEMAPHORE_ALL_ACCESS);
+      CHECK(semaphore == nullptr && ::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"a non-zero reserved semaphore flag was not refused");
+      if (semaphore) {
+        ::CloseHandle(semaphore);
+      }
+    }
+
+    // --- Waitable timers: 10 ms, relative ---
+    LARGE_INTEGER due = {};
+    due.QuadPart      = -100000;
+
+    HANDLE timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_ALL_ACCESS);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW failed (" << ::GetLastError() << L")");
+    if (timer) {
+      CHECK(!Signalled(timer), L"a timer that was never set was signalled");
+      CHECK(::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE),
+            L"SetWaitableTimer failed");
+      CHECK(Signalled(timer, 2000), L"the timer never fired");
+      CHECK(!Signalled(timer), L"a synchronisation timer stayed signalled after a wait");
+      ::CloseHandle(timer);
+    }
+
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_MANUAL_RESET,
+                                     TIMER_ALL_ACCESS);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW(MANUAL_RESET) failed");
+    if (timer) {
+      CHECK(::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE),
+            L"SetWaitableTimer failed on the manual-reset timer");
+      CHECK(Signalled(timer, 2000) && Signalled(timer),
+            L"a manual-reset timer did not stay signalled across a wait");
+      ::CloseHandle(timer);
+    }
+
+    // The high-resolution flag, 0x2, is Windows 10 1803's. winwrap refuses it
+    // as every earlier Windows does; a system that has it is simply reported.
+    ::SetLastError(0);
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0x00000002, TIMER_ALL_ACCESS);
+    if (winwrap_answers) {
+      CHECK(timer == nullptr && ::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"the high-resolution timer flag was not refused with ERROR_INVALID_PARAMETER");
+    } else {
+      std::wcout << L"    (high-resolution timers: "
+                 << (timer ? L"supported" : L"not supported") << L" by this system)" << std::endl;
+    }
+    if (timer) {
+      ::CloseHandle(timer);
+    }
+
+    // --- The access mask is a limit, not a suggestion ---
+    //
+    // True of the system's function and, by duplicating the handle down, of
+    // winwrap's; so this is asserted either way.
+    event = ::CreateEventExW(nullptr, nullptr, CREATE_EVENT_INITIAL_SET, SYNCHRONIZE);
+    CHECK(event != nullptr, L"CreateEventExW(SYNCHRONIZE) failed (" << ::GetLastError() << L")");
+    if (event) {
+      CHECK(Signalled(event), L"a SYNCHRONIZE-only event could not be waited on");
+      ::SetLastError(0);
+      CHECK(!::SetEvent(event) && ::GetLastError() == ERROR_ACCESS_DENIED,
+            L"a handle created with SYNCHRONIZE alone was able to SetEvent");
+      ::CloseHandle(event);
+    }
+
+    // Generic rights have to be mapped onto the event's own, not dropped.
+    event = ::CreateEventExW(nullptr, nullptr, 0, GENERIC_ALL);
+    CHECK(event != nullptr, L"CreateEventExW(GENERIC_ALL) failed (" << ::GetLastError() << L")");
+    if (event) {
+      CHECK(::SetEvent(event) && Signalled(event),
+            L"a GENERIC_ALL event handle could not be set and waited on");
+      ::CloseHandle(event);
+    }
+
+    event = ::CreateEventExW(nullptr, nullptr, 0, MAXIMUM_ALLOWED);
+    CHECK(event != nullptr, L"CreateEventExW(MAXIMUM_ALLOWED) failed (" << ::GetLastError()
+                                                                        << L")");
+    if (event) {
+      CHECK(::SetEvent(event) && Signalled(event),
+            L"a MAXIMUM_ALLOWED event handle could not be set and waited on");
+      ::CloseHandle(event);
+    }
+
+    // Narrowing must not lose the "it was already there" report.
+    ::wsprintfW(name, L"winwrap-test-narrow-%lu", ::GetCurrentProcessId());
+    first = ::CreateEventExW(nullptr, name, 0, EVENT_MODIFY_STATE);
+    CHECK(first != nullptr && ::GetLastError() != ERROR_ALREADY_EXISTS,
+          L"creating a named event with EVENT_MODIFY_STATE failed");
+    ::SetLastError(0);
+    second = ::CreateEventExW(nullptr, name, 0, SYNCHRONIZE);
+    CHECK(second != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS,
+          L"re-creating a named event with a narrow mask lost ERROR_ALREADY_EXISTS ("
+              << ::GetLastError() << L")");
+    if (first && second) {
+      CHECK(::SetEvent(first) && Signalled(second),
+            L"the narrowed handles to one named event did not each keep their own right");
+      CHECK(!::SetEvent(second), L"the SYNCHRONIZE-only handle to a named event could set it");
+    }
+    if (second) {
+      ::CloseHandle(second);
+    }
+    if (first) {
+      ::CloseHandle(first);
+    }
+
+    semaphore = ::CreateSemaphoreExW(nullptr, 1, 1, nullptr, 0, SYNCHRONIZE);
+    CHECK(semaphore != nullptr, L"CreateSemaphoreExW(SYNCHRONIZE) failed");
+    if (semaphore) {
+      CHECK(Signalled(semaphore), L"a SYNCHRONIZE-only semaphore could not be taken");
+      CHECK(!::ReleaseSemaphore(semaphore, 1, nullptr),
+            L"a handle created with SYNCHRONIZE alone was able to ReleaseSemaphore");
+      ::CloseHandle(semaphore);
+    }
+
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0, SYNCHRONIZE);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW(SYNCHRONIZE) failed");
+    if (timer) {
+      CHECK(!::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE),
+            L"a handle created with SYNCHRONIZE alone was able to SetWaitableTimer");
+      ::CloseHandle(timer);
+    }
+
+    // What V8's PreciseSleepTimer asks for, minus the high-resolution flag.
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_MODIFY_STATE | SYNCHRONIZE);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW(TIMER_MODIFY_STATE | SYNCHRONIZE) failed");
+    if (timer) {
+      CHECK(::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE) && Signalled(timer, 2000),
+            L"a timer with exactly the rights to set and wait could not do both");
+      ::CloseHandle(timer);
+    }
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -2818,6 +3075,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFibers();
   TestMainThreadFiberSequence();
   TestCriticalSectionEx();
+  TestSyncObjects();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();
