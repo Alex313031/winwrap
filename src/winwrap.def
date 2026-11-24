@@ -64,6 +64,8 @@ EXPORTS
     InitializeConditionVariable = ww_InitializeConditionVariable
     InitializeCriticalSectionEx = ww_InitializeCriticalSectionEx
     InitializeSRWLock = ww_InitializeSRWLock
+    InitOnceBeginInitialize = ww_InitOnceBeginInitialize
+    InitOnceComplete = ww_InitOnceComplete
     InitOnceExecuteOnce = ww_InitOnceExecuteOnce
     IsRunningOnWine
     IsThreadAFiber = ww_IsThreadAFiber

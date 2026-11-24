@@ -34,6 +34,8 @@ IFDEF WINWRAP_X86
 
 EXTERN _ww_GetTickCount64@0 : PROC
 EXTERN _ww_InitOnceExecuteOnce@16 : PROC
+EXTERN _ww_InitOnceBeginInitialize@16 : PROC
+EXTERN _ww_InitOnceComplete@12 : PROC
 EXTERN _ww_GetFileInformationByHandleEx@16 : PROC
 EXTERN _ww_SetFileInformationByHandle@16 : PROC
 EXTERN _ww_GetFinalPathNameByHandleW@16 : PROC
@@ -104,6 +106,10 @@ PUBLIC __imp__GetTickCount64@0
 __imp__GetTickCount64@0 dd _ww_GetTickCount64@0
 PUBLIC __imp__InitOnceExecuteOnce@16
 __imp__InitOnceExecuteOnce@16 dd _ww_InitOnceExecuteOnce@16
+PUBLIC __imp__InitOnceBeginInitialize@16
+__imp__InitOnceBeginInitialize@16 dd _ww_InitOnceBeginInitialize@16
+PUBLIC __imp__InitOnceComplete@12
+__imp__InitOnceComplete@12 dd _ww_InitOnceComplete@12
 PUBLIC __imp__GetFileInformationByHandleEx@16
 __imp__GetFileInformationByHandleEx@16 dd _ww_GetFileInformationByHandleEx@16
 PUBLIC __imp__SetFileInformationByHandle@16

@@ -430,12 +430,215 @@ namespace {
     return 0;
   }
 
+  // The context values handed through the INIT_ONCE. Their addresses are what
+  // matters: a context has to leave the low two bits clear, and an int's
+  // address does.
+  int g_once_payload_a = 0;
+  int g_once_payload_b = 0;
+
+  BOOL CALLBACK OnceBodyWithContext(PINIT_ONCE, PVOID parameter, PVOID* context) {
+    *context = parameter;
+    return TRUE;
+  }
+
+  BOOL CALLBACK OnceBodyFailing(PINIT_ONCE, PVOID, PVOID*) {
+    ::InterlockedIncrement(&g_once_runs);
+    ::SetLastError(ERROR_NOT_READY);
+    return FALSE;
+  }
+
+  INIT_ONCE g_begin_once          = INIT_ONCE_STATIC_INIT;
+  volatile LONG g_begin_winners   = 0;
+  volatile LONG g_begin_followers = 0;
+
+  // Every thread asks; exactly one is told to do the work, and the rest wait
+  // for it and are handed its context.
+  DWORD WINAPI BeginCaller(LPVOID) {
+    BOOL pending  = FALSE;
+    PVOID context = nullptr;
+    if (!::InitOnceBeginInitialize(&g_begin_once, 0, &pending, &context)) {
+      ++g_failures;
+      std::wcout << L"    FAIL InitOnceBeginInitialize failed in a thread with "
+                 << ::GetLastError() << std::endl;
+      return 0;
+    }
+    if (pending) {
+      ::InterlockedIncrement(&g_begin_winners);
+      ::Sleep(20); // Long enough for the others to arrive and have to wait.
+      CHECK(::InitOnceComplete(&g_begin_once, 0, &g_once_payload_a),
+            L"the winning thread could not complete");
+    } else {
+      CHECK(context == &g_once_payload_a, L"a waiting thread was handed the wrong context");
+      ::InterlockedIncrement(&g_begin_followers);
+    }
+    return 0;
+  }
+
+  void TestInitOnce() {
+    std::wcout << L"  InitOnceBeginInitialize, InitOnceComplete" << std::endl;
+
+    // Error codes are only pinned down where winwrap is the one answering;
+    // against the system the test settles for "it failed".
+    const bool winwrap_answers = !::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"),
+                                                   "InitOnceBeginInitialize");
+
+    // --- InitOnceExecuteOnce carries a context ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      PVOID context  = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_a, &context),
+            L"InitOnceExecuteOnce with a context failed");
+      CHECK(context == &g_once_payload_a, L"the first caller did not get its context back");
+
+      // The callback must not run again, and the stored context -- not the
+      // new parameter -- is what comes back.
+      context = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_b, &context),
+            L"the second InitOnceExecuteOnce failed");
+      CHECK(context == &g_once_payload_a, L"a later caller was not handed the stored context");
+    }
+
+    // --- A failing callback leaves the INIT_ONCE free for another attempt ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      g_once_runs    = 0;
+      CHECK(!::InitOnceExecuteOnce(&once, OnceBodyFailing, nullptr, nullptr),
+            L"a failing callback was reported as success");
+      CHECK(!::InitOnceExecuteOnce(&once, OnceBodyFailing, nullptr, nullptr),
+            L"the retry of a failing callback was reported as success");
+      CHECK(g_once_runs == 2, L"the failing callback ran " << g_once_runs << L" times, not 2");
+
+      PVOID context = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_b, &context) &&
+                context == &g_once_payload_b,
+            L"an INIT_ONCE that had only seen failures could not then succeed");
+    }
+
+    // --- Synchronous, one thread: every transition in turn ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      BOOL pending   = FALSE;
+      PVOID context  = nullptr;
+
+      ::SetLastError(0);
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context),
+            L"INIT_ONCE_CHECK_ONLY succeeded on a fresh INIT_ONCE");
+      if (winwrap_answers) {
+        CHECK(::GetLastError() == ERROR_GEN_FAILURE,
+              L"INIT_ONCE_CHECK_ONLY on a fresh INIT_ONCE set " << ::GetLastError());
+      }
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY | INIT_ONCE_ASYNC, &pending,
+                                       &context),
+            L"INIT_ONCE_CHECK_ONLY | INIT_ONCE_ASYNC was accepted");
+      CHECK(!::InitOnceComplete(&once, 0, nullptr),
+            L"InitOnceComplete succeeded with nothing begun");
+
+      CHECK(::InitOnceBeginInitialize(&once, 0, &pending, &context) && pending,
+            L"the first InitOnceBeginInitialize did not report pending");
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context),
+            L"INIT_ONCE_CHECK_ONLY succeeded while initialisation was running");
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_ASYNC, &pending, &context),
+            L"an asynchronous begin joined a synchronous initialisation");
+
+      // Failing hands the INIT_ONCE back, so the next begin is pending again.
+      CHECK(!::InitOnceComplete(&once, INIT_ONCE_INIT_FAILED, &g_once_payload_a),
+            L"INIT_ONCE_INIT_FAILED accepted a context");
+      CHECK(::InitOnceComplete(&once, INIT_ONCE_INIT_FAILED, nullptr),
+            L"InitOnceComplete(INIT_ONCE_INIT_FAILED) failed");
+      pending = FALSE;
+      CHECK(::InitOnceBeginInitialize(&once, 0, &pending, &context) && pending,
+            L"a failed initialisation did not leave the INIT_ONCE to be retried");
+
+      // A context has to keep clear of the state bits.
+      PVOID misaligned =
+          reinterpret_cast<PVOID>(reinterpret_cast<ULONG_PTR>(&g_once_payload_a) | 1);
+      ::SetLastError(0);
+      CHECK(!::InitOnceComplete(&once, 0, misaligned),
+            L"InitOnceComplete accepted a context with a reserved bit set");
+      if (winwrap_answers) {
+        CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
+              L"a misaligned context set " << ::GetLastError());
+      }
+      // Mismatched modes on InitOnceComplete are refused by winwrap, but that is
+      // only asserted there: implementations differ on it, and where one lets
+      // it through this would complete the INIT_ONCE out from under the test.
+      if (winwrap_answers) {
+        CHECK(!::InitOnceComplete(&once, INIT_ONCE_ASYNC, &g_once_payload_a),
+              L"an asynchronous complete ended a synchronous initialisation");
+      }
+
+      CHECK(::InitOnceComplete(&once, 0, &g_once_payload_a), L"InitOnceComplete failed");
+      CHECK(!::InitOnceComplete(&once, 0, &g_once_payload_b),
+            L"InitOnceComplete succeeded a second time");
+
+      pending = TRUE;
+      context = nullptr;
+      CHECK(::InitOnceBeginInitialize(&once, 0, &pending, &context) && !pending,
+            L"a completed INIT_ONCE still reported pending");
+      CHECK(context == &g_once_payload_a, L"a completed INIT_ONCE returned the wrong context");
+
+      pending = TRUE;
+      context = nullptr;
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context) && !pending,
+            L"INIT_ONCE_CHECK_ONLY failed on a completed INIT_ONCE");
+      CHECK(context == &g_once_payload_a, L"INIT_ONCE_CHECK_ONLY returned the wrong context");
+
+      // What Begin/Complete stored, ExecuteOnce has to read: one state word.
+      context = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_b, &context) &&
+                context == &g_once_payload_a,
+            L"InitOnceExecuteOnce did not honour an INIT_ONCE completed by InitOnceComplete");
+    }
+
+    // --- Asynchronous: both may begin, one completion wins ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      BOOL pending   = FALSE;
+      PVOID context  = nullptr;
+
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_ASYNC, &pending, &context) && pending,
+            L"the first asynchronous begin did not report pending");
+      pending = FALSE;
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_ASYNC, &pending, &context) && pending,
+            L"a second asynchronous begin was not also told to go ahead");
+      CHECK(!::InitOnceBeginInitialize(&once, 0, &pending, &context),
+            L"a synchronous begin joined an asynchronous initialisation");
+      CHECK(!::InitOnceComplete(&once, 0, &g_once_payload_a),
+            L"a synchronous complete ended an asynchronous initialisation");
+      CHECK(!::InitOnceComplete(&once, INIT_ONCE_ASYNC | INIT_ONCE_INIT_FAILED, nullptr),
+            L"INIT_ONCE_ASYNC | INIT_ONCE_INIT_FAILED was accepted");
+
+      CHECK(::InitOnceComplete(&once, INIT_ONCE_ASYNC, &g_once_payload_a),
+            L"the first asynchronous complete failed");
+      CHECK(!::InitOnceComplete(&once, INIT_ONCE_ASYNC, &g_once_payload_b),
+            L"the losing asynchronous complete was reported as success");
+
+      // The loser's way of finding out what the winner stored.
+      pending = TRUE;
+      context = nullptr;
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context) && !pending,
+            L"INIT_ONCE_CHECK_ONLY failed after an asynchronous completion");
+      CHECK(context == &g_once_payload_a, L"the losing completion's context was stored");
+    }
+
+    // --- Synchronous under contention: one winner, the rest wait for it ---
+    g_begin_once.Ptr  = nullptr; // INIT_ONCE_STATIC_INIT, without InitOnceInitialize.
+    g_begin_winners   = 0;
+    g_begin_followers = 0;
+    RunThreads(BeginCaller, kThreads);
+    CHECK(g_begin_winners == 1, g_begin_winners << L" threads were told to initialise, not 1");
+    CHECK(g_begin_followers == static_cast<LONG>(kThreads) - 1,
+          g_begin_followers << L" threads saw it complete, expected " << (kThreads - 1));
+  }
+
   void TestMisc() {
     std::wcout << L"  InitOnceExecuteOnce, GetTickCount64" << std::endl;
 
     g_once_runs = 0;
     RunThreads(OnceCaller, kThreads);
     CHECK(g_once_runs == 1, L"the once-callback ran " << g_once_runs << L" times");
+
+    TestInitOnce();
 
     ULONGLONG first = ::GetTickCount64();
     ::Sleep(50);

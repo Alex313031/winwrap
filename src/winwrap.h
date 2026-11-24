@@ -132,11 +132,20 @@ VOID WINAPI ww_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
 VOID WINAPI ww_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable);
 
 // --- One-time initialisation -----------------------------------------------
-// InitOnceExecuteOnce: Vista+. libuv's uv_once() is built directly on this.
+// All Vista+, and all three or none: they share the INIT_ONCE's state word,
+// so winwrap's only ever meet each other. See init_once.cc.
+// InitOnceExecuteOnce: libuv's uv_once() is built directly on this.
 BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                    PINIT_ONCE_FN InitFn,
                                    PVOID Parameter,
                                    LPVOID* Context);
+// InitOnceBeginInitialize / InitOnceComplete: the two-call form, synchronous
+// or INIT_ONCE_ASYNC.
+BOOL WINAPI ww_InitOnceBeginInitialize(LPINIT_ONCE lpInitOnce,
+                                       DWORD dwFlags,
+                                       PBOOL fPending,
+                                       LPVOID* lpContext);
+BOOL WINAPI ww_InitOnceComplete(LPINIT_ONCE lpInitOnce, DWORD dwFlags, LPVOID lpContext);
 
 // --- Thread pool timers and waits ------------------------------------------
 // All Vista+, and built on XP's timer queues rather than wrapped. TP_TIMER,

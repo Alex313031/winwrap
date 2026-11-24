@@ -104,6 +104,8 @@ extern "C" int winwrap_static_redirects = 0;
 // --- Available on Vista and later, missing on XP ---------------------------
 WINWRAP_REDIRECT(GetTickCount64, 0);
 WINWRAP_REDIRECT(InitOnceExecuteOnce, 16);
+WINWRAP_REDIRECT(InitOnceBeginInitialize, 16);
+WINWRAP_REDIRECT(InitOnceComplete, 12);
 
 WINWRAP_REDIRECT(GetFileInformationByHandleEx, 16);
 WINWRAP_REDIRECT(SetFileInformationByHandle, 16);
