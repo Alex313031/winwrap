@@ -47,7 +47,6 @@ namespace winwrap {
   inline constexpr wchar_t kKernel32[] = L"kernel32.dll";
   inline constexpr wchar_t kUser32[]   = L"user32.dll";
   inline constexpr wchar_t kAdvapi32[] = L"advapi32.dll";
-  inline constexpr wchar_t kShell32[]  = L"shell32.dll";
   inline constexpr wchar_t kNtDll[]    = L"ntdll.dll";
 
   // Which of those a function comes from. An enum rather than the name at each
@@ -55,7 +54,15 @@ namespace winwrap {
   // function. Named h* for the handle each one stands for, leaving the k*
   // above for the strings; kCount keeps its k because it counts rather than
   // naming a module.
-  enum class Module { hKernel32, hUser32, hAdvapi32, hShell32, hNtDll, kCount };
+  //
+  // shell32 and iphlpapi are absent on purpose, though winwrap substitutes
+  // functions from both. Everything here is found with GetModuleHandleW, which
+  // only works for a DLL that is certain to be loaded already, and consumers
+  // delay-import those two. A WW_TRYFUNC against either would report "no such
+  // function" to any process that had not happened to load the DLL yet, and
+  // cache it -- which is a bug winwrap has had. They go through
+  // LoadSystemLibrary and ResolveFrom below instead.
+  enum class Module { hKernel32, hUser32, hAdvapi32, hNtDll, kCount };
 
   // Stored in a slot when the running Windows has no such function. Any value
   // that cannot be a real code address will do; 1 is not writable, not

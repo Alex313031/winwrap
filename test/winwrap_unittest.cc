@@ -3127,6 +3127,9 @@ namespace {
       CHECK(::ConvertInterfaceLuidToNameW(&luid, tiny, 1) != NO_ERROR,
             L"a one-character buffer was reported as holding \"" << name << L"\"");
       CHECK(tiny[1] == L'#', L"a one-character buffer was written past its end");
+      if (winwrap_answers) {
+        CHECK(tiny[0] == L'\0', L"a refused buffer was left holding an unterminated fragment");
+      }
     }
 
     // An index nothing has.
@@ -3154,6 +3157,19 @@ namespace {
             L"a buffer of exactly the right size was refused");
       CHECK(::ConvertInterfaceLuidToNameW(&odd, exact, 11) == ERROR_NOT_ENOUGH_MEMORY,
             L"a buffer one character short was not refused with ERROR_NOT_ENOUGH_MEMORY");
+      CHECK(exact[0] == L'\0', L"a buffer one character short was left unterminated");
+
+      // An index too wide for the LUID's 24-bit field. No interface has one
+      // to convert, so the LUID is laid out as the conversion would: top byte
+      // in Reserved. The name has to carry all 32 bits, 0x12ABCDEF.
+      NET_LUID wide;
+      wide.Value             = 0;
+      wide.Info.IfType       = 6;
+      wide.Info.Reserved     = 0x12;
+      wide.Info.NetLuidIndex = 0xABCDEF;
+      CHECK(::ConvertInterfaceLuidToNameW(&wide, name, ARRAYSIZE(name)) == NO_ERROR &&
+                wcscmp(name, L"ethernet_313249263") == 0,
+            L"an index above 24 bits was rendered as \"" << name << L"\"");
     }
     ::FreeLibrary(iphlpapi);
   }
@@ -3374,6 +3390,9 @@ namespace {
             L"a null application ID was accepted");
     } else {
       std::wcout << L"    forwarding to the system; a null ID is not safe to pass it" << std::endl;
+    }
+    if (shell32) {
+      ::FreeLibrary(shell32);
     }
 
     HRESULT hr = ::SetCurrentProcessExplicitAppUserModelID(L"winwrap.test");

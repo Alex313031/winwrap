@@ -32,8 +32,6 @@ namespace winwrap {
           return kUser32;
         case Module::hAdvapi32:
           return kAdvapi32;
-        case Module::hShell32:
-          return kShell32;
         case Module::hNtDll:
           return kNtDll;
         case Module::kCount:

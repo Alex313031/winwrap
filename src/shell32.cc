@@ -338,10 +338,11 @@ extern "C" HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
   // without checking -- libuv's does -- frees nothing.
   *ppszPath = nullptr;
 
-  const auto get_folder_path =
-      reinterpret_cast<SHGetFolderPathWFn>(::winwrap::ResolveFrom(g_folder_path, shell32, "SHGetFolderPathW"));
+  const auto get_folder_path = reinterpret_cast<SHGetFolderPathWFn>(
+      ::winwrap::ResolveFrom(g_folder_path, shell32, "SHGetFolderPathW"));
+  const HMODULE ole32   = ::winwrap::LoadSystemLibrary(g_ole32, L"ole32.dll");
   const auto task_alloc = reinterpret_cast<CoTaskMemAllocFn>(
-      ::winwrap::ResolveFrom(g_task_alloc, ::winwrap::LoadSystemLibrary(g_ole32, L"ole32.dll"), "CoTaskMemAlloc"));
+      ::winwrap::ResolveFrom(g_task_alloc, ole32, "CoTaskMemAlloc"));
   if (!get_folder_path || !task_alloc) {
     return HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
   }

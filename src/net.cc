@@ -74,6 +74,10 @@ namespace {
 
   using GetIfEntryFn = DWORD(WINAPI*)(InterfaceRow*);
 
+  // The width of NET_LUID's NetLuidIndex field.
+  constexpr unsigned kLuidIndexBits = 24;
+  constexpr ULONG kLuidIndexMask    = (1ul << kLuidIndexBits) - 1;
+
   // The names Windows gives the interface types it has names for. Any other
   // type is "iftype" followed by its number.
   struct TypeName {
@@ -115,9 +119,16 @@ namespace {
       }
     }
 
-    // Terminates the string. False if it, or anything before it, did not fit.
+    // Terminates the string. False if it, or anything before it, did not fit
+    // -- in which case the buffer is left holding an empty string rather than
+    // as much of the name as there was room for with nothing to end it. The
+    // caller has been told the call failed, but one that reads the buffer
+    // anyway should find a string there.
     bool Finish() {
       Character(L'\0');
+      if (!fits_ && capacity_ != 0) {
+        buffer_[0] = L'\0';
+      }
       return fits_;
     }
 
@@ -179,8 +190,13 @@ DWORD WINAPI ww_ConvertInterfaceIndexToLuid(ULONG InterfaceIndex, NET_LUID* Inte
     return ERROR_FILE_NOT_FOUND;
   }
 
-  InterfaceLuid->Info.Reserved     = 0;
-  InterfaceLuid->Info.NetLuidIndex = InterfaceIndex; // See the top of the file.
+  // See the top of the file. NetLuidIndex is 24 bits and an index is 32, so
+  // the top byte goes in Reserved, which is 24 bits nobody else reads: a LUID
+  // from here is only ever handed back to ww_ConvertInterfaceLuidToNameW,
+  // which puts the two halves together again. Without that an index past
+  // 0x00FFFFFF would lose its top byte and could share a name with another.
+  InterfaceLuid->Info.Reserved     = InterfaceIndex >> kLuidIndexBits;
+  InterfaceLuid->Info.NetLuidIndex = InterfaceIndex & kLuidIndexMask;
   InterfaceLuid->Info.IfType       = row.dwType;
   return NO_ERROR;
 }
@@ -213,7 +229,11 @@ DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
     name.Number(type);
   }
   name.Text(L"_");
-  name.Number(InterfaceLuid->Info.NetLuidIndex);
+  // The whole index, top byte included; see ww_ConvertInterfaceIndexToLuid.
+  // Zero in Reserved, which is every LUID made from an index below 2^24 and
+  // every LUID from anywhere else, leaves NetLuidIndex as it is.
+  name.Number((static_cast<ULONG64>(InterfaceLuid->Info.Reserved) << kLuidIndexBits) |
+              InterfaceLuid->Info.NetLuidIndex);
   return name.Finish() ? NO_ERROR : ERROR_NOT_ENOUGH_MEMORY;
 }
 
