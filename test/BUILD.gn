@@ -1,7 +1,10 @@
 # Stress tests winwrap library functions
 
-group("winwrap_test") {
+import("//third_party/winwrap/winwrap.gni")
+
+group("winwrap_tests") {
   testonly = true
+
   public_deps = [ ":winwrap_unit_test" ]
 }
 
@@ -18,7 +21,7 @@ executable("winwrap_unit_test") {
 
   deps = [ "../:winwrap_lib" ]
 
-  output_name = "winwrap_unittests"
+  output_name = "winwrap_test"
 
   # No /SUBSYSTEM ldflags here. //build/config/win:console already appends the
   # minimum OS version, and in a tree carrying electron-legacy's patch series
@@ -29,7 +32,24 @@ executable("winwrap_unit_test") {
 }
 
 config("winwrap_unit_test_config") {
-  defines = []
+  # WINWRAP_TEST marks the translation unit as the test. Nothing reads it yet;
+  # every build system defines it so that something can. UNICODE as on the
+  # library: the sources define it themselves if nobody has, so this is
+  # agreement with the other builds rather than behaviour.
+  defines = [
+    "WINWRAP_TEST",
+    "UNICODE",
+    "_UNICODE",
+  ]
+
+  # Which form the test was linked against, as $(FORMDEF) tells it in the
+  # makefiles. WINWRAP_DLL arrives with winwrap_public_config when the shared
+  # form is selected; nothing supplies the static half, which is read nowhere
+  # and is set so that the builds agree.
+  if (!is_component_winwrap) {
+    defines += [ "WINWRAP_STATIC" ]
+  }
+
   # ../src for winwrap.h, which this includes with angle brackets, and
   # ../src/public for winwrap_public.h. The second is what a consumer gets on
   # its own include path, and spelling it the same way here is deliberate: it
@@ -50,8 +70,4 @@ config("winwrap_unit_test_config") {
     "../src",
     "../src/public",
   ]
-
-  if (is_component_winwrap) {
-    defines += [ "WINWRAP_DLL" ]
-  }
 }

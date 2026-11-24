@@ -29,11 +29,7 @@
 // than probing for it: consumers delay-import iphlpapi. See dispatch.h.
 
 #include "dispatch.h"
-#include "winwrap.h"
-
-// NET_LUID. After the two above, not before: it assumes <windows.h>'s types.
-// Not version-gated, and nothing else in winwrap needs it.
-#include <ifdef.h>
+#include "winwrap.h" // And through it <ifdef.h>, for NET_LUID.
 
 namespace {
 
@@ -243,6 +239,9 @@ DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
 // by itself does not, and which a consumer gets depends on its include
 // order. shell32.cc explains, at SHGetKnownFolderPath, what goes wrong
 // without these.
+//
+// Not for MinGW: static_redirects.cc defines every plain name there.
+#if !defined(__MINGW32__)
 DWORD WINAPI ConvertInterfaceIndexToLuid(ULONG InterfaceIndex, NET_LUID* InterfaceLuid) {
   return ww_ConvertInterfaceIndexToLuid(InterfaceIndex, InterfaceLuid);
 }
@@ -252,5 +251,6 @@ DWORD WINAPI ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
                                          SIZE_T Length) {
   return ww_ConvertInterfaceLuidToNameW(InterfaceLuid, InterfaceName, Length);
 }
+#endif // !defined(__MINGW32__)
 
 } // extern "C"

@@ -34,7 +34,7 @@ disagrees with this tool.
 
 Usage:
 
-    python3 tools/check_imports.py out/x86/static/winwrap_unittests.exe
+    python3 tools/check_imports.py out/x86/static/winwrap_test.exe
     python3 tools/check_imports.py --min-os 5.01 Sawbuck.exe
     python3 tools/check_imports.py --show-all Sawbuck.exe
 

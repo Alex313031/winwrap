@@ -63,8 +63,8 @@ Output is split per flavour, because both of them produce a file called
 archive, the shared form's is the import library beside the DLL:
 
 ```
-out\x86\static\    winwrap.lib               winwrap_unittests.exe
-out\x86\dll\       winwrap.dll winwrap.lib   winwrap_unittests.exe
+out\x86\static\    winwrap.lib               winwrap_test.exe
+out\x86\dll\       winwrap.dll winwrap.lib   winwrap_test.exe
 out\x64\static\    ...
 out\x64\dll\       ...
 ```
@@ -86,7 +86,7 @@ checkout which upstream does not itself carry. Reference it as:
 ],
 ```
 
-There is a second target, `winwrap_unittests`, which is not built unless asked
+There is a second target, `winwrap_test`, which is not built unless asked
 for — so adding the dependency above changes nothing for a consumer.
 
 **One prerequisite, and it is on gyp-next rather than on the toolchain.** Its
@@ -137,6 +137,64 @@ Nothing here needs a generator. For a hand-maintained project:
 
 The Makefile is the reference for all of the above — every flag in it carries a
 comment saying why it is there.
+
+### MinGW
+
+`GNUmakefile` is the MinGW-w64 counterpart of the NMAKE `Makefile`. GNU make
+reads it in preference to `Makefile` and NMAKE does not know the name, so the
+two sit side by side. It has the same targets and builds from the same sources
+with the same defines.
+
+On Windows, from a prompt with `g++`, `ar`, `windres` and `dlltool` on `PATH`:
+
+```bat
+mingw32-make                    :: print usage and build nothing
+mingw32-make all                :: both flavours, and the unit tests for each
+mingw32-make static             :: only out/<arch>/static/libwinwrap.a
+mingw32-make dll                :: only out/<arch>/dll/winwrap.dll
+mingw32-make test               :: only the unit tests for this flavour
+mingw32-make DEBUG=1 all        :: unoptimised, -Og, full debug info
+mingw32-make check-forwarders   :: verify the generated files are current
+mingw32-make clean
+```
+
+The architecture is whatever the `g++` on `PATH` targets. To cross-compile, or
+to pick between two toolchains, give the prefix:
+
+```sh
+make CROSS=i686-w64-mingw32- all
+make CROSS=x86_64-w64-mingw32- all
+```
+
+The output layout matches the MSVC build's, with GNU file names:
+
+```
+out/x86/static/    libwinwrap.a                     winwrap_test.exe
+out/x86/dll/       winwrap.dll libwinwrap.dll.a     winwrap_test.exe
+```
+
+To consume the static library, link it ahead of the system libraries, force the
+redirect object in, and set the subsystem floor — the same three things as
+`/INCLUDE:` and `/SUBSYSTEM:` on MSVC:
+
+| | x86 | x64 |
+|---|---|---|
+| Force the redirects | `-Wl,--undefined=_winwrap_static_redirects` | `-Wl,--undefined=winwrap_static_redirects` |
+| Subsystem floor | `-Wl,--subsystem,windows:5.01` | `-Wl,--subsystem,windows:5.02` |
+
+plus `-ladvapi32`.
+
+Three things differ from the MSVC build, all handled for you:
+
+- It compiles `src/static_redirects.cc` and never uses the generated `.asm`.
+  GCC supports the asm labels that file needs; MSVC does not.
+- Every redirected function is also defined under its plain name, not only as
+  an `__imp_` slot. MinGW's headers declare some of these without `dllimport`,
+  and a call to one of those would otherwise pull in the system import library
+  and collide with winwrap's slot.
+- The 32-bit DLL is linked from `src/winwrap_gnu_x86.def`, a generated copy of
+  `winwrap.def` with the `@bytes` suffixes GNU ld needs written out.
+  `tools/gen_forwarders.py` produces it and `check-forwarders` verifies it.
 
 ### Using Chromium/Electron's GN system
 Winwrap can also be built using GN/Ninja. This is the form Chromium and

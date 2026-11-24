@@ -274,6 +274,6 @@ regardless; [BUILDING.md](./BUILDING.md#msvc) has the detail on why that table
 exists twice.
 
 To build and run the tests in tree, `//third_party/winwrap:winwrap_all` builds
-both forms plus `winwrap_unittests`, and is `testonly`. Step 5 still applies —
+both forms plus `winwrap_test`, and is `testonly`. Step 5 still applies —
 run `check_imports.py` on the finished binaries, since it is the only thing that
 distinguishes a working integration from a silently absent one.

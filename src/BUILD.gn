@@ -1,0 +1,146 @@
+# Copyright 2026 Alex313031. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//third_party/winwrap/winwrap.gni")
+
+# winwrap has to run on the oldest target itself, so it gets none of the
+# toolchain's newer-Windows assumptions and may not be instrumented with
+# anything that pulls in a post-XP import of its own.
+config("winwrap_private_config") {
+  # Include all winwrap dirs.
+  include_dirs = [
+    ".",
+    "public",
+  ]
+
+  cflags = [
+    # Must undef first to avoid redefinition errors.
+    "-U_WIN32_WINNT",
+    # XP (5.1), for winwrap's own sources only.
+    "-D_WIN32_WINNT=0x0501",
+
+    # NTDDI_VERSION as well, or the guardrail only half works: plenty of SDK
+    # headers gate on NTDDI_VERSION rather than _WIN32_WINNT, so lowering one
+    # and not the other still exposes post-XP declarations. OVERLAPPED_ENTRY
+    # is one such -- visible at _WIN32_WINNT=0x0501 until this was added.
+    "-UNTDDI_VERSION",  # Must undef first
+    "-DNTDDI_VERSION=0x05010300",  # NTDDI_WINXPSP3
+
+    # And WINVER, which some older headers prefer. Both makefiles and
+    # winwrap.gyp set all three; this had only the two.
+    "-UWINVER",
+    "-DWINVER=0x0501",
+  ]
+
+  # The sources define these themselves if nobody has, so this changes
+  # nothing about what is compiled. It is here because every other build of
+  # winwrap passes them, and a Chromium tree, which defines both for
+  # everything, would otherwise be the only reason this one matched.
+  defines = [
+    "UNICODE",
+    "_UNICODE",
+  ]
+
+  # winwrap is a C++17 project. Chromium builds at a newer standard, and the
+  # last /std: on the command line is the one clang-cl honours, so appending
+  # here pins winwrap's own sources without touching anything else. This is
+  # meant to be consumable outside this tree, so it should not quietly come to
+  # depend on whichever standard Chromium has moved to.
+  cflags_cc = [
+    "/std:c++17",
+    # Make MSVC emit the real C++ standard, not 199711L
+    "/Zc:__cplusplus",
+  ]
+
+  # No extra configs
+  configs = []
+}
+
+# The implementations, plus static_redirects.cc, which both link modes need.
+#
+# In the static mode it is the entire mechanism: it defines the __imp_<name>
+# slots the consumer's call sites load through. The shared mode steers the
+# consumer through winwrap.def instead -- but it still needs the redirects for
+# itself. winwrap.dll links the MSVC static CRT, and that CRT calls FlsAlloc
+# and InitializeCriticalSectionEx, so without redirecting its own calls the
+# DLL imports from kernel32 the very functions it exists to supply, and fails
+# to load on XP before any of this runs.
+_winwrap_sources = [
+  "cancel_io.cc",
+  "condition_variable.cc",
+  "critical_section.cc",
+  "directories.cc",
+  "dispatch.cc",
+  "dispatch.h",
+  "etw.cc",
+  "extra.cc",
+  "fibers.cc",
+  "files.cc",
+  "fls.cc",
+  "framework.h",
+  "init_once.cc",
+  "io_completion.cc",
+  "locale.cc",
+  "lock_family.cc",
+  "lock_family.h",
+  "misc.cc",
+  "net.cc",
+  "parking_lot.cc",
+  "parking_lot.h",
+  "pipes.cc",
+  "process.cc",
+  "public/winwrap_public.h",
+  "registry.cc",
+  "shell32.cc",
+  "srwlock.cc",
+  "static_redirects.cc",
+  "sync_objects.cc",
+  "system.cc",
+  "thread_pool.cc",
+  "threads.cc",
+  "tick_count.cc",
+  "timezone.cc",
+  "winwrap.h",
+  "winwrap_version.h",
+]
+
+shared_library("winwrap_shared") {
+  output_name = "winwrap"
+
+  defines = [ "WINWRAP_DLL" ]
+
+  # winwrap_dll.cc contains functions only a DLL would want.
+  # .rc is for embedded version info.
+  sources = _winwrap_sources + [
+    "winwrap.rc",
+    "winwrap_dll.cc",
+  ]
+
+  # //build/config:common_deps depends on winwrap_lib, and every
+  # shared_library picks common_deps up by default -- which would make
+  # winwrap depend on itself. Opting out breaks that cycle. The static form
+  # does not need this, because static_library targets never get
+  # common_deps in the first place.
+  no_default_deps = true
+
+  # Exports the public Win32 names, aliased onto the ww_ implementations,
+  # so the generated import library satisfies __imp_<name> and the linker
+  # binds to winwrap.dll instead of kernel32.
+  inputs = [ "winwrap.def" ]
+  ldflags = [ "/DEF:" + rebase_path("winwrap.def", root_build_dir) ]
+
+  configs += [ ":winwrap_private_config" ]
+  public_configs = [ "../:winwrap_public_config" ]
+}
+
+static_library("winwrap_static") {
+  output_name = "winwrap"
+
+  defines = [ "WINWRAP_STATIC" ]
+
+  sources = _winwrap_sources
+
+  configs += [ ":winwrap_private_config" ]
+  public_configs = [ "../:winwrap_public_config" ]
+}
