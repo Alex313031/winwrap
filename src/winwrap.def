@@ -46,11 +46,13 @@ EXPORTS
     FlsFree = ww_FlsFree
     FlsGetValue = ww_FlsGetValue
     FlsSetValue = ww_FlsSetValue
+    FlushProcessWriteBuffers = ww_FlushProcessWriteBuffers
     FreeLibraryWhenCallbackReturns = ww_FreeLibraryWhenCallbackReturns
     GetCurrencyFormatEx = ww_GetCurrencyFormatEx
     GetCurrentProcessExplicitAppUserModelID = ww_GetCurrentProcessExplicitAppUserModelID
     GetCurrentProcessorNumber = ww_GetCurrentProcessorNumber
     GetDateFormatEx = ww_GetDateFormatEx
+    GetDynamicTimeZoneInformation = ww_GetDynamicTimeZoneInformation
     GetErrorMode = ww_GetErrorMode
     GetFileInformationByHandleEx = ww_GetFileInformationByHandleEx
     GetFinalPathNameByHandleW = ww_GetFinalPathNameByHandleW
@@ -76,6 +78,7 @@ EXPORTS
     LCMapStringEx = ww_LCMapStringEx
     LocaleNameToLCID = ww_LocaleNameToLCID
     NeedCurrentDirectoryForExePathW = ww_NeedCurrentDirectoryForExePathW
+    QueryThreadCycleTime = ww_QueryThreadCycleTime
     RegGetValueW = ww_RegGetValueW
     RegisterApplicationRestart = ww_RegisterApplicationRestart
     ReleaseSRWLockExclusive = ww_ReleaseSRWLockExclusive
@@ -88,6 +91,7 @@ EXPORTS
     SetProcessDPIAware = ww_SetProcessDPIAware
     SetThreadpoolTimer = ww_SetThreadpoolTimer
     SetThreadpoolWait = ww_SetThreadpoolWait
+    SHGetKnownFolderPath = ww_SHGetKnownFolderPath
     SleepConditionVariableCS = ww_SleepConditionVariableCS
     SleepConditionVariableSRW = ww_SleepConditionVariableSRW
     TryAcquireSRWLockExclusive = ww_TryAcquireSRWLockExclusive

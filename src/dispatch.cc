@@ -18,6 +18,11 @@ namespace winwrap {
     // never change what is loaded. Every DLL named here is either already present
     // in any process that could call these functions, or genuinely absent -- in
     // which case the answer is "no such function", which is the right one.
+    //
+    // "Throughout" means everything that resolves through this file. There is
+    // one shim that does not, and loads its library instead:
+    // ww_SHGetKnownFolderPath, for reasons set out at the top of
+    // known_folders.cc.
     std::atomic<void*> g_modules[static_cast<size_t>(Module::kCount)];
 
     const wchar_t* ModuleName(Module module) {

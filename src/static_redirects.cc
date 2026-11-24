@@ -180,6 +180,13 @@ WINWRAP_REDIRECT(CreateEventExW, 16);
 WINWRAP_REDIRECT(CreateSemaphoreExW, 24);
 WINWRAP_REDIRECT(CreateWaitableTimerExW, 16);
 
+// 0 for the first, which takes nothing; 8 for the second, a handle and a
+// pointer -- the ULONG64 is written through, not passed; 4 for the third, a
+// pointer to the structure it fills.
+WINWRAP_REDIRECT(FlushProcessWriteBuffers, 0);
+WINWRAP_REDIRECT(QueryThreadCycleTime, 8);
+WINWRAP_REDIRECT(GetDynamicTimeZoneInformation, 4);
+
 // The thread pool timer and wait objects. These are the entries whose handles
 // are winwrap's own allocations rather than OS objects, so a process with two
 // statically linked copies of winwrap has two incompatible sets -- see the
@@ -199,6 +206,12 @@ WINWRAP_REDIRECT(FlsAlloc, 4);
 WINWRAP_REDIRECT(FlsGetValue, 4);
 WINWRAP_REDIRECT(FlsSetValue, 8);
 WINWRAP_REDIRECT(FlsFree, 4);
+
+// shell32, and delay-imported by the consumers this was written for; see the
+// note on the Application User Model pair at the end of this file, which
+// applies here unchanged. 16: a reference is a pointer, then a DWORD, a
+// handle and a pointer.
+WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
 
 // --- Present on XP SP3, missing on SP2 and earlier -------------------------
 //

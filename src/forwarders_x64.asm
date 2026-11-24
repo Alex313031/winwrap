@@ -81,6 +81,9 @@ EXTERN ww_InitializeCriticalSectionEx : PROC
 EXTERN ww_CreateEventExW : PROC
 EXTERN ww_CreateSemaphoreExW : PROC
 EXTERN ww_CreateWaitableTimerExW : PROC
+EXTERN ww_FlushProcessWriteBuffers : PROC
+EXTERN ww_QueryThreadCycleTime : PROC
+EXTERN ww_GetDynamicTimeZoneInformation : PROC
 EXTERN ww_CreateThreadpoolTimer : PROC
 EXTERN ww_SetThreadpoolTimer : PROC
 EXTERN ww_WaitForThreadpoolTimerCallbacks : PROC
@@ -94,6 +97,7 @@ EXTERN ww_FlsAlloc : PROC
 EXTERN ww_FlsGetValue : PROC
 EXTERN ww_FlsSetValue : PROC
 EXTERN ww_FlsFree : PROC
+EXTERN ww_SHGetKnownFolderPath : PROC
 EXTERN ww_GetLogicalProcessorInformation : PROC
 EXTERN ww_TryAcquireSRWLockExclusive : PROC
 EXTERN ww_TryAcquireSRWLockShared : PROC
@@ -206,6 +210,12 @@ PUBLIC __imp_CreateSemaphoreExW
 __imp_CreateSemaphoreExW dq ww_CreateSemaphoreExW
 PUBLIC __imp_CreateWaitableTimerExW
 __imp_CreateWaitableTimerExW dq ww_CreateWaitableTimerExW
+PUBLIC __imp_FlushProcessWriteBuffers
+__imp_FlushProcessWriteBuffers dq ww_FlushProcessWriteBuffers
+PUBLIC __imp_QueryThreadCycleTime
+__imp_QueryThreadCycleTime dq ww_QueryThreadCycleTime
+PUBLIC __imp_GetDynamicTimeZoneInformation
+__imp_GetDynamicTimeZoneInformation dq ww_GetDynamicTimeZoneInformation
 PUBLIC __imp_CreateThreadpoolTimer
 __imp_CreateThreadpoolTimer dq ww_CreateThreadpoolTimer
 PUBLIC __imp_SetThreadpoolTimer
@@ -232,6 +242,8 @@ PUBLIC __imp_FlsSetValue
 __imp_FlsSetValue dq ww_FlsSetValue
 PUBLIC __imp_FlsFree
 __imp_FlsFree dq ww_FlsFree
+PUBLIC __imp_SHGetKnownFolderPath
+__imp_SHGetKnownFolderPath dq ww_SHGetKnownFolderPath
 PUBLIC __imp_GetLogicalProcessorInformation
 __imp_GetLogicalProcessorInformation dq ww_GetLogicalProcessorInformation
 PUBLIC __imp_TryAcquireSRWLockExclusive

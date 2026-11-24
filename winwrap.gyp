@@ -227,6 +227,7 @@
         'src/framework.h',
         'src/init_once.cc',
         'src/io_completion.cc',
+        'src/known_folders.cc',
         'src/locale.cc',
         'src/lock_family.cc',
         'src/lock_family.h',
@@ -245,6 +246,7 @@
         'src/thread_pool.cc',
         'src/threads.cc',
         'src/tick_count.cc',
+        'src/time_zone.cc',
         'src/winwrap.h',
         'src/winwrap_version.h',
       ],
@@ -436,7 +438,9 @@
           # Console, so the harness output goes somewhere.
           'SubSystem': 1,
           # advapi32 for the registry test, user32 for wsprintfW, ole32 for
-          # CoTaskMemFree in the AppUserModelID test. Named explicitly because
+          # CoTaskMemFree in the AppUserModelID test, shell32 for the
+          # SHGetFolderPathW the known-folder test compares against. Named
+          # explicitly because
           # this file has to work outside a Chromium-derived tree, where they
           # would already be on every link line -- which is why
           # test/BUILD.gn names none of them.
@@ -444,6 +448,7 @@
             'advapi32.lib',
             'user32.lib',
             'ole32.lib',
+            'shell32.lib',
           ],
         },
       },

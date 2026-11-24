@@ -10,6 +10,45 @@
 #include "dispatch.h"
 #include "winwrap.h"
 
+namespace {
+
+  // The processor's nominal clock rate in MHz, as the HAL measured it at boot
+  // and left in the registry. If it cannot be read, 1 GHz: the right order of
+  // magnitude, and it keeps a cycle count proportional to time, which is the
+  // property that matters. Whichever it is gets cached, so a registry that
+  // will not answer is asked once.
+  DWORD ProcessorMegahertz() {
+    static std::atomic<DWORD> cached{0};
+    DWORD megahertz = cached.load(std::memory_order_relaxed);
+    if (megahertz != 0) {
+      return megahertz;
+    }
+    HKEY processor = nullptr;
+    if (::RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                        L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0,
+                        KEY_QUERY_VALUE, &processor) == ERROR_SUCCESS) {
+      DWORD size = sizeof(megahertz);
+      DWORD type = 0;
+      if (::RegQueryValueExW(processor, L"~MHz", nullptr, &type,
+                             reinterpret_cast<LPBYTE>(&megahertz), &size) != ERROR_SUCCESS ||
+          type != REG_DWORD) {
+        megahertz = 0;
+      }
+      ::RegCloseKey(processor);
+    }
+    if (megahertz == 0) {
+      megahertz = 1000;
+    }
+    cached.store(megahertz, std::memory_order_relaxed);
+    return megahertz;
+  }
+
+  ULONG64 AsTicks(const FILETIME& time) {
+    return (static_cast<ULONG64>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+  }
+
+} // namespace
+
 extern "C" {
 
 // Which processor the calling thread is running on. kernel32, Server 2003.
@@ -44,6 +83,45 @@ DWORD WINAPI ww_GetCurrentProcessorNumber(void) {
   __cpuid(registers, 1);
   // registers[1] is EBX; bits 31..24 hold the initial APIC ID.
   return (static_cast<DWORD>(registers[1]) >> 24) & 0xFF;
+}
+
+// How many processor cycles a thread has consumed. kernel32, Vista.
+//
+// Vista's scheduler reads the time stamp counter at every context switch and
+// charges the difference to the outgoing thread. XP's does not: it charges
+// whichever thread is running when the clock interrupt fires one whole tick,
+// and that tally -- GetThreadTimes -- is the only per-thread accounting there
+// is. So this is that time, kernel and user together as the real count is,
+// converted to cycles at the processor's nominal rate: 100 ns units times MHz
+// over ten.
+//
+// The conversion is there because of what callers do with the result. V8, the
+// reason node imports this, divides by a time stamp counter frequency it has
+// measured to get seconds back; a figure left in 100 ns units -- which is
+// what YY-Thunks returns -- would come out hundreds of times too small. The
+// nominal rate and V8's measured one agree to within a fraction of a percent
+// on any processor with an invariant counter, and V8 uses this path on no
+// other.
+//
+// What cannot be recovered is the resolution. The value advances in clock
+// ticks, 10 or 15.6 ms each, and a thread that always yields before the tick
+// can run indefinitely while appearing to consume nothing. INCOMPLETE_FUNCS.md
+// has the entry.
+BOOL WINAPI ww_QueryThreadCycleTime(HANDLE ThreadHandle, PULONG64 CycleTime) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, QueryThreadCycleTime)) {
+    return system_fn(ThreadHandle, CycleTime);
+  }
+  if (!CycleTime) {
+    ::SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+  }
+  FILETIME creation = {}, exit = {}, kernel = {}, user = {};
+  if (!::GetThreadTimes(ThreadHandle, &creation, &exit, &kernel, &user)) {
+    return FALSE;
+  }
+  *CycleTime = (AsTicks(kernel) + AsTicks(user)) * ProcessorMegahertz() / 10;
+  return TRUE;
 }
 
 } // extern "C"

@@ -2750,6 +2750,265 @@ namespace {
     }
   }
 
+  // --- The last of node's XP imports ------------------------------------------
+
+  DWORD WINAPI FlushCaller(LPVOID) {
+    for (int i = 0; i < 50; ++i) {
+      ::FlushProcessWriteBuffers();
+    }
+    return 0;
+  }
+
+  // Burns roughly `milliseconds` of this thread's processor time, by the
+  // thread's own accounting rather than the wall clock, so the amount is the
+  // same however busy the machine is.
+  ULONGLONG ThreadProcessorTime() {
+    FILETIME creation, exit, kernel, user;
+    if (!::GetThreadTimes(::GetCurrentThread(), &creation, &exit, &kernel, &user)) {
+      return 0;
+    }
+    return ((static_cast<ULONGLONG>(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime) +
+           ((static_cast<ULONGLONG>(user.dwHighDateTime) << 32) | user.dwLowDateTime);
+  }
+
+  void BurnProcessorTime(DWORD milliseconds) {
+    const ULONGLONG target = static_cast<ULONGLONG>(milliseconds) * 10000;
+    const ULONGLONG start  = ThreadProcessorTime();
+    const DWORD deadline   = ::GetTickCount() + 30000; // In case the accounting never moves.
+    volatile unsigned sink = 0;
+    while (ThreadProcessorTime() - start < target &&
+           static_cast<LONG>(deadline - ::GetTickCount()) > 0) {
+      for (unsigned i = 0; i < 1000000; ++i) {
+        sink = sink + i;
+      }
+    }
+  }
+
+  void TestFlushAndCycleTime() {
+    std::wcout << L"  FlushProcessWriteBuffers, QueryThreadCycleTime" << std::endl;
+
+    // There is no observing a store buffer from here. What can be shown is
+    // that the call returns, repeatedly, and that many threads making it at
+    // once neither deadlock nor fault -- the fallback changes a page's
+    // protection and writes to it, which is exactly what would fault if its
+    // lock were wrong.
+    ::FlushProcessWriteBuffers();
+    ::FlushProcessWriteBuffers();
+    RunThreads(FlushCaller, kThreads);
+
+    ULONG64 before = 0;
+    ::SetLastError(0);
+    if (!::QueryThreadCycleTime(::GetCurrentThread(), &before) &&
+        ::GetLastError() == ERROR_CALL_NOT_IMPLEMENTED) {
+      // Wine exports the function and implements none of it. Nothing of
+      // winwrap's is involved, the export being there, so there is nothing
+      // here to test.
+      std::wcout << L"    (QueryThreadCycleTime is a stub on this system, not exercised)"
+                 << std::endl;
+      return;
+    }
+    CHECK(::QueryThreadCycleTime(::GetCurrentThread(), &before),
+          L"QueryThreadCycleTime failed (" << ::GetLastError() << L")");
+    BurnProcessorTime(200);
+    ULONG64 after = 0;
+    CHECK(::QueryThreadCycleTime(::GetCurrentThread(), &after),
+          L"the second QueryThreadCycleTime failed (" << ::GetLastError() << L")");
+    CHECK(after > before, L"200 ms of processor time did not advance the cycle count ("
+                              << before << L" -> " << after << L")");
+
+    // Cycles, not time: 200 ms at even 100 MHz is twenty million. This is
+    // what tells a count scaled by the processor's rate from one left in
+    // 100 ns units, which would show two million.
+    CHECK(after - before >= 20000000ULL,
+          L"200 ms of processor time came to only " << (after - before) << L" cycles");
+    std::wcout << L"    (200 ms of processor time: " << (after - before) << L" cycles)"
+               << std::endl;
+
+    ULONG64 untouched = 12345;
+    CHECK(!::QueryThreadCycleTime(nullptr, &untouched),
+          L"QueryThreadCycleTime accepted a null thread handle");
+  }
+
+  void TestDynamicTimeZone() {
+    std::wcout << L"  GetDynamicTimeZoneInformation" << std::endl;
+
+    TIME_ZONE_INFORMATION plain = {};
+    const DWORD plain_result    = ::GetTimeZoneInformation(&plain);
+
+    DYNAMIC_TIME_ZONE_INFORMATION dynamic;
+    memset(&dynamic, 0xCC, sizeof(dynamic));
+    const DWORD result = ::GetDynamicTimeZoneInformation(&dynamic);
+
+    CHECK(result != TIME_ZONE_ID_INVALID,
+          L"GetDynamicTimeZoneInformation failed (" << ::GetLastError() << L")");
+    if (result == TIME_ZONE_ID_INVALID) {
+      return;
+    }
+    CHECK(result == plain_result, L"GetDynamicTimeZoneInformation returned "
+                                      << result << L" where GetTimeZoneInformation returned "
+                                      << plain_result);
+    CHECK(dynamic.Bias == plain.Bias && dynamic.StandardBias == plain.StandardBias &&
+              dynamic.DaylightBias == plain.DaylightBias,
+          L"the dynamic and plain time zone information disagree on a bias");
+    CHECK(memcmp(&dynamic.StandardDate, &plain.StandardDate, sizeof(SYSTEMTIME)) == 0 &&
+              memcmp(&dynamic.DaylightDate, &plain.DaylightDate, sizeof(SYSTEMTIME)) == 0,
+          L"the dynamic and plain time zone information disagree on a transition date");
+
+    // The key name must be a terminated string whatever else it is; the
+    // buffer went in full of 0xCC.
+    bool terminated = false;
+    for (const wchar_t character : dynamic.TimeZoneKeyName) {
+      if (character == L'\0') {
+        terminated = true;
+        break;
+      }
+    }
+    CHECK(terminated, L"TimeZoneKeyName was not terminated");
+    if (!terminated) {
+      return;
+    }
+    CHECK(dynamic.DynamicDaylightTimeDisabled == 0 || dynamic.DynamicDaylightTimeDisabled == 1,
+          L"DynamicDaylightTimeDisabled was neither 0 nor 1");
+
+    std::wcout << L"    (zone key: \""
+               << (dynamic.TimeZoneKeyName[0] ? dynamic.TimeZoneKeyName : L"<none found>")
+               << L"\", automatic daylight time "
+               << (dynamic.DynamicDaylightTimeDisabled ? L"off" : L"on") << L")" << std::endl;
+
+    // A name that was found has to be the name of a real zone.
+    if (dynamic.TimeZoneKeyName[0] != L'\0') {
+      wchar_t path[256] = {};
+      ::wsprintfW(path, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones\\%s",
+                  dynamic.TimeZoneKeyName);
+      HKEY key          = nullptr;
+      // KEY_WOW64_64KEY, as the shim's search uses: the system's own list,
+      // not a 32-bit process's private view of it.
+      const LONG status =
+          ::RegOpenKeyExW(HKEY_LOCAL_MACHINE, path, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key);
+      CHECK(status == ERROR_SUCCESS, L"TimeZoneKeyName names no key under Time Zones");
+      if (status == ERROR_SUCCESS) {
+        ::RegCloseKey(key);
+      }
+    }
+  }
+
+  void TestKnownFolderPath() {
+    std::wcout << L"  SHGetKnownFolderPath" << std::endl;
+
+    const bool winwrap_answers = !SystemHas(L"shell32.dll", "SHGetKnownFolderPath");
+
+    // Written out, as libuv does, rather than taken from knownfolders.h: the
+    // FOLDERID_* objects live in uuid.lib, which this test does not link.
+    static const GUID kLocalAppData = {
+        0xF1B32785, 0x6FBA, 0x4FCF, {0x9D, 0x55, 0x7B, 0x8E, 0x7F, 0x15, 0x70, 0x91}};
+    static const GUID kRoamingAppData = {
+        0x3EB685DB, 0x65F9, 0x4CF6, {0xA0, 0x3A, 0xE3, 0xEF, 0x65, 0x72, 0x9F, 0x3D}};
+    static const GUID kWindows = {
+        0xF38BF404, 0x1D43, 0x42F2, {0x93, 0x05, 0x67, 0xDE, 0x0B, 0x28, 0xFC, 0x23}};
+#if !defined(_WIN64)
+    static const GUID kProgramFiles = {
+        0x905E63B6, 0xC1BF, 0x494E, {0xB2, 0x9C, 0x65, 0xB7, 0x32, 0xD3, 0xD2, 0x1A}};
+#endif
+    static const GUID kProgramFilesX86 = {
+        0x7C5A40EF, 0xA0FB, 0x4BFC, {0x87, 0x4A, 0xC0, 0xF2, 0xE0, 0xB9, 0xFA, 0x8E}};
+    static const GUID kSystemX86 = {
+        0xD65231B0, 0xB2F1, 0x4857, {0xA4, 0xCE, 0xA8, 0xE7, 0xC6, 0xEA, 0x7D, 0x27}};
+    static const GUID kNoSuchFolder = {
+        0x12345678, 0x1234, 0x1234, {0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34}};
+
+    // Each known folder must be the folder its CSIDL has always named.
+    const struct {
+      const GUID* id;
+      int csidl;
+      const wchar_t* label;
+    } folders[] = {
+        {&kLocalAppData, CSIDL_LOCAL_APPDATA, L"LocalAppData"},
+        {&kRoamingAppData, CSIDL_APPDATA, L"RoamingAppData"},
+        {&kWindows, CSIDL_WINDOWS, L"Windows"},
+    };
+    for (const auto& folder : folders) {
+      PWSTR path           = nullptr;
+      const HRESULT result = ::SHGetKnownFolderPath(*folder.id, 0, nullptr, &path);
+      CHECK(result == S_OK && path != nullptr, L"SHGetKnownFolderPath(" << folder.label
+                                                                        << L") failed with 0x"
+                                                                        << std::hex << result
+                                                                        << std::dec);
+      if (result == S_OK && path) {
+        wchar_t expected[MAX_PATH] = {};
+        if (SUCCEEDED(::SHGetFolderPathW(nullptr, folder.csidl, nullptr, SHGFP_TYPE_CURRENT,
+                                         expected))) {
+          CHECK(::lstrcmpiW(path, expected) == 0,
+                folder.label << L" is \"" << path << L"\" but its CSIDL says \"" << expected
+                             << L"\"");
+        }
+        if (folder.id == &kLocalAppData) {
+          std::wcout << L"    (LocalAppData: " << path << L")" << std::endl;
+        }
+      }
+      ::CoTaskMemFree(path);
+    }
+
+    // The X86 folders exist on every Windows, 32-bit ones included, where
+    // they are simply the only Program Files and system directory there are.
+    // Not compared against their CSIDLs, which is the point: on 32-bit XP
+    // those CSIDLs may not answer, and the shim has to cope.
+    PWSTR program_files_x86 = nullptr;
+    HRESULT x86_result = ::SHGetKnownFolderPath(kProgramFilesX86, 0, nullptr, &program_files_x86);
+    CHECK(x86_result == S_OK && program_files_x86 && program_files_x86[0] != L'\0',
+          L"SHGetKnownFolderPath(ProgramFilesX86) failed with 0x" << std::hex << x86_result
+                                                                  << std::dec);
+#if !defined(_WIN64)
+    // To a 32-bit process, on either kind of Windows, it is Program Files.
+    PWSTR program_files = nullptr;
+    if (program_files_x86 &&
+        ::SHGetKnownFolderPath(kProgramFiles, 0, nullptr, &program_files) == S_OK) {
+      CHECK(::lstrcmpiW(program_files_x86, program_files) == 0,
+            L"ProgramFilesX86 is \"" << program_files_x86 << L"\" but ProgramFiles is \""
+                                     << program_files << L"\"");
+    }
+    ::CoTaskMemFree(program_files);
+#endif
+    ::CoTaskMemFree(program_files_x86);
+
+    PWSTR system_x86 = nullptr;
+    x86_result       = ::SHGetKnownFolderPath(kSystemX86, 0, nullptr, &system_x86);
+    CHECK(x86_result == S_OK && system_x86 && system_x86[0] != L'\0',
+          L"SHGetKnownFolderPath(SystemX86) failed with 0x" << std::hex << x86_result
+                                                            << std::dec);
+    ::CoTaskMemFree(system_x86);
+
+    // An ID no system has. The out parameter must come back null, because
+    // callers free it without looking -- libuv's does.
+    PWSTR path     = reinterpret_cast<PWSTR>(static_cast<ULONG_PTR>(0x1));
+    HRESULT result = ::SHGetKnownFolderPath(kNoSuchFolder, 0, nullptr, &path);
+    CHECK(FAILED(result), L"SHGetKnownFolderPath succeeded for a folder ID that does not exist");
+    CHECK(path == nullptr, L"a failed SHGetKnownFolderPath left the out parameter set");
+    // Printed either way. The documentation says E_INVALIDARG for an ID the
+    // system lacks and winwrap answers ERROR_FILE_NOT_FOUND, on the strength
+    // of what Windows has been seen to do; this line is how to find out.
+    std::wcout << L"    (unknown folder ID: 0x" << std::hex << static_cast<unsigned long>(result)
+               << std::dec << (winwrap_answers ? L" from winwrap)" : L" from the system)")
+               << std::endl;
+    if (winwrap_answers) {
+      CHECK(result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND),
+            L"an unknown folder ID gave 0x" << std::hex << result << std::dec);
+
+      // KF_FLAG_DEFAULT_PATH takes the other SHGetFolderPathW mode.
+      path   = nullptr;
+      result = ::SHGetKnownFolderPath(kWindows, 0x00000400, nullptr, &path);
+      CHECK(result == S_OK && path != nullptr,
+            L"KF_FLAG_DEFAULT_PATH failed with 0x" << std::hex << result << std::dec);
+      ::CoTaskMemFree(path);
+
+      // KF_FLAG_ALIAS_ONLY has no CSIDL form.
+      path   = reinterpret_cast<PWSTR>(static_cast<ULONG_PTR>(0x1));
+      result = ::SHGetKnownFolderPath(kWindows, 0x80000000, nullptr, &path);
+      CHECK(result == E_INVALIDARG && path == nullptr,
+            L"KF_FLAG_ALIAS_ONLY was not refused cleanly (0x" << std::hex << result << std::dec
+                                                              << L")");
+    }
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -3076,6 +3335,9 @@ int wmain(int argc, WCHAR* argv[]) {
   TestMainThreadFiberSequence();
   TestCriticalSectionEx();
   TestSyncObjects();
+  TestFlushAndCycleTime();
+  TestDynamicTimeZone();
+  TestKnownFolderPath();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();

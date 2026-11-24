@@ -210,6 +210,52 @@ the XP function is duplicated down to it — with one exception that grants no
 more than the real call would: `MAXIMUM_ALLOWED` returns the full-access handle
 as it stands.
 
+### `QueryThreadCycleTime`: clock ticks, expressed as cycles
+
+Vista charges a thread the time stamp counter's reading at every context
+switch. XP keeps no such count; the only per-thread accounting it has is the
+one behind `GetThreadTimes`, which charges a whole clock tick to whichever
+thread is running when the timer interrupt arrives. The shim returns that —
+kernel and user time together — multiplied up to cycles at the processor's
+nominal rate, the `~MHz` value the HAL leaves in the registry.
+
+So the unit is right and a caller dividing by the counter's frequency gets
+seconds, which is what V8 does with it. The resolution is not: the value moves
+in steps of 10 or 15.6 ms, and a thread that habitually yields before the tick
+can run a great deal while appearing to use nothing. Anything timing short
+sections of code with this will read zero.
+
+### `GetDynamicTimeZoneInformation`: the key name is searched for
+
+XP does not record which registry key the current zone came from, so
+`TimeZoneKeyName` is found by matching: first the key whose `Std` string is the
+standard name in force, then, failing that, the first key whose rule — biases
+and transition dates — is the one in force. The second can name a different
+zone that happens to keep the same time, and if neither matches the name is
+empty. That last case is legitimate on Windows too, for a zone set by hand, and
+ICU handles it.
+
+`DynamicDaylightTimeDisabled` is XP's `DisableAutoDaylightTimeSet`, the
+"automatically adjust for daylight saving" box. XP has no year-by-year rules,
+so there is nothing else for the field to describe.
+
+### `SHGetKnownFolderPath`: only the folders XP has
+
+Works for the folder IDs with a `CSIDL` equivalent, which is every folder XP
+knows about. IDs for folders Vista introduced — Downloads, SavedGames, Links,
+LocalAppDataLow, Public, the libraries — fail with
+`HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)`, as the real function does for an ID
+the system lacks. None is redirected to a near equivalent. `KF_FLAG_ALIAS_ONLY`
+fails with `E_INVALIDARG`, and `hToken` is passed through to
+`SHGetFolderPathW`, which honours it for the per-user folders.
+
+This is the one shim that **loads libraries**: shell32 for the folder lookup
+and ole32 for `CoTaskMemAlloc`, by full path from the system directory, kept
+for the life of the process. Consumers delay-load shell32, and because the
+redirect means no delay thunk exists for this function, nothing else would
+load it. It should not be called from `DllMain`, which is equally true of the
+function it stands in for.
+
 ### `GetCurrentProcessorNumber`: a hint
 
 Derived from the CPUID initial APIC ID. It can be stale the moment it is

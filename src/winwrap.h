@@ -82,6 +82,10 @@ BOOL WINAPI ww_GetNamedPipeServerProcessId(HANDLE Pipe, PULONG ServerProcessId);
 // --- Threads ---------------------------------------------------------------
 // Server 2003+. Derived from the CPUID initial APIC ID; see threads.cc.
 DWORD WINAPI ww_GetCurrentProcessorNumber(void);
+// QueryThreadCycleTime: Vista+. GetThreadTimes scaled to cycles at the
+// processor's nominal rate, so it has the clock tick's resolution rather than
+// the counter's. See threads.cc.
+BOOL WINAPI ww_QueryThreadCycleTime(HANDLE ThreadHandle, PULONG64 CycleTime);
 
 // --- Process-wide state ----------------------------------------------------
 // Both Vista+. GetErrorMode reads what the kernel already tracks;
@@ -89,6 +93,15 @@ DWORD WINAPI ww_GetCurrentProcessorNumber(void);
 // opt out of. See process.cc.
 UINT WINAPI ww_GetErrorMode(void);
 BOOL WINAPI ww_SetProcessDPIAware(void);
+// FlushProcessWriteBuffers: Vista+. The interprocessor interrupt is provoked
+// by revoking write access to a page; see process.cc.
+VOID WINAPI ww_FlushProcessWriteBuffers(void);
+
+// --- Time zones ------------------------------------------------------------
+// GetDynamicTimeZoneInformation: Vista+. GetTimeZoneInformation, with the
+// registry key name searched for since XP does not record it. See
+// time_zone.cc.
+DWORD WINAPI ww_GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation);
 
 // --- Registry --------------------------------------------------------------
 // Vista+. RegQueryValueEx plus a type filter, guaranteed string termination
@@ -389,6 +402,18 @@ BOOL WINAPI ww_FlsFree(DWORD dwFlsIndex);
 // own sources compile at _WIN32_WINNT=0x0501, where the SDK hides them.
 HRESULT WINAPI ww_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID);
 HRESULT WINAPI ww_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID);
+
+// --- Known folders ---------------------------------------------------------
+// SHGetKnownFolderPath: shell32, Vista+. Maps the folder IDs XP has a CSIDL
+// for onto SHGetFolderPathW; see known_folders.cc, including for why this is
+// the one shim that loads a library.
+//
+// `rfid` is REFKNOWNFOLDERID, spelled out because the typedef lives in
+// shtypes.h, which nothing else here needs. A KNOWNFOLDERID is a GUID.
+HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
+                                       DWORD dwFlags,
+                                       HANDLE hToken,
+                                       PWSTR* ppszPath);
 
 #ifdef WINWRAP_DLL
 HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi);

@@ -196,6 +196,7 @@ OBJECTS = \
 	$(OBJDIR)\fls.obj \
 	$(OBJDIR)\init_once.obj \
 	$(OBJDIR)\io_completion.obj \
+	$(OBJDIR)\known_folders.obj \
 	$(OBJDIR)\locale.obj \
 	$(OBJDIR)\lock_family.obj \
 	$(OBJDIR)\misc.obj \
@@ -209,6 +210,7 @@ OBJECTS = \
 	$(OBJDIR)\thread_pool.obj \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \
+	$(OBJDIR)\time_zone.obj \
 	$(OBJDIR)\forwarders.obj
 
 HEADERS = \
@@ -276,9 +278,10 @@ TESTFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /EHsc $(FORMDEF) \
 	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_unittests.pdb
 
 # advapi32 for the registry test, user32 for wsprintfW, ole32 for
-# CoTaskMemFree in the AppUserModelID test. A Chromium-derived tree links all
-# three by default, which is why test/BUILD.gn names none of them.
-TESTLIBS = advapi32.lib user32.lib ole32.lib
+# CoTaskMemFree in the AppUserModelID test, shell32 for the SHGetFolderPathW
+# that the known-folder test compares against. A Chromium-derived tree links
+# all four by default, which is why test/BUILD.gn names none of them.
+TESTLIBS = advapi32.lib user32.lib ole32.lib shell32.lib
 
 # FIRST, and so the default: a bare `nmake` prints usage and builds nothing.
 # Building is always something you asked for by name.
