@@ -1062,7 +1062,14 @@ namespace {
     // EventProviderSetTraits is 2 in evntprov.h's EVENT_INFO_CLASS. Written as
     // the enumerator so this breaks loudly if that ever stops being true,
     // rather than passing a literal that silently means something else.
-    const ULONG info = ::EventSetInformation(0, EventProviderSetTraits, nullptr, 0);
+#if defined(_MSC_VER)
+    const EVENT_INFO_CLASS traits = EventProviderSetTraits;
+#else
+    // MinGW's evntprov.h declares the enumeration and the function but stops
+    // short of this member, so there the number has to be written after all.
+    const EVENT_INFO_CLASS traits = static_cast<EVENT_INFO_CLASS>(2);
+#endif
+    const ULONG info = ::EventSetInformation(0, traits, nullptr, 0);
     CHECK(info != ERROR_SUCCESS, L"setting information on an unregistered handle reported success");
 
     if (!SystemHas(L"advapi32.dll", "EventSetInformation")) {
@@ -1203,7 +1210,8 @@ namespace {
     RegGetValueFunction system_version = nullptr;
     if (HMODULE advapi32 = ::GetModuleHandleW(L"advapi32.dll")) {
       system_version =
-          reinterpret_cast<RegGetValueFunction>(::GetProcAddress(advapi32, "RegGetValueW"));
+          reinterpret_cast<RegGetValueFunction>(
+              reinterpret_cast<void*>(::GetProcAddress(advapi32, "RegGetValueW")));
     }
     if (system_version) {
       struct Probe {
@@ -2031,7 +2039,8 @@ namespace {
     std::wcout << L"  DllGetVersion" << std::endl;
 
     const auto get_version =
-        reinterpret_cast<DLLGETVERSIONPROC>(::GetProcAddress(dll, "DllGetVersion"));
+        reinterpret_cast<DLLGETVERSIONPROC>(
+            reinterpret_cast<void*>(::GetProcAddress(dll, "DllGetVersion")));
     CHECK(get_version != nullptr, L"winwrap.dll does not export DllGetVersion");
     if (get_version == nullptr) {
       return;
@@ -2319,7 +2328,8 @@ namespace {
     GetErrorModeFunction system_version = nullptr;
     if (HMODULE kernel32 = ::GetModuleHandleW(L"kernel32.dll")) {
       system_version =
-          reinterpret_cast<GetErrorModeFunction>(::GetProcAddress(kernel32, "GetErrorMode"));
+          reinterpret_cast<GetErrorModeFunction>(
+              reinterpret_cast<void*>(::GetProcAddress(kernel32, "GetErrorMode")));
     }
     if (system_version) {
       const UINT probes[] = {0, SEM_FAILCRITICALERRORS,
@@ -3063,7 +3073,8 @@ namespace {
 
     using GetIfTableFn = DWORD(WINAPI*)(InterfaceTable*, PULONG, BOOL);
     const auto get_if_table =
-        reinterpret_cast<GetIfTableFn>(::GetProcAddress(iphlpapi, "GetIfTable"));
+        reinterpret_cast<GetIfTableFn>(
+            reinterpret_cast<void*>(::GetProcAddress(iphlpapi, "GetIfTable")));
     CHECK(get_if_table != nullptr, L"iphlpapi.dll has no GetIfTable");
     if (!get_if_table) {
       return;
@@ -3434,8 +3445,11 @@ namespace {
     // function as "not ours", which keeps the old behaviour rather than
     // risking a wait nobody is there to satisfy.
     using GetConsoleProcessListFn = DWORD(WINAPI*)(LPDWORD, DWORD);
-    auto* process_list            = reinterpret_cast<GetConsoleProcessListFn>(
-        ::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "GetConsoleProcessList"));
+    // Through void*, which is the one function-pointer conversion GCC's
+    // -Wcast-function-type does not question; the other two lookups in this
+    // file do the same.
+    auto* process_list = reinterpret_cast<GetConsoleProcessListFn>(reinterpret_cast<void*>(
+        ::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "GetConsoleProcessList")));
     if (process_list == nullptr) {
       return false;
     }

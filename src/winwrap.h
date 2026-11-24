@@ -25,6 +25,10 @@
 #include "framework.h"
 #include "winwrap_version.h"
 
+// NET_LUID, for the two iphlpapi shims. After framework.h, whose <windows.h>
+// it assumes; small, not version-gated, and present in MinGW's headers too.
+#include <ifdef.h>
+
 extern "C" {
 
 // --- Tick count ------------------------------------------------------------
@@ -420,12 +424,11 @@ HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
 // together are libuv's uv_if_indextoname(). XP has no LUIDs; one is made from
 // the interface's type and index. See net.cc.
 //
-// NET_LUID is named by its tag so that this header need not include ifdef.h
-// for the sake of two declarations; net.cc includes it.
-union _NET_LUID_LH;
-DWORD WINAPI ww_ConvertInterfaceIndexToLuid(ULONG InterfaceIndex,
-                                            union _NET_LUID_LH* InterfaceLuid);
-DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const union _NET_LUID_LH* InterfaceLuid,
+// NET_LUID comes from ifdef.h, included at the top of this file. Naming the
+// union by its tag instead would have spared the include, and did until this
+// was built with MinGW, whose ifdef.h gives the same typedef a different tag.
+DWORD WINAPI ww_ConvertInterfaceIndexToLuid(ULONG InterfaceIndex, NET_LUID* InterfaceLuid);
+DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
                                             PWSTR InterfaceName,
                                             SIZE_T Length);
 

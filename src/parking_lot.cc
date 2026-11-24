@@ -237,6 +237,7 @@ namespace winwrap {
 
 // Closes this thread's event when the thread goes away. See fls.cc for the
 // same mechanism; the loader walks every entry in .CRT$XLB, so both coexist.
+#if defined(_MSC_VER)
 #pragma section(".CRT$XLB", long, read)
 
 extern "C" __declspec(allocate(".CRT$XLB")) PIMAGE_TLS_CALLBACK winwrap_parking_lot_tls_callback =
@@ -249,3 +250,16 @@ extern "C" __declspec(allocate(".CRT$XLB")) PIMAGE_TLS_CALLBACK winwrap_parking_
  #pragma comment(linker, "/INCLUDE:_tls_used")
  #pragma comment(linker, "/INCLUDE:winwrap_parking_lot_tls_callback")
 #endif
+#else
+// GCC, which is to say MinGW. It has neither #pragma section nor
+// __declspec(allocate) -- it ignores both with a warning, and the callback
+// then lands in ordinary data where the loader never looks, so nothing runs at
+// thread exit and nothing reports that it did not. The attribute is the
+// equivalent placement. `used` does the job of the /INCLUDE on the callback,
+// keeping a variable nothing names; the TLS directory itself needs no asking
+// for, since MinGW's startup code always brings its own.
+extern "C" {
+PIMAGE_TLS_CALLBACK winwrap_parking_lot_tls_callback
+    __attribute__((section(".CRT$XLB"), used)) = winwrap::OnThreadEvent;
+}
+#endif // defined(_MSC_VER)

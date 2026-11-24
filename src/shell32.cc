@@ -419,9 +419,15 @@ extern "C" HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
 //
 // winwrap.h does not declare this; it is not a ww_ stand-in and nothing in
 // winwrap calls it. The definition is its own declaration.
+//
+// Not for MinGW, where static_redirects.cc defines the plain name of every
+// redirected function, this one included, and a second definition here would
+// collide with it.
+#if !defined(__MINGW32__)
 extern "C" HRESULT WINAPI SHGetKnownFolderPath(const GUID& rfid,
                                                DWORD dwFlags,
                                                HANDLE hToken,
                                                PWSTR* ppszPath) {
   return ww_SHGetKnownFolderPath(rfid, dwFlags, hToken, ppszPath);
 }
+#endif // !defined(__MINGW32__)

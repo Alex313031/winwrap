@@ -1,17 +1,19 @@
 # Copyright 2026 Alex313031. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+# NMAKE makefile for winwrap. For MSVC, deliberately -- not MinGW, which has
+# GNUmakefile beside this one. GNU make prefers that name and NMAKE does not
+# know it, so each tool reads its own.
 #
-# NMAKE makefile for winwrap. For MSVC, deliberately -- not MinGW.
-#
-#   nmake                     print usage and build nothing
-#   nmake all                 both flavours, and the tests for each
-#   nmake static              only out\<arch>\static\winwrap.lib
-#   nmake dll                 only out\<arch>\dll\winwrap.dll
-#   nmake test                only the unit tests for this flavour
-#   nmake DEBUG=1 all         unoptimised, /MTd, with full debug info
-#   nmake check-forwarders    verify the generated .asm is current
-#   nmake clean
+#  nmake                   print usage and build nothing
+#  nmake all               both flavours, and the tests for each
+#  nmake static            only out\<arch>\static\winwrap.lib
+#  nmake dll               only out\<arch>\dll\winwrap.dll
+#  nmake test              only the unit tests for this flavour
+#  nmake DEBUG=1 all       unoptimised, /MTd, with full debug info
+#  nmake check-forwarders  verify the generated .asm is current
+#  nmake clean             remove build artifacts
 #
 # Run it from a Visual Studio command prompt, so cl, link, lib, ml and rc are
 # on PATH and the architecture is already chosen. "x86 Native Tools Command
@@ -91,7 +93,7 @@ SUBSYSCON = /SUBSYSTEM:CONSOLE,5.01
 # ORIG_FILENAME from it, and winwrap.rc picks FILETYPE, so a DLL says
 # winwrap.dll and VFT_DLL where a static library says winwrap.lib and
 # VFT_STATIC_LIB. WINWRAP_STATIC is read nowhere and is documentary -- it is
-# set anyway, because BUILD.gn sets it on its static_library target and these
+# set anyway, because src/BUILD.gn sets it on its static_library target and these
 # builds should not disagree about something a reader will compare.
 #
 # It has to reach the resource compiler, not just cl, which is the one place
@@ -224,7 +226,7 @@ HEADERS = \
 
 STATICLIB = $(OUTDIR)\winwrap.lib
 SHAREDLIB = $(OUTDIR)\winwrap.dll
-TESTEXE   = $(OUTDIR)\winwrap_unittests.exe
+TESTEXE   = $(OUTDIR)\winwrap_test.exe
 
 # The library the test links against. Whichever form was built, it is the
 # winwrap.lib in this form's directory -- the archive itself for the static
@@ -272,10 +274,14 @@ FORCEREDIRECTS = /INCLUDE:$(ANCHOR)
 # DllGetVersion coverage -- which only exists in the shared form -- would be
 # skipped while reporting success. test/BUILD.gn does the same through
 # is_component_winwrap.
+#
+# WINWRAP_TEST marks the translation unit as the test, as test/BUILD.gn,
+# winwrap.gyp and GNUmakefile all do. Nothing reads it yet.
 TESTFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /EHsc $(FORMDEF) \
-	/DUSING_WINWRAP /DUNICODE /D_UNICODE /I src /I src\public /I test \
+	/DWINWRAP_TEST /DUSING_WINWRAP /DUNICODE /D_UNICODE \
+	/I src /I src\public /I test \
 	$(OPTFLAGS) $(CRTFLAG) \
-	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_unittests.pdb
+	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_test.pdb
 
 # advapi32 for the registry test, user32 for wsprintfW, ole32 for
 # CoTaskMemFree in the AppUserModelID test, shell32 for the SHGetFolderPathW
@@ -312,7 +318,7 @@ all:
 	@echo    out\$(ARCH)\static\winwrap.lib   the archive
 	@echo    out\$(ARCH)\dll\winwrap.dll      the shared library
 	@echo    out\$(ARCH)\dll\winwrap.lib      its import library
-	@echo  and winwrap_unittests.exe in each, linked against that flavour.
+	@echo  and winwrap_test.exe in each, linked against that flavour.
 	@echo.
 	@echo  Separate directories on purpose: both flavours produce a
 	@echo  winwrap.lib, and they are not the same kind of file.
@@ -342,7 +348,7 @@ test: $(TESTEXE)
 	@echo  Run it from that directory; nothing needs installing.
 
 $(TESTEXE): $(OBJDIR)\winwrap_unittest.obj $(LIBTARGET)
-	link /nologo /OUT:$@ /DEBUG /PDB:$(OUTDIR)\winwrap_unittests.pdb \
+	link /nologo /OUT:$@ /DEBUG /PDB:$(OUTDIR)\winwrap_test.pdb \
 		$(SUBSYSCON) $(FORCEREDIRECTS) \
 		$(OBJDIR)\winwrap_unittest.obj $(WINWRAPLIB) $(LIBS) $(TESTLIBS)
 

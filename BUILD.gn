@@ -6,54 +6,6 @@ import("//third_party/winwrap/winwrap.gni")
 
 assert(is_win || target_os == "win", "winwrap is only valid for Windows targets")
 
-# The implementations, plus static_redirects.cc, which both link modes need.
-#
-# In the static mode it is the entire mechanism: it defines the __imp_<name>
-# slots the consumer's call sites load through. The shared mode steers the
-# consumer through winwrap.def instead -- but it still needs the redirects for
-# itself. winwrap.dll links the MSVC static CRT, and that CRT calls FlsAlloc
-# and InitializeCriticalSectionEx, so without redirecting its own calls the
-# DLL imports from kernel32 the very functions it exists to supply, and fails
-# to load on XP before any of this runs.
-_winwrap_sources = [
-  "src/cancel_io.cc",
-  "src/condition_variable.cc",
-  "src/critical_section.cc",
-  "src/directories.cc",
-  "src/dispatch.cc",
-  "src/dispatch.h",
-  "src/etw.cc",
-  "src/extra.cc",
-  "src/fibers.cc",
-  "src/files.cc",
-  "src/fls.cc",
-  "src/framework.h",
-  "src/init_once.cc",
-  "src/io_completion.cc",
-  "src/locale.cc",
-  "src/lock_family.cc",
-  "src/lock_family.h",
-  "src/misc.cc",
-  "src/net.cc",
-  "src/parking_lot.cc",
-  "src/parking_lot.h",
-  "src/pipes.cc",
-  "src/process.cc",
-  "src/public/winwrap_public.h",
-  "src/registry.cc",
-  "src/shell32.cc",
-  "src/srwlock.cc",
-  "src/static_redirects.cc",
-  "src/sync_objects.cc",
-  "src/system.cc",
-  "src/thread_pool.cc",
-  "src/threads.cc",
-  "src/tick_count.cc",
-  "src/timezone.cc",
-  "src/winwrap.h",
-  "src/winwrap_version.h",
-]
-
 config("winwrap_public_config") {
   # src/public and not src, so a consumer sees winwrap_public.h and nothing
   # else. That is the whole public surface: the ww_* shims in winwrap.h are
@@ -67,81 +19,14 @@ config("winwrap_public_config") {
   # outside means the boundary is working, not that the include path is
   # wrong.
   include_dirs = [ "src/public" ]
+
+  # Universal define so consumers know they are including winwrap.
   defines = [ "USING_WINWRAP" ]
+
   if (is_component_winwrap) {
+    # So consumers can easily tell if they are built against the shared lib.
     defines += [ "WINWRAP_DLL" ]
   }
-}
-
-# winwrap has to run on the oldest target itself, so it gets none of the
-# toolchain's newer-Windows assumptions and may not be instrumented with
-# anything that pulls in a post-XP import of its own.
-config("winwrap_private_config") {
-  cflags = [
-    "-U_WIN32_WINNT",  # Must undef first to avoid redefinition errors.
-    "-D_WIN32_WINNT=0x0501",  # XP, for winwrap's own sources only.
-
-    # NTDDI_VERSION as well, or the guardrail only half works: plenty of SDK
-    # headers gate on NTDDI_VERSION rather than _WIN32_WINNT, so lowering one
-    # and not the other still exposes post-XP declarations. OVERLAPPED_ENTRY
-    # is one such -- visible at _WIN32_WINNT=0x0501 until this was added.
-    "-UNTDDI_VERSION",
-    "-DNTDDI_VERSION=0x05010300",  # NTDDI_WINXPSP3
-  ]
-
-  # winwrap is a C++17 project. Chromium builds at a newer standard, and the
-  # last /std: on the command line is the one clang-cl honours, so appending
-  # here pins winwrap's own sources without touching anything else. This is
-  # meant to be consumable outside this tree, so it should not quietly come to
-  # depend on whichever standard Chromium has moved to.
-  cflags_cc = [
-    "/std:c++17",
-    # Make MSVC emit the real C++ standard, not 199711L
-    "/Zc:__cplusplus",
-  ]
-
-  include_dirs = [ "src" ]
-
-  configs = []
-}
-
-shared_library("winwrap_shared") {
-  output_name = "winwrap"
-
-  defines = [ "WINWRAP_DLL" ]
-
-  # winwrap_dll.cc contains functions only a DLL would want.
-  sources = _winwrap_sources + [
-    "src/winwrap.rc",
-    "src/winwrap_dll.cc",
-  ]
-
-  # //build/config:common_deps depends on winwrap_lib, and every
-  # shared_library picks common_deps up by default -- which would make
-  # winwrap depend on itself. Opting out breaks that cycle. The static form
-  # does not need this, because static_library targets never get
-  # common_deps in the first place.
-  no_default_deps = true
-
-  # Exports the public Win32 names, aliased onto the ww_ implementations,
-  # so the generated import library satisfies __imp_<name> and the linker
-  # binds to winwrap.dll instead of kernel32.
-  inputs = [ "src/winwrap.def" ]
-  ldflags = [ "/DEF:" + rebase_path("src/winwrap.def", root_build_dir) ]
-
-  configs += [ ":winwrap_private_config" ]
-  public_configs = [ ":winwrap_public_config" ]
-}
-
-static_library("winwrap_static") {
-  output_name = "winwrap"
-
-  defines = [ "WINWRAP_STATIC" ]
-
-  sources = _winwrap_sources
-
-  configs += [ ":winwrap_private_config" ]
-  public_configs = [ ":winwrap_public_config" ]
 }
 
 # Depend on this rather than on ":winwrap" directly, so a build with
@@ -150,9 +35,9 @@ static_library("winwrap_static") {
 group("winwrap_lib") {
   if (use_winwrap) {
     if (is_component_winwrap) {
-      public_deps = [ ":winwrap_shared" ]
+      public_deps = [ "src:winwrap_shared" ]
     } else {
-      public_deps = [ ":winwrap_static" ]
+      public_deps = [ "src:winwrap_static" ]
     }
   }
 }
@@ -162,8 +47,10 @@ group("winwrap_all") {
 
   # Build both static and shared versions of the lib
   deps = [
-    ":winwrap_shared",
-    ":winwrap_static",
+    "src:winwrap_shared",
+    "src:winwrap_static",
   ]
-  public_deps = [ "test:winwrap_test" ]
+
+  # Forward test configs to dependants.
+  public_deps = [ "test:winwrap_tests" ]
 }

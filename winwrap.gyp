@@ -207,7 +207,7 @@
         },
       },
 
-      # _winwrap_sources from BUILD.gn, with static_redirects.cc replaced by the
+      # _winwrap_sources from src/BUILD.gn, with static_redirects.cc replaced by the
       # two forwarders_*.asm -- see the note at the top of this file. They are
       # what define the __imp_<name> slots the consumer's call sites load
       # through, so without them winwrap builds and does nothing.
@@ -260,6 +260,10 @@
         # public_config to the target itself as well as to its dependents --
         # hence both here and in direct_dependent_settings.
         'USING_WINWRAP',
+        # As the makefiles and src/BUILD.gn pass them. The sources define both
+        # for themselves if nobody has, so this is agreement, not behaviour.
+        'UNICODE',
+        '_UNICODE',
       ],
 
       # Drop the consuming tree's Windows version defines from this target, so
@@ -311,7 +315,7 @@
       'msvs_settings': {
         'VCCLCompilerTool': {
           'AdditionalOptions': [
-            # The equivalent of winwrap_private_config in BUILD.gn. These go
+            # The equivalent of winwrap_private_config in src/BUILD.gn. These go
             # in AdditionalOptions rather than 'defines', and in this order,
             # because MSBuild emits AdditionalOptions last on the command line
             # and cl honours /D and /U in command-line order -- so these are
@@ -322,7 +326,7 @@
             # would only offer on something newer: that is the mistake it
             # exists to repair. This applies to winwrap's own sources only.
             #
-            # No /U before each /D, unlike BUILD.gn's copy of this, whose
+            # No /U before each /D, unlike src/BUILD.gn's copy of this, whose
             # comment says the undef is needed "to avoid redefinition errors".
             # It is not: /D on a command line is resolved by the driver rather
             # than by the preprocessor, so a repeated one is not a macro
@@ -395,9 +399,9 @@
       # The unit tests. Not built unless asked for: a consumer depends on
       # ':winwrap', so adding this changes nothing for them.
       #
-      #   gyp ... && msbuild winwrap.vcxproj /t:winwrap_unittests
+      #   gyp ... && msbuild winwrap.vcxproj /t:winwrap_test
       #
-      'target_name': 'winwrap_unittests',
+      'target_name': 'winwrap_test',
       'type': 'executable',
       'dependencies': [
         'winwrap',
@@ -418,6 +422,16 @@
       'sources': [
         'test/winwrap_unittest.cc',
         'test/winwrap_unittest.h',
+      ],
+      # WINWRAP_TEST marks the translation unit as the test, and
+      # WINWRAP_STATIC says which form it was linked against -- this file
+      # builds no other. Both as test/BUILD.gn and the makefiles set them.
+      # USING_WINWRAP arrives through the dependency.
+      'defines': [
+        'WINWRAP_TEST',
+        'WINWRAP_STATIC',
+        'UNICODE',
+        '_UNICODE',
       ],
       'msvs_settings': {
         'VCCLCompilerTool': {

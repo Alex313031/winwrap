@@ -81,9 +81,61 @@
 // where a wrong one cannot resolve and is an LNK2019 at build time. So when a
 // count changes, regenerate with tools/gen_forwarders.py and build the MSVC
 // side; that is what turns a silent miss into an error.
-#define WINWRAP_REDIRECT(name, bytes)                                                           \
-  extern "C" decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = \
-      &ww_##name
+
+// The function under its own name as well as its import slot, for MinGW.
+//
+// An MSVC-style consumer reaches a system function through `__imp_<name>` and
+// nothing else, because the SDK declares every one of them
+// __declspec(dllimport); the slot above is all such a build needs. MinGW's
+// headers are not so uniform. Some functions are declared without dllimport --
+// the SRW lock family, for a start -- and a call to one of those references
+// the function itself, `_Name@bytes`, expecting the linker to find a body. The
+// import library has one, in the same member that defines the slot, so pulling
+// it in for the name brings a second definition of the slot with it and the
+// link fails with "multiple definition of `_imp__Name@bytes'".
+//
+// So the MinGW build defines the name too, as a one-instruction jump to the
+// shim. Then whichever way a consumer spells the reference, it is settled
+// here and the import library's member is never extracted. This is the same
+// problem, and the same answer, as SHGetKnownFolderPath in shell32.cc -- there
+// it is the SDK's own declaration that lacks dllimport, so that file handles
+// it for the MSVC builds, and defers to this for MinGW.
+//
+// Assembly rather than a C++ forwarding function, because it has to work for
+// every signature in the table without knowing any of them, and a jump does:
+// the arguments are already where the shim expects them.
+#if defined(__MINGW32__)
+ #if defined(_M_IX86)
+  #define WINWRAP_PLAIN_SYMBOL(name, bytes) "_" #name "@" #bytes
+  #define WINWRAP_SHIM_SYMBOL(name, bytes) "_ww_" #name "@" #bytes
+ #else
+  #define WINWRAP_PLAIN_SYMBOL(name, bytes) #name
+  #define WINWRAP_SHIM_SYMBOL(name, bytes) "ww_" #name
+ #endif
+ // .def/.scl/.type mark the symbol as an external function, which is what a
+ // compiler would have emitted for one.
+ #define WINWRAP_PLAIN_NAME(name, bytes)                                \
+   __asm__(".text\n"                                                    \
+           ".globl " WINWRAP_PLAIN_SYMBOL(name, bytes) "\n"             \
+           ".def " WINWRAP_PLAIN_SYMBOL(name, bytes)                    \
+           "; .scl 2; .type 32; .endef\n"                               \
+           WINWRAP_PLAIN_SYMBOL(name, bytes) ":\n"                      \
+           "\tjmp " WINWRAP_SHIM_SYMBOL(name, bytes) "\n")
+#else
+ #define WINWRAP_PLAIN_NAME(name, bytes) static_assert(true, "")
+#endif
+
+//
+// The braced form of extern "C", and not `extern "C" T x = v;`, which means
+// the same thing but which GCC warns about on every line -- "initialized and
+// declared extern" -- with no option to turn it off. WINWRAP_PLAIN_NAME
+// comes last so that it is what takes the semicolon the call site writes.
+#define WINWRAP_REDIRECT(name, bytes)                                                \
+  extern "C" {                                                                       \
+  decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = \
+      &ww_##name;                                                                    \
+  }                                                                                  \
+  WINWRAP_PLAIN_NAME(name, bytes)
 
 // The anchor a consumer names in /INCLUDE: to force this object into the link,
 // for the builds described in winwrap.gyp where something else would otherwise
@@ -99,7 +151,9 @@
 // there would be nothing for /INCLUDE: to find. Decorated the usual way, so
 // x86 wants a leading underscore and x64 does not -- unlike the redirects
 // above, which carry asm labels precisely to avoid being decorated.
-extern "C" int winwrap_static_redirects = 0;
+extern "C" {
+int winwrap_static_redirects = 0;
+}
 
 // --- Available on Vista and later, missing on XP ---------------------------
 WINWRAP_REDIRECT(GetTickCount64, 0);

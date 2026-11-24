@@ -136,6 +136,9 @@ jobs:
           )
           "%CLANGCL%" --version || exit /b 1
           set "LOW=-U_WIN32_WINNT -D_WIN32_WINNT=0x0501 -UNTDDI_VERSION -DNTDDI_VERSION=0x05010300 -UWINVER -DWINVER=0x0501"
+          rem The defines every build of winwrap passes to both the library and
+          rem the test, so this pass reads the sources as those builds do.
+          set "DEFS=-DUSING_WINWRAP -DUNICODE -D_UNICODE"
           rem Both target widths, because static_redirects.cc picks its symbol
           rem decoration with #if defined(_M_IX86) and one pass would leave the
           rem other branch unparsed -- the x86 one being the awkward half, where
@@ -144,14 +147,14 @@ jobs:
           rem -m32/-m64 is what selects it.
           for %%b in (32 64) do (
             echo ---- -m%%b
-            for %%f in (src\*.cc) do if /i not "%%~nxf"=="winwrap_dll.cc" "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% -DWINWRAP_STATIC "%%f" || exit /b 1
-            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% -DWINWRAP_DLL src\winwrap_dll.cc || exit /b 1
+            for %%f in (src\*.cc) do if /i not "%%~nxf"=="winwrap_dll.cc" "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% %DEFS% -DWINWRAP_STATIC "%%f" || exit /b 1
+            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% %DEFS% -DWINWRAP_DLL src\winwrap_dll.cc || exit /b 1
             rem Three include directories for the test and one for the sources,
             rem matching the Makefile and both .gn/.gyp forms. winwrap's own
             rem sources reach the public header as "public/winwrap_public.h",
             rem relative to src; the test writes <winwrap_public.h> the way a
             rem consumer does, which needs src\public on the path by itself.
-            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /EHsc /I src /I src\public /I test test\winwrap_unittest.cc || exit /b 1
+            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /EHsc %DEFS% -DWINWRAP_STATIC -DWINWRAP_TEST /I src /I src\public /I test test\winwrap_unittest.cc || exit /b 1
           )
 
       # vcvarsall rather than a third-party action, and called inside the same
@@ -215,14 +218,14 @@ jobs:
       - name: Check imports, x86
         run: |
           python tools/check_imports.py --min-os 5.01 `
-            out/x86/static/winwrap_unittests.exe `
-            out/x86/dll/winwrap_unittests.exe
+            out/x86/static/winwrap_test.exe `
+            out/x86/dll/winwrap_test.exe
 
       - name: Check imports, x64
         run: |
           python tools/check_imports.py --min-os 5.02 `
-            out/x64/static/winwrap_unittests.exe `
-            out/x64/dll/winwrap_unittests.exe
+            out/x64/static/winwrap_test.exe `
+            out/x64/dll/winwrap_test.exe
 
       # Run each from its own directory, because the shared-flavour binaries
       # need the winwrap.dll that sits beside them. The harness returns the
@@ -236,7 +239,7 @@ jobs:
             echo.
             echo ==== %%A %%F ====================================
             pushd out\%%A\%%F || exit /b 1
-            winwrap_unittests.exe || (popd & echo FAILED: %%A %%F & exit /b 1)
+            winwrap_test.exe || (popd & echo FAILED: %%A %%F & exit /b 1)
             popd
           )
 
