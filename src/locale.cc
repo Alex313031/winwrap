@@ -299,6 +299,33 @@ namespace {
     return true;
   }
 
+  // Whether a call the system's own function has just failed was failed for
+  // carrying LOCALE_ALLOW_NEUTRAL_NAMES, as near as can be told from outside.
+  //
+  // Vista is the system this is for. It has LocaleNameToLCID and
+  // LCIDToLocaleName, so winwrap forwards to them, but the flag is Windows 7's
+  // and Vista turns away any call that carries it -- with
+  // ERROR_INVALID_PARAMETER, though ERROR_INVALID_FLAGS is what the
+  // documentation promises and is accepted here too. That left the flag
+  // working on XP, through winwrap's own code, and on 7 and later, and failing
+  // on Vista alone. The two shims retry without it when this says so.
+  //
+  // What the retry returns is Vista's answer to the unflagged question, which
+  // for a specific locale -- en-US, the kind ICU asks about -- is the same
+  // answer. For a neutral one it is whatever Vista does when not asked to
+  // allow neutral names; nothing is done to turn that into one.
+  //
+  // A call that failed for some other reason and happens to carry the flag is
+  // retried too, to no effect: it fails again the same way, and that error is
+  // the one the caller sees.
+  bool RejectedForNeutralNames(DWORD flags) {
+    if ((flags & LOCALE_ALLOW_NEUTRAL_NAMES) == 0) {
+      return false;
+    }
+    const DWORD error = ::GetLastError();
+    return error == ERROR_INVALID_PARAMETER || error == ERROR_INVALID_FLAGS;
+  }
+
   // An output buffer has to be there unless the call is only measuring.
   bool OutputIsUsable(LPWSTR out, int out_chars) {
     if (out_chars < 0 || (out_chars > 0 && out == nullptr)) {
@@ -454,7 +481,11 @@ int WINAPI ww_CompareStringEx(LPCWSTR lpLocaleName,
 LCID WINAPI ww_LocaleNameToLCID(LPCWSTR lpName, DWORD dwFlags) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, LocaleNameToLCID)) {
-    return system_fn(lpName, dwFlags);
+    LCID lcid = system_fn(lpName, dwFlags);
+    if (lcid == 0 && RejectedForNeutralNames(dwFlags)) {
+      lcid = system_fn(lpName, dwFlags & ~static_cast<DWORD>(LOCALE_ALLOW_NEUTRAL_NAMES));
+    }
+    return lcid;
   }
   if (!FlagsAreSupported(dwFlags)) {
     return 0;
@@ -471,7 +502,12 @@ LCID WINAPI ww_LocaleNameToLCID(LPCWSTR lpName, DWORD dwFlags) {
 int WINAPI ww_LCIDToLocaleName(LCID Locale, LPWSTR lpName, int cchName, DWORD dwFlags) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, LCIDToLocaleName)) {
-    return system_fn(Locale, lpName, cchName, dwFlags);
+    int length = system_fn(Locale, lpName, cchName, dwFlags);
+    if (length == 0 && RejectedForNeutralNames(dwFlags)) {
+      length = system_fn(Locale, lpName, cchName,
+                         dwFlags & ~static_cast<DWORD>(LOCALE_ALLOW_NEUTRAL_NAMES));
+    }
+    return length;
   }
   if (!FlagsAreSupported(dwFlags) || !OutputIsUsable(lpName, cchName)) {
     return 0;

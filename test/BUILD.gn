@@ -1,5 +1,10 @@
 # Stress tests winwrap library functions
 
+# For is_component_winwrap, below. A .gni's arguments are visible only to files
+# that import it; ../BUILD.gn importing it does not make them visible here, and
+# without this line `gn gen` stops with "Undefined identifier".
+import("//third_party/winwrap/winwrap.gni")
+
 group("winwrap_test") {
   testonly = true
   public_deps = [ ":winwrap_unit_test" ]

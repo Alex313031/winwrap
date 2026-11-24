@@ -868,25 +868,25 @@ namespace {
     const int neutral_len =
         ::LCIDToLocaleName(kEnUs, neutral, ARRAYSIZE(neutral), LOCALE_ALLOW_NEUTRAL_NAMES);
     const DWORD neutral_error = neutral_len > 0 ? ERROR_SUCCESS : ::GetLastError();
-    // Asserted wherever the flag exists, which is winwrap's fallback and any
-    // Windows from 7 on. Vista is the one system in between: it has its own
-    // LCIDToLocaleName, so winwrap forwards, and that function predates the
-    // flag and turns it away with ERROR_INVALID_PARAMETER. That is Vista's
-    // answer rather than winwrap's, and ICU already expects it -- its comment
-    // at the call site says as much, and it falls back to its own table on a
-    // zero. Reported rather than failed, for the same reason as Vista's
-    // GetQueuedCompletionStatusEx below: a permanently red run stops being read.
-    if (winwrap_answers || GetRealNTVersion() >= 0x0601) {
-      CHECK(neutral_len > 0,
-            L"LOCALE_ALLOW_NEUTRAL_NAMES was rejected with " << Hex(neutral_error));
-    } else if (neutral_len > 0) {
-      std::wcout << L"    this system's LCIDToLocaleName accepted LOCALE_ALLOW_NEUTRAL_NAMES"
-                 << std::endl;
-    } else {
-      std::wcout << L"    this system's own LCIDToLocaleName predates LOCALE_ALLOW_NEUTRAL_NAMES"
-                 << L" and rejected it with " << Hex(neutral_error) << L"; not winwrap's to fix"
-                 << std::endl;
+    // Asserted everywhere, Vista included. Vista has its own LCIDToLocaleName,
+    // which predates the flag and turns it away; winwrap retries without it,
+    // so the caller gets the name it would have had for the asking. For a
+    // specific locale that is the same name the unflagged call gives.
+    CHECK(neutral_len > 0,
+          L"LOCALE_ALLOW_NEUTRAL_NAMES was rejected with " << Hex(neutral_error));
+    wchar_t unflagged[LOCALE_NAME_MAX_LENGTH] = {};
+    if (neutral_len > 0 && ::LCIDToLocaleName(kEnUs, unflagged, ARRAYSIZE(unflagged), 0) > 0) {
+      CHECK(wcscmp(neutral, unflagged) == 0,
+            L"with LOCALE_ALLOW_NEUTRAL_NAMES en-US is " << Printable(neutral) << L", without "
+                                                         << Printable(unflagged));
     }
+
+    // The same flag in the other direction, which Vista refuses the same way.
+    ::SetLastError(0);
+    const LCID flagged_lcid = ::LocaleNameToLCID(L"en-US", LOCALE_ALLOW_NEUTRAL_NAMES);
+    CHECK(flagged_lcid == kEnUs, L"LocaleNameToLCID(en-US, LOCALE_ALLOW_NEUTRAL_NAMES) gave "
+                                     << Hex(flagged_lcid) << L", last error "
+                                     << Hex(::GetLastError()));
 
     // The invariant locale's name is the empty string, which is the inverse of
     // the mapping the name-to-LCID direction applies to it.
