@@ -22,7 +22,7 @@ namespace winwrap {
     // "Throughout" means everything that resolves through this file. There is
     // one shim that does not, and loads its library instead:
     // ww_SHGetKnownFolderPath, for reasons set out at the top of
-    // known_folders.cc.
+    // shell32.cc.
     std::atomic<void*> g_modules[static_cast<size_t>(Module::kCount)];
 
     const wchar_t* ModuleName(Module module) {

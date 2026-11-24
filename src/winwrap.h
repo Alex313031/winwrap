@@ -100,7 +100,7 @@ VOID WINAPI ww_FlushProcessWriteBuffers(void);
 // --- Time zones ------------------------------------------------------------
 // GetDynamicTimeZoneInformation: Vista+. GetTimeZoneInformation, with the
 // registry key name searched for since XP does not record it. See
-// time_zone.cc.
+// timezone.cc.
 DWORD WINAPI ww_GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation);
 
 // --- Registry --------------------------------------------------------------
@@ -405,7 +405,7 @@ HRESULT WINAPI ww_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID);
 
 // --- Known folders ---------------------------------------------------------
 // SHGetKnownFolderPath: shell32, Vista+. Maps the folder IDs XP has a CSIDL
-// for onto SHGetFolderPathW; see known_folders.cc, including for why this is
+// for onto SHGetFolderPathW; see shell32.cc, including for why this is
 // the one shim that loads a library.
 //
 // `rfid` is REFKNOWNFOLDERID, spelled out because the typedef lives in

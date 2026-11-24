@@ -234,6 +234,6 @@ WINWRAP_REDIRECT(TryAcquireSRWLockShared, 4);
 // shell32 rather than kernel32, and delay-imported rather than statically
 // imported, which changes when the failure appears but not how it is fixed:
 // the reference is satisfied here, so shell32.lib is never consulted for it
-// and no delay thunk is generated. See app_user_model.cc.
+// and no delay thunk is generated. See shell32.cc.
 WINWRAP_REDIRECT(SetCurrentProcessExplicitAppUserModelID, 4);
 WINWRAP_REDIRECT(GetCurrentProcessExplicitAppUserModelID, 4);

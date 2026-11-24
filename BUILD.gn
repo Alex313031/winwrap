@@ -16,7 +16,6 @@ assert(is_win || target_os == "win", "winwrap is only valid for Windows targets"
 # DLL imports from kernel32 the very functions it exists to supply, and fails
 # to load on XP before any of this runs.
 _winwrap_sources = [
-  "src/app_user_model.cc",
   "src/cancel_io.cc",
   "src/condition_variable.cc",
   "src/critical_section.cc",
@@ -31,7 +30,6 @@ _winwrap_sources = [
   "src/framework.h",
   "src/init_once.cc",
   "src/io_completion.cc",
-  "src/known_folders.cc",
   "src/locale.cc",
   "src/lock_family.cc",
   "src/lock_family.h",
@@ -42,6 +40,7 @@ _winwrap_sources = [
   "src/process.cc",
   "src/public/winwrap_public.h",
   "src/registry.cc",
+  "src/shell32.cc",
   "src/srwlock.cc",
   "src/static_redirects.cc",
   "src/sync_objects.cc",
@@ -49,7 +48,7 @@ _winwrap_sources = [
   "src/thread_pool.cc",
   "src/threads.cc",
   "src/tick_count.cc",
-  "src/time_zone.cc",
+  "src/timezone.cc",
   "src/winwrap.h",
   "src/winwrap_version.h",
 ]

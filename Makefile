@@ -183,7 +183,6 @@ CXXFLAGS = $(CXXFLAGS) $(OPTFLAGS) $(CRTFLAG)
 # does here, and winwrap_dll.cc, which holds what only a DLL wants and would
 # be dead weight in the static library.
 OBJECTS = \
-	$(OBJDIR)\app_user_model.obj \
 	$(OBJDIR)\cancel_io.obj \
 	$(OBJDIR)\condition_variable.obj \
 	$(OBJDIR)\critical_section.obj \
@@ -196,7 +195,6 @@ OBJECTS = \
 	$(OBJDIR)\fls.obj \
 	$(OBJDIR)\init_once.obj \
 	$(OBJDIR)\io_completion.obj \
-	$(OBJDIR)\known_folders.obj \
 	$(OBJDIR)\locale.obj \
 	$(OBJDIR)\lock_family.obj \
 	$(OBJDIR)\misc.obj \
@@ -204,13 +202,14 @@ OBJECTS = \
 	$(OBJDIR)\pipes.obj \
 	$(OBJDIR)\process.obj \
 	$(OBJDIR)\registry.obj \
+	$(OBJDIR)\shell32.obj \
 	$(OBJDIR)\srwlock.obj \
 	$(OBJDIR)\sync_objects.obj \
 	$(OBJDIR)\system.obj \
 	$(OBJDIR)\thread_pool.obj \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \
-	$(OBJDIR)\time_zone.obj \
+	$(OBJDIR)\timezone.obj \
 	$(OBJDIR)\forwarders.obj
 
 HEADERS = \

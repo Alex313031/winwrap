@@ -212,7 +212,6 @@
       # what define the __imp_<name> slots the consumer's call sites load
       # through, so without them winwrap builds and does nothing.
       'sources': [
-        'src/app_user_model.cc',
         'src/cancel_io.cc',
         'src/condition_variable.cc',
         'src/critical_section.cc',
@@ -227,7 +226,6 @@
         'src/framework.h',
         'src/init_once.cc',
         'src/io_completion.cc',
-        'src/known_folders.cc',
         'src/locale.cc',
         'src/lock_family.cc',
         'src/lock_family.h',
@@ -238,6 +236,7 @@
         'src/process.cc',
         'src/public/winwrap_public.h',
         'src/registry.cc',
+        'src/shell32.cc',
         'src/srwlock.cc',
         'src/forwarders_x86.asm',
         'src/forwarders_x64.asm',
@@ -246,7 +245,7 @@
         'src/thread_pool.cc',
         'src/threads.cc',
         'src/tick_count.cc',
-        'src/time_zone.cc',
+        'src/timezone.cc',
         'src/winwrap.h',
         'src/winwrap_version.h',
       ],
