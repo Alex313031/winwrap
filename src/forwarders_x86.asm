@@ -34,6 +34,8 @@ IFDEF WINWRAP_X86
 
 EXTERN _ww_GetTickCount64@0 : PROC
 EXTERN _ww_InitOnceExecuteOnce@16 : PROC
+EXTERN _ww_InitOnceBeginInitialize@16 : PROC
+EXTERN _ww_InitOnceComplete@12 : PROC
 EXTERN _ww_GetFileInformationByHandleEx@16 : PROC
 EXTERN _ww_SetFileInformationByHandle@16 : PROC
 EXTERN _ww_GetFinalPathNameByHandleW@16 : PROC
@@ -79,6 +81,12 @@ EXTERN _ww_SetFileCompletionNotificationModes@8 : PROC
 EXTERN _ww_CancelIoEx@8 : PROC
 EXTERN _ww_CancelSynchronousIo@4 : PROC
 EXTERN _ww_InitializeCriticalSectionEx@12 : PROC
+EXTERN _ww_CreateEventExW@16 : PROC
+EXTERN _ww_CreateSemaphoreExW@24 : PROC
+EXTERN _ww_CreateWaitableTimerExW@16 : PROC
+EXTERN _ww_FlushProcessWriteBuffers@0 : PROC
+EXTERN _ww_QueryThreadCycleTime@8 : PROC
+EXTERN _ww_GetDynamicTimeZoneInformation@4 : PROC
 EXTERN _ww_CreateThreadpoolTimer@12 : PROC
 EXTERN _ww_SetThreadpoolTimer@16 : PROC
 EXTERN _ww_WaitForThreadpoolTimerCallbacks@8 : PROC
@@ -92,6 +100,9 @@ EXTERN _ww_FlsAlloc@4 : PROC
 EXTERN _ww_FlsGetValue@4 : PROC
 EXTERN _ww_FlsSetValue@8 : PROC
 EXTERN _ww_FlsFree@4 : PROC
+EXTERN _ww_SHGetKnownFolderPath@16 : PROC
+EXTERN _ww_ConvertInterfaceIndexToLuid@8 : PROC
+EXTERN _ww_ConvertInterfaceLuidToNameW@12 : PROC
 EXTERN _ww_GetLogicalProcessorInformation@8 : PROC
 EXTERN _ww_TryAcquireSRWLockExclusive@4 : PROC
 EXTERN _ww_TryAcquireSRWLockShared@4 : PROC
@@ -104,6 +115,10 @@ PUBLIC __imp__GetTickCount64@0
 __imp__GetTickCount64@0 dd _ww_GetTickCount64@0
 PUBLIC __imp__InitOnceExecuteOnce@16
 __imp__InitOnceExecuteOnce@16 dd _ww_InitOnceExecuteOnce@16
+PUBLIC __imp__InitOnceBeginInitialize@16
+__imp__InitOnceBeginInitialize@16 dd _ww_InitOnceBeginInitialize@16
+PUBLIC __imp__InitOnceComplete@12
+__imp__InitOnceComplete@12 dd _ww_InitOnceComplete@12
 PUBLIC __imp__GetFileInformationByHandleEx@16
 __imp__GetFileInformationByHandleEx@16 dd _ww_GetFileInformationByHandleEx@16
 PUBLIC __imp__SetFileInformationByHandle@16
@@ -194,6 +209,18 @@ PUBLIC __imp__CancelSynchronousIo@4
 __imp__CancelSynchronousIo@4 dd _ww_CancelSynchronousIo@4
 PUBLIC __imp__InitializeCriticalSectionEx@12
 __imp__InitializeCriticalSectionEx@12 dd _ww_InitializeCriticalSectionEx@12
+PUBLIC __imp__CreateEventExW@16
+__imp__CreateEventExW@16 dd _ww_CreateEventExW@16
+PUBLIC __imp__CreateSemaphoreExW@24
+__imp__CreateSemaphoreExW@24 dd _ww_CreateSemaphoreExW@24
+PUBLIC __imp__CreateWaitableTimerExW@16
+__imp__CreateWaitableTimerExW@16 dd _ww_CreateWaitableTimerExW@16
+PUBLIC __imp__FlushProcessWriteBuffers@0
+__imp__FlushProcessWriteBuffers@0 dd _ww_FlushProcessWriteBuffers@0
+PUBLIC __imp__QueryThreadCycleTime@8
+__imp__QueryThreadCycleTime@8 dd _ww_QueryThreadCycleTime@8
+PUBLIC __imp__GetDynamicTimeZoneInformation@4
+__imp__GetDynamicTimeZoneInformation@4 dd _ww_GetDynamicTimeZoneInformation@4
 PUBLIC __imp__CreateThreadpoolTimer@12
 __imp__CreateThreadpoolTimer@12 dd _ww_CreateThreadpoolTimer@12
 PUBLIC __imp__SetThreadpoolTimer@16
@@ -220,6 +247,12 @@ PUBLIC __imp__FlsSetValue@8
 __imp__FlsSetValue@8 dd _ww_FlsSetValue@8
 PUBLIC __imp__FlsFree@4
 __imp__FlsFree@4 dd _ww_FlsFree@4
+PUBLIC __imp__SHGetKnownFolderPath@16
+__imp__SHGetKnownFolderPath@16 dd _ww_SHGetKnownFolderPath@16
+PUBLIC __imp__ConvertInterfaceIndexToLuid@8
+__imp__ConvertInterfaceIndexToLuid@8 dd _ww_ConvertInterfaceIndexToLuid@8
+PUBLIC __imp__ConvertInterfaceLuidToNameW@12
+__imp__ConvertInterfaceLuidToNameW@12 dd _ww_ConvertInterfaceLuidToNameW@12
 PUBLIC __imp__GetLogicalProcessorInformation@8
 __imp__GetLogicalProcessorInformation@8 dd _ww_GetLogicalProcessorInformation@8
 PUBLIC __imp__TryAcquireSRWLockExclusive@4

@@ -82,6 +82,10 @@ BOOL WINAPI ww_GetNamedPipeServerProcessId(HANDLE Pipe, PULONG ServerProcessId);
 // --- Threads ---------------------------------------------------------------
 // Server 2003+. Derived from the CPUID initial APIC ID; see threads.cc.
 DWORD WINAPI ww_GetCurrentProcessorNumber(void);
+// QueryThreadCycleTime: Vista+. GetThreadTimes scaled to cycles at the
+// processor's nominal rate, so it has the clock tick's resolution rather than
+// the counter's. See threads.cc.
+BOOL WINAPI ww_QueryThreadCycleTime(HANDLE ThreadHandle, PULONG64 CycleTime);
 
 // --- Process-wide state ----------------------------------------------------
 // Both Vista+. GetErrorMode reads what the kernel already tracks;
@@ -89,6 +93,15 @@ DWORD WINAPI ww_GetCurrentProcessorNumber(void);
 // opt out of. See process.cc.
 UINT WINAPI ww_GetErrorMode(void);
 BOOL WINAPI ww_SetProcessDPIAware(void);
+// FlushProcessWriteBuffers: Vista+. The interprocessor interrupt is provoked
+// by revoking write access to a page; see process.cc.
+VOID WINAPI ww_FlushProcessWriteBuffers(void);
+
+// --- Time zones ------------------------------------------------------------
+// GetDynamicTimeZoneInformation: Vista+. GetTimeZoneInformation, with the
+// registry key name searched for since XP does not record it. See
+// timezone.cc.
+DWORD WINAPI ww_GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation);
 
 // --- Registry --------------------------------------------------------------
 // Vista+. RegQueryValueEx plus a type filter, guaranteed string termination
@@ -132,11 +145,20 @@ VOID WINAPI ww_WakeConditionVariable(PCONDITION_VARIABLE ConditionVariable);
 VOID WINAPI ww_WakeAllConditionVariable(PCONDITION_VARIABLE ConditionVariable);
 
 // --- One-time initialisation -----------------------------------------------
-// InitOnceExecuteOnce: Vista+. libuv's uv_once() is built directly on this.
+// All Vista+, and all three or none: they share the INIT_ONCE's state word,
+// so winwrap's only ever meet each other. See init_once.cc.
+// InitOnceExecuteOnce: libuv's uv_once() is built directly on this.
 BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
                                    PINIT_ONCE_FN InitFn,
                                    PVOID Parameter,
                                    LPVOID* Context);
+// InitOnceBeginInitialize / InitOnceComplete: the two-call form, synchronous
+// or INIT_ONCE_ASYNC.
+BOOL WINAPI ww_InitOnceBeginInitialize(LPINIT_ONCE lpInitOnce,
+                                       DWORD dwFlags,
+                                       PBOOL fPending,
+                                       LPVOID* lpContext);
+BOOL WINAPI ww_InitOnceComplete(LPINIT_ONCE lpInitOnce, DWORD dwFlags, LPVOID lpContext);
 
 // --- Thread pool timers and waits ------------------------------------------
 // All Vista+, and built on XP's timer queues rather than wrapped. TP_TIMER,
@@ -146,7 +168,7 @@ BOOL WINAPI ww_InitOnceExecuteOnce(PINIT_ONCE InitOnce,
 // A handle from these is winwrap's own structure and not an OS object, so it
 // must be closed by the copy of winwrap that made it, and the
 // PTP_CALLBACK_INSTANCE a callback receives is not a real one. See
-// threadpool.cc, which is also where the Concurrency Runtime's part in all
+// thread_pool.cc, which is also where the Concurrency Runtime's part in all
 // this is written down.
 PTP_TIMER WINAPI ww_CreateThreadpoolTimer(PTP_TIMER_CALLBACK pfnti,
                                           PVOID pv,
@@ -317,6 +339,36 @@ BOOL WINAPI ww_SetFileCompletionNotificationModes(HANDLE FileHandle, UCHAR Flags
 BOOL WINAPI ww_CancelIoEx(HANDLE hFile, LPOVERLAPPED lpOverlapped);
 BOOL WINAPI ww_CancelSynchronousIo(HANDLE hThread);
 
+// --- Events, semaphores and waitable timers ---------------------------------
+// The Ex forms: Vista+. Flags are translated onto the XP functions, and the
+// handle is then duplicated down to the access mask. See sync_objects.cc.
+// The SDK may hide the flag names below 0x0600.
+#if !defined(CREATE_EVENT_MANUAL_RESET)
+ #define CREATE_EVENT_MANUAL_RESET 0x00000001
+#endif
+#if !defined(CREATE_EVENT_INITIAL_SET)
+ #define CREATE_EVENT_INITIAL_SET 0x00000002
+#endif
+#if !defined(CREATE_WAITABLE_TIMER_MANUAL_RESET)
+ #define CREATE_WAITABLE_TIMER_MANUAL_RESET 0x00000001
+#endif
+
+HANDLE WINAPI ww_CreateEventExW(LPSECURITY_ATTRIBUTES lpEventAttributes,
+                                LPCWSTR lpName,
+                                DWORD dwFlags,
+                                DWORD dwDesiredAccess);
+HANDLE WINAPI ww_CreateSemaphoreExW(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes,
+                                    LONG lInitialCount,
+                                    LONG lMaximumCount,
+                                    LPCWSTR lpName,
+                                    DWORD dwFlags,
+                                    DWORD dwDesiredAccess);
+// CREATE_WAITABLE_TIMER_HIGH_RESOLUTION is refused, as before Windows 10 1803.
+HANDLE WINAPI ww_CreateWaitableTimerExW(LPSECURITY_ATTRIBUTES lpTimerAttributes,
+                                        LPCWSTR lpTimerName,
+                                        DWORD dwFlags,
+                                        DWORD dwDesiredAccess);
+
 // --- Critical sections -----------------------------------------------------
 // InitializeCriticalSectionEx: Vista+. The SDK hides the flag below 0x0600.
 #if !defined(CRITICAL_SECTION_NO_DEBUG_INFO)
@@ -350,6 +402,32 @@ BOOL WINAPI ww_FlsFree(DWORD dwFlsIndex);
 // own sources compile at _WIN32_WINNT=0x0501, where the SDK hides them.
 HRESULT WINAPI ww_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID);
 HRESULT WINAPI ww_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID);
+
+// --- Known folders ---------------------------------------------------------
+// SHGetKnownFolderPath: shell32, Vista+. Maps the folder IDs XP has a CSIDL
+// for onto SHGetFolderPathW; see shell32.cc, including for why this is
+// the one shim that loads a library.
+//
+// `rfid` is REFKNOWNFOLDERID, spelled out because the typedef lives in
+// shtypes.h, which nothing else here needs. A KNOWNFOLDERID is a GUID.
+HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
+                                       DWORD dwFlags,
+                                       HANDLE hToken,
+                                       PWSTR* ppszPath);
+
+// --- Network interfaces ----------------------------------------------------
+// iphlpapi, Vista+. An index to a NET_LUID and a NET_LUID to its name, which
+// together are libuv's uv_if_indextoname(). XP has no LUIDs; one is made from
+// the interface's type and index. See net.cc.
+//
+// NET_LUID is named by its tag so that this header need not include ifdef.h
+// for the sake of two declarations; net.cc includes it.
+union _NET_LUID_LH;
+DWORD WINAPI ww_ConvertInterfaceIndexToLuid(ULONG InterfaceIndex,
+                                            union _NET_LUID_LH* InterfaceLuid);
+DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const union _NET_LUID_LH* InterfaceLuid,
+                                            PWSTR InterfaceName,
+                                            SIZE_T Length);
 
 #ifdef WINWRAP_DLL
 HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi);

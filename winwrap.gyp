@@ -212,7 +212,6 @@
       # what define the __imp_<name> slots the consumer's call sites load
       # through, so without them winwrap builds and does nothing.
       'sources': [
-        'src/app_user_model.cc',
         'src/cancel_io.cc',
         'src/condition_variable.cc',
         'src/critical_section.cc',
@@ -231,19 +230,23 @@
         'src/lock_family.cc',
         'src/lock_family.h',
         'src/misc.cc',
+        'src/net.cc',
         'src/parking_lot.cc',
         'src/parking_lot.h',
         'src/pipes.cc',
         'src/process.cc',
         'src/public/winwrap_public.h',
         'src/registry.cc',
+        'src/shell32.cc',
         'src/srwlock.cc',
         'src/forwarders_x86.asm',
         'src/forwarders_x64.asm',
+        'src/sync_objects.cc',
         'src/system.cc',
-        'src/threadpool.cc',
+        'src/thread_pool.cc',
         'src/threads.cc',
         'src/tick_count.cc',
+        'src/timezone.cc',
         'src/winwrap.h',
         'src/winwrap_version.h',
       ],
@@ -435,7 +438,9 @@
           # Console, so the harness output goes somewhere.
           'SubSystem': 1,
           # advapi32 for the registry test, user32 for wsprintfW, ole32 for
-          # CoTaskMemFree in the AppUserModelID test. Named explicitly because
+          # CoTaskMemFree in the AppUserModelID test, shell32 for the
+          # SHGetFolderPathW the known-folder test compares against. Named
+          # explicitly because
           # this file has to work outside a Chromium-derived tree, where they
           # would already be on every link line -- which is why
           # test/BUILD.gn names none of them.
@@ -443,6 +448,7 @@
             'advapi32.lib',
             'user32.lib',
             'ole32.lib',
+            'shell32.lib',
           ],
         },
       },

@@ -47,7 +47,6 @@ namespace winwrap {
   inline constexpr wchar_t kKernel32[] = L"kernel32.dll";
   inline constexpr wchar_t kUser32[]   = L"user32.dll";
   inline constexpr wchar_t kAdvapi32[] = L"advapi32.dll";
-  inline constexpr wchar_t kShell32[]  = L"shell32.dll";
   inline constexpr wchar_t kNtDll[]    = L"ntdll.dll";
 
   // Which of those a function comes from. An enum rather than the name at each
@@ -55,7 +54,15 @@ namespace winwrap {
   // function. Named h* for the handle each one stands for, leaving the k*
   // above for the strings; kCount keeps its k because it counts rather than
   // naming a module.
-  enum class Module { hKernel32, hUser32, hAdvapi32, hShell32, hNtDll, kCount };
+  //
+  // shell32 and iphlpapi are absent on purpose, though winwrap substitutes
+  // functions from both. Everything here is found with GetModuleHandleW, which
+  // only works for a DLL that is certain to be loaded already, and consumers
+  // delay-import those two. A WW_TRYFUNC against either would report "no such
+  // function" to any process that had not happened to load the DLL yet, and
+  // cache it -- which is a bug winwrap has had. They go through
+  // LoadSystemLibrary and ResolveFrom below instead.
+  enum class Module { hKernel32, hUser32, hAdvapi32, hNtDll, kCount };
 
   // Stored in a slot when the running Windows has no such function. Any value
   // that cannot be a real code address will do; 1 is not writable, not
@@ -66,6 +73,25 @@ namespace winwrap {
   // into the slot. Returns what it wrote. Only ever called on the first use of
   // a given slot, or again by a thread that raced with the first.
   void* ResolveSlot(std::atomic<void*>& slot, Module module, const char* name);
+
+  // The exception to "never loads anything", for the shims whose DLL their
+  // consumers delay-import: all of shell32.cc and net.cc. A redirect means no delay
+  // thunk is generated for the function, so nothing else will load the DLL on
+  // the caller's behalf, and a GetModuleHandleW probe made before it arrived
+  // would answer "absent" for the life of the process. Calling one of those
+  // functions is a request for its DLL; these honour it the way the thunk
+  // would have. Neither goes through the Module table above, whose promise
+  // stays intact for everything that does.
+  //
+  // Loads `file_name` from the system directory, once per slot, and returns
+  // the handle or null. By full path, so the name cannot be answered by a file
+  // planted beside the executable. The reference is kept for the life of the
+  // process, as a static import's would be.
+  HMODULE LoadSystemLibrary(std::atomic<void*>& slot, const wchar_t* file_name);
+
+  // GetProcAddress in a module obtained from LoadSystemLibrary, once per
+  // slot. Null if `module` is null or has no such export.
+  void* ResolveFrom(std::atomic<void*>& slot, HMODULE module, const char* name);
 
 } // namespace winwrap
 

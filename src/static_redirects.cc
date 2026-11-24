@@ -104,6 +104,8 @@ extern "C" int winwrap_static_redirects = 0;
 // --- Available on Vista and later, missing on XP ---------------------------
 WINWRAP_REDIRECT(GetTickCount64, 0);
 WINWRAP_REDIRECT(InitOnceExecuteOnce, 16);
+WINWRAP_REDIRECT(InitOnceBeginInitialize, 16);
+WINWRAP_REDIRECT(InitOnceComplete, 12);
 
 WINWRAP_REDIRECT(GetFileInformationByHandleEx, 16);
 WINWRAP_REDIRECT(SetFileInformationByHandle, 16);
@@ -174,10 +176,21 @@ WINWRAP_REDIRECT(CancelSynchronousIo, 4);
 
 WINWRAP_REDIRECT(InitializeCriticalSectionEx, 12);
 
+WINWRAP_REDIRECT(CreateEventExW, 16);
+WINWRAP_REDIRECT(CreateSemaphoreExW, 24);
+WINWRAP_REDIRECT(CreateWaitableTimerExW, 16);
+
+// 0 for the first, which takes nothing; 8 for the second, a handle and a
+// pointer -- the ULONG64 is written through, not passed; 4 for the third, a
+// pointer to the structure it fills.
+WINWRAP_REDIRECT(FlushProcessWriteBuffers, 0);
+WINWRAP_REDIRECT(QueryThreadCycleTime, 8);
+WINWRAP_REDIRECT(GetDynamicTimeZoneInformation, 4);
+
 // The thread pool timer and wait objects. These are the entries whose handles
 // are winwrap's own allocations rather than OS objects, so a process with two
 // statically linked copies of winwrap has two incompatible sets -- see the
-// note at the top of threadpool.cc. Nothing about the redirects themselves is
+// note at the top of thread_pool.cc. Nothing about the redirects themselves is
 // unusual; the coupling is in what the handles mean.
 WINWRAP_REDIRECT(CreateThreadpoolTimer, 12);
 WINWRAP_REDIRECT(SetThreadpoolTimer, 16);
@@ -193,6 +206,21 @@ WINWRAP_REDIRECT(FlsAlloc, 4);
 WINWRAP_REDIRECT(FlsGetValue, 4);
 WINWRAP_REDIRECT(FlsSetValue, 8);
 WINWRAP_REDIRECT(FlsFree, 4);
+
+// shell32, and delay-imported by the consumers this was written for; see the
+// note on the Application User Model pair at the end of this file, which
+// applies here unchanged. 16: a reference is a pointer, then a DWORD, a
+// handle and a pointer.
+//
+// The slot is half of it. The SDK does not declare this function dllimport,
+// so most callers never touch the slot and reference the function by name
+// instead; shell32.cc defines that name as well, and says why at length.
+WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
+
+// iphlpapi, delay-imported by node as shell32 is. 8 and 12: an index and a
+// pointer, then two pointers and a SIZE_T. net.cc defines the plain names too.
+WINWRAP_REDIRECT(ConvertInterfaceIndexToLuid, 8);
+WINWRAP_REDIRECT(ConvertInterfaceLuidToNameW, 12);
 
 // --- Present on XP SP3, missing on SP2 and earlier -------------------------
 //
@@ -215,6 +243,6 @@ WINWRAP_REDIRECT(TryAcquireSRWLockShared, 4);
 // shell32 rather than kernel32, and delay-imported rather than statically
 // imported, which changes when the failure appears but not how it is fixed:
 // the reference is satisfied here, so shell32.lib is never consulted for it
-// and no delay thunk is generated. See app_user_model.cc.
+// and no delay thunk is generated. See shell32.cc.
 WINWRAP_REDIRECT(SetCurrentProcessExplicitAppUserModelID, 4);
 WINWRAP_REDIRECT(GetCurrentProcessExplicitAppUserModelID, 4);

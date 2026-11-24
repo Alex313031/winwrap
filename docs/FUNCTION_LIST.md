@@ -60,7 +60,18 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `SetFileCompletionNotificationModes` | kernel32 | Vista | Always fails with `ERROR_INVALID_FUNCTION`; no XP equivalent. See the libuv note below |
 | `GetTickCount64` | kernel32 | Vista | Built on the 32-bit counter plus a wrap extension |
 | `InitializeCriticalSectionEx` | kernel32 | Vista | Forwards to `InitializeCriticalSectionAndSpinCount`, flag folded into the spin count |
-| `InitOnceExecuteOnce` | kernel32 | Vista | Tagged-pointer state machine. libuv's `uv_once()` is built directly on this |
+| `CreateEventExW` | kernel32 | Vista | `CreateEventW` with the two flags translated, then the handle duplicated down to the requested access mask. An existing named object that refuses full access is opened with the requested mask instead |
+| `CreateSemaphoreExW` | kernel32 | Vista | `CreateSemaphoreW`, same access-mask treatment. The reserved flags word must be zero |
+| `CreateWaitableTimerExW` | kernel32 | Vista | `CreateWaitableTimerW`, same access-mask treatment. `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION` is refused with `ERROR_INVALID_PARAMETER`, as on every Windows before 10 1803 -- see INCOMPLETE_FUNCS.md |
+| `FlushProcessWriteBuffers` | kernel32 | Vista | Provokes the interprocessor interrupt by revoking write access to a page it has just written to. The MSVC Concurrency Runtime is the caller |
+| `QueryThreadCycleTime` | kernel32 | Vista | `GetThreadTimes`, kernel plus user, scaled to cycles at the processor's nominal rate. Clock-tick resolution -- see INCOMPLETE_FUNCS.md |
+| `GetDynamicTimeZoneInformation` | kernel32 | Vista | `GetTimeZoneInformation`, plus the zone's registry key name found by search and the automatic-DST setting read from where XP keeps it. ICU derives the default time zone from the key name |
+| `SHGetKnownFolderPath` | shell32 | Vista | The 44 folder IDs that have a CSIDL (46 on x64), through `SHGetFolderPathW`. Folders Vista introduced fail with `ERROR_FILE_NOT_FOUND`. Loads shell32 and ole32 -- see INCOMPLETE_FUNCS.md |
+| `ConvertInterfaceIndexToLuid` | iphlpapi | Vista | `GetIfEntry` for the interface's type; the index stands in for the LUID's own number, XP having no LUIDs. Loads iphlpapi -- see INCOMPLETE_FUNCS.md |
+| `ConvertInterfaceLuidToNameW` | iphlpapi | Vista | Formats `<type>_<number>` the way Windows does, `iftype<N>_<number>` for a type without a name. With the one above, this is libuv's `uv_if_indextoname()` |
+| `InitOnceExecuteOnce` | kernel32 | Vista | Tagged-pointer state machine with ntdll's state numbering; the callback's context is stored and handed to later callers. Waiters sleep in the parking lot. libuv's `uv_once()` is built directly on this |
+| `InitOnceBeginInitialize` | kernel32 | Vista | The same state word, so it mixes freely with the other two. Synchronous, `INIT_ONCE_ASYNC` and `INIT_ONCE_CHECK_ONLY` are all supported |
+| `InitOnceComplete` | kernel32 | Vista | Stores the context and wakes the waiters; `INIT_ONCE_INIT_FAILED` hands the `INIT_ONCE` back for another attempt. The losing asynchronous completion fails, as on Windows |
 | `CreateThreadpoolTimer` | kernel32 | Vista | Allocates winwrap's own `TP_TIMER`; the callback pool is `CreateTimerQueueTimer`'s. Handles do not cross modules -- see INCOMPLETE_FUNCS.md |
 | `SetThreadpoolTimer` | kernel32 | Vista | `CreateTimerQueueTimer` or `ChangeTimerQueueTimer`. A null due time cancels, and does so synchronously so no queued callback slips through |
 | `WaitForThreadpoolTimerCallbacks` | kernel32 | Vista | Waits on an idle event the trampoline maintains, since the legacy API has no wait of its own short of deleting the timer |

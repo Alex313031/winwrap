@@ -80,4 +80,68 @@ BOOL WINAPI ww_SetProcessDPIAware(void) {
   return TRUE;
 }
 
+// Force a memory barrier on every processor running this process. kernel32,
+// Vista.
+//
+// The point of the function is to let one thread pay for synchronisation so
+// that many others need not: readers publish with plain stores, and a writer
+// that must see them all calls this instead of every reader taking a fence.
+// It works by interrupting each processor, since taking an interrupt drains
+// the store buffer.
+//
+// XP has no call for it, but it has one that interrupts every processor as a
+// side effect. Taking write access away from a page the process has mapped
+// means no processor may go on using a cached translation that still permits
+// writes, so the kernel sends each one running the process an interprocessor
+// interrupt to flush it. That is the trick the Concurrency Runtime -- which is where
+// this import comes from -- carries as its own fallback, crediting the CLR
+// with years of relying on it; YY-Thunks has it too.
+//
+// The interrupt is only sent if there is a live, writable translation to
+// revoke, and the usual form of the trick leaves that to luck: it protects a
+// page that is already read-only, and relies on the page being in the working
+// set. This one makes it so on every call -- restore write access, write to
+// the page, which puts a writable translation in this processor's cache and
+// the page in the working set, then take the access away again. The lock is
+// what makes that sequence safe: a second thread arriving between the two
+// protection changes would otherwise write to a page just made read-only.
+//
+// A processor not running one of this process's threads is not interrupted
+// and need not be. It reached that state through a context switch, and a
+// context switch is itself a barrier.
+VOID WINAPI ww_FlushProcessWriteBuffers(void) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, FlushProcessWriteBuffers)) {
+    system_fn();
+    return;
+  }
+
+  static std::atomic<void*> g_page{nullptr};
+  static SRWLOCK g_lock = {};
+
+  void* page = g_page.load(std::memory_order_acquire);
+  if (page == nullptr) {
+    // One page, for the life of the process. If it cannot be had there is no
+    // way to report it -- the function returns nothing -- and the next call
+    // tries again.
+    void* fresh = ::VirtualAlloc(nullptr, 1, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (fresh == nullptr) {
+      return;
+    }
+    if (g_page.compare_exchange_strong(page, fresh, std::memory_order_acq_rel)) {
+      page = fresh;
+    } else {
+      ::VirtualFree(fresh, 0, MEM_RELEASE); // Another thread got there first.
+    }
+  }
+
+  ww_AcquireSRWLockExclusive(&g_lock);
+  DWORD previous = 0;
+  if (::VirtualProtect(page, 1, PAGE_READWRITE, &previous)) {
+    ::InterlockedIncrement(static_cast<LONG volatile*>(page));
+    ::VirtualProtect(page, 1, PAGE_READONLY, &previous);
+  }
+  ww_ReleaseSRWLockExclusive(&g_lock);
+}
+
 } // extern "C"

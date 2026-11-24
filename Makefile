@@ -183,7 +183,6 @@ CXXFLAGS = $(CXXFLAGS) $(OPTFLAGS) $(CRTFLAG)
 # does here, and winwrap_dll.cc, which holds what only a DLL wants and would
 # be dead weight in the static library.
 OBJECTS = \
-	$(OBJDIR)\app_user_model.obj \
 	$(OBJDIR)\cancel_io.obj \
 	$(OBJDIR)\condition_variable.obj \
 	$(OBJDIR)\critical_section.obj \
@@ -199,15 +198,19 @@ OBJECTS = \
 	$(OBJDIR)\locale.obj \
 	$(OBJDIR)\lock_family.obj \
 	$(OBJDIR)\misc.obj \
+	$(OBJDIR)\net.obj \
 	$(OBJDIR)\parking_lot.obj \
 	$(OBJDIR)\pipes.obj \
 	$(OBJDIR)\process.obj \
 	$(OBJDIR)\registry.obj \
+	$(OBJDIR)\shell32.obj \
 	$(OBJDIR)\srwlock.obj \
+	$(OBJDIR)\sync_objects.obj \
 	$(OBJDIR)\system.obj \
-	$(OBJDIR)\threadpool.obj \
+	$(OBJDIR)\thread_pool.obj \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \
+	$(OBJDIR)\timezone.obj \
 	$(OBJDIR)\forwarders.obj
 
 HEADERS = \
@@ -275,9 +278,10 @@ TESTFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /EHsc $(FORMDEF) \
 	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_unittests.pdb
 
 # advapi32 for the registry test, user32 for wsprintfW, ole32 for
-# CoTaskMemFree in the AppUserModelID test. A Chromium-derived tree links all
-# three by default, which is why test/BUILD.gn names none of them.
-TESTLIBS = advapi32.lib user32.lib ole32.lib
+# CoTaskMemFree in the AppUserModelID test, shell32 for the SHGetFolderPathW
+# that the known-folder test compares against. A Chromium-derived tree links
+# all four by default, which is why test/BUILD.gn names none of them.
+TESTLIBS = advapi32.lib user32.lib ole32.lib shell32.lib
 
 # FIRST, and so the default: a bare `nmake` prints usage and builds nothing.
 # Building is always something you asked for by name.

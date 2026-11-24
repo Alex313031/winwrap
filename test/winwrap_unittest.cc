@@ -57,6 +57,13 @@
 #include <shlwapi.h>
 #endif // WINWRAP_DLL
 
+// ConvertStringSecurityDescriptorToSecurityDescriptorW, for the wait-only
+// event in TestSyncObjects. advapi32, which the registry tests already link.
+#include <sddl.h>
+
+// NET_LUID, for the iphlpapi pair declared below.
+#include <ifdef.h>
+
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
 // because a linkage specification may only appear at namespace scope -- inside
@@ -72,6 +79,17 @@ extern "C" LSTATUS APIENTRY winwrap_RegGetValueFallbackW(HKEY hkey,
                                                          LPDWORD pdwType,
                                                          PVOID pvData,
                                                          LPDWORD pcbData);
+
+// The two iphlpapi functions TestNetworkInterfaces calls, declared here rather
+// than by including iphlpapi.h: that header wants Winsock 2 ahead of it, and
+// <windows.h> has already brought in Winsock 1. Declared without dllimport,
+// which is the harder of the two cases for winwrap to satisfy -- the call
+// references the function itself rather than its import slot. See net.cc.
+extern "C" DWORD WINAPI ConvertInterfaceIndexToLuid(ULONG InterfaceIndex,
+                                                    NET_LUID* InterfaceLuid);
+extern "C" DWORD WINAPI ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
+                                                    PWSTR InterfaceName,
+                                                    SIZE_T Length);
 
 namespace {
 
@@ -430,12 +448,215 @@ namespace {
     return 0;
   }
 
+  // The context values handed through the INIT_ONCE. Their addresses are what
+  // matters: a context has to leave the low two bits clear, and an int's
+  // address does.
+  int g_once_payload_a = 0;
+  int g_once_payload_b = 0;
+
+  BOOL CALLBACK OnceBodyWithContext(PINIT_ONCE, PVOID parameter, PVOID* context) {
+    *context = parameter;
+    return TRUE;
+  }
+
+  BOOL CALLBACK OnceBodyFailing(PINIT_ONCE, PVOID, PVOID*) {
+    ::InterlockedIncrement(&g_once_runs);
+    ::SetLastError(ERROR_NOT_READY);
+    return FALSE;
+  }
+
+  INIT_ONCE g_begin_once          = INIT_ONCE_STATIC_INIT;
+  volatile LONG g_begin_winners   = 0;
+  volatile LONG g_begin_followers = 0;
+
+  // Every thread asks; exactly one is told to do the work, and the rest wait
+  // for it and are handed its context.
+  DWORD WINAPI BeginCaller(LPVOID) {
+    BOOL pending  = FALSE;
+    PVOID context = nullptr;
+    if (!::InitOnceBeginInitialize(&g_begin_once, 0, &pending, &context)) {
+      ++g_failures;
+      std::wcout << L"    FAIL InitOnceBeginInitialize failed in a thread with "
+                 << ::GetLastError() << std::endl;
+      return 0;
+    }
+    if (pending) {
+      ::InterlockedIncrement(&g_begin_winners);
+      ::Sleep(20); // Long enough for the others to arrive and have to wait.
+      CHECK(::InitOnceComplete(&g_begin_once, 0, &g_once_payload_a),
+            L"the winning thread could not complete");
+    } else {
+      CHECK(context == &g_once_payload_a, L"a waiting thread was handed the wrong context");
+      ::InterlockedIncrement(&g_begin_followers);
+    }
+    return 0;
+  }
+
+  void TestInitOnce() {
+    std::wcout << L"  InitOnceBeginInitialize, InitOnceComplete" << std::endl;
+
+    // Error codes are only pinned down where winwrap is the one answering;
+    // against the system the test settles for "it failed".
+    const bool winwrap_answers = !::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"),
+                                                   "InitOnceBeginInitialize");
+
+    // --- InitOnceExecuteOnce carries a context ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      PVOID context  = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_a, &context),
+            L"InitOnceExecuteOnce with a context failed");
+      CHECK(context == &g_once_payload_a, L"the first caller did not get its context back");
+
+      // The callback must not run again, and the stored context -- not the
+      // new parameter -- is what comes back.
+      context = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_b, &context),
+            L"the second InitOnceExecuteOnce failed");
+      CHECK(context == &g_once_payload_a, L"a later caller was not handed the stored context");
+    }
+
+    // --- A failing callback leaves the INIT_ONCE free for another attempt ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      g_once_runs    = 0;
+      CHECK(!::InitOnceExecuteOnce(&once, OnceBodyFailing, nullptr, nullptr),
+            L"a failing callback was reported as success");
+      CHECK(!::InitOnceExecuteOnce(&once, OnceBodyFailing, nullptr, nullptr),
+            L"the retry of a failing callback was reported as success");
+      CHECK(g_once_runs == 2, L"the failing callback ran " << g_once_runs << L" times, not 2");
+
+      PVOID context = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_b, &context) &&
+                context == &g_once_payload_b,
+            L"an INIT_ONCE that had only seen failures could not then succeed");
+    }
+
+    // --- Synchronous, one thread: every transition in turn ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      BOOL pending   = FALSE;
+      PVOID context  = nullptr;
+
+      ::SetLastError(0);
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context),
+            L"INIT_ONCE_CHECK_ONLY succeeded on a fresh INIT_ONCE");
+      if (winwrap_answers) {
+        CHECK(::GetLastError() == ERROR_GEN_FAILURE,
+              L"INIT_ONCE_CHECK_ONLY on a fresh INIT_ONCE set " << ::GetLastError());
+      }
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY | INIT_ONCE_ASYNC, &pending,
+                                       &context),
+            L"INIT_ONCE_CHECK_ONLY | INIT_ONCE_ASYNC was accepted");
+      CHECK(!::InitOnceComplete(&once, 0, nullptr),
+            L"InitOnceComplete succeeded with nothing begun");
+
+      CHECK(::InitOnceBeginInitialize(&once, 0, &pending, &context) && pending,
+            L"the first InitOnceBeginInitialize did not report pending");
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context),
+            L"INIT_ONCE_CHECK_ONLY succeeded while initialisation was running");
+      CHECK(!::InitOnceBeginInitialize(&once, INIT_ONCE_ASYNC, &pending, &context),
+            L"an asynchronous begin joined a synchronous initialisation");
+
+      // Failing hands the INIT_ONCE back, so the next begin is pending again.
+      CHECK(!::InitOnceComplete(&once, INIT_ONCE_INIT_FAILED, &g_once_payload_a),
+            L"INIT_ONCE_INIT_FAILED accepted a context");
+      CHECK(::InitOnceComplete(&once, INIT_ONCE_INIT_FAILED, nullptr),
+            L"InitOnceComplete(INIT_ONCE_INIT_FAILED) failed");
+      pending = FALSE;
+      CHECK(::InitOnceBeginInitialize(&once, 0, &pending, &context) && pending,
+            L"a failed initialisation did not leave the INIT_ONCE to be retried");
+
+      // A context has to keep clear of the state bits.
+      PVOID misaligned =
+          reinterpret_cast<PVOID>(reinterpret_cast<ULONG_PTR>(&g_once_payload_a) | 1);
+      ::SetLastError(0);
+      CHECK(!::InitOnceComplete(&once, 0, misaligned),
+            L"InitOnceComplete accepted a context with a reserved bit set");
+      if (winwrap_answers) {
+        CHECK(::GetLastError() == ERROR_INVALID_PARAMETER,
+              L"a misaligned context set " << ::GetLastError());
+      }
+      // Mismatched modes on InitOnceComplete are refused by winwrap, but that is
+      // only asserted there: implementations differ on it, and where one lets
+      // it through this would complete the INIT_ONCE out from under the test.
+      if (winwrap_answers) {
+        CHECK(!::InitOnceComplete(&once, INIT_ONCE_ASYNC, &g_once_payload_a),
+              L"an asynchronous complete ended a synchronous initialisation");
+      }
+
+      CHECK(::InitOnceComplete(&once, 0, &g_once_payload_a), L"InitOnceComplete failed");
+      CHECK(!::InitOnceComplete(&once, 0, &g_once_payload_b),
+            L"InitOnceComplete succeeded a second time");
+
+      pending = TRUE;
+      context = nullptr;
+      CHECK(::InitOnceBeginInitialize(&once, 0, &pending, &context) && !pending,
+            L"a completed INIT_ONCE still reported pending");
+      CHECK(context == &g_once_payload_a, L"a completed INIT_ONCE returned the wrong context");
+
+      pending = TRUE;
+      context = nullptr;
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context) && !pending,
+            L"INIT_ONCE_CHECK_ONLY failed on a completed INIT_ONCE");
+      CHECK(context == &g_once_payload_a, L"INIT_ONCE_CHECK_ONLY returned the wrong context");
+
+      // What Begin/Complete stored, ExecuteOnce has to read: one state word.
+      context = nullptr;
+      CHECK(::InitOnceExecuteOnce(&once, OnceBodyWithContext, &g_once_payload_b, &context) &&
+                context == &g_once_payload_a,
+            L"InitOnceExecuteOnce did not honour an INIT_ONCE completed by InitOnceComplete");
+    }
+
+    // --- Asynchronous: both may begin, one completion wins ---
+    {
+      INIT_ONCE once = INIT_ONCE_STATIC_INIT;
+      BOOL pending   = FALSE;
+      PVOID context  = nullptr;
+
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_ASYNC, &pending, &context) && pending,
+            L"the first asynchronous begin did not report pending");
+      pending = FALSE;
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_ASYNC, &pending, &context) && pending,
+            L"a second asynchronous begin was not also told to go ahead");
+      CHECK(!::InitOnceBeginInitialize(&once, 0, &pending, &context),
+            L"a synchronous begin joined an asynchronous initialisation");
+      CHECK(!::InitOnceComplete(&once, 0, &g_once_payload_a),
+            L"a synchronous complete ended an asynchronous initialisation");
+      CHECK(!::InitOnceComplete(&once, INIT_ONCE_ASYNC | INIT_ONCE_INIT_FAILED, nullptr),
+            L"INIT_ONCE_ASYNC | INIT_ONCE_INIT_FAILED was accepted");
+
+      CHECK(::InitOnceComplete(&once, INIT_ONCE_ASYNC, &g_once_payload_a),
+            L"the first asynchronous complete failed");
+      CHECK(!::InitOnceComplete(&once, INIT_ONCE_ASYNC, &g_once_payload_b),
+            L"the losing asynchronous complete was reported as success");
+
+      // The loser's way of finding out what the winner stored.
+      pending = TRUE;
+      context = nullptr;
+      CHECK(::InitOnceBeginInitialize(&once, INIT_ONCE_CHECK_ONLY, &pending, &context) && !pending,
+            L"INIT_ONCE_CHECK_ONLY failed after an asynchronous completion");
+      CHECK(context == &g_once_payload_a, L"the losing completion's context was stored");
+    }
+
+    // --- Synchronous under contention: one winner, the rest wait for it ---
+    g_begin_once.Ptr  = nullptr; // INIT_ONCE_STATIC_INIT, without InitOnceInitialize.
+    g_begin_winners   = 0;
+    g_begin_followers = 0;
+    RunThreads(BeginCaller, kThreads);
+    CHECK(g_begin_winners == 1, g_begin_winners << L" threads were told to initialise, not 1");
+    CHECK(g_begin_followers == static_cast<LONG>(kThreads) - 1,
+          g_begin_followers << L" threads saw it complete, expected " << (kThreads - 1));
+  }
+
   void TestMisc() {
     std::wcout << L"  InitOnceExecuteOnce, GetTickCount64" << std::endl;
 
     g_once_runs = 0;
     RunThreads(OnceCaller, kThreads);
     CHECK(g_once_runs == 1, L"the once-callback ran " << g_once_runs << L" times");
+
+    TestInitOnce();
 
     ULONGLONG first = ::GetTickCount64();
     ::Sleep(50);
@@ -2290,6 +2511,669 @@ namespace {
     ::DeleteCriticalSection(&section);
   }
 
+  // --- Events, semaphores and waitable timers --------------------------------
+
+  bool Signalled(HANDLE handle, DWORD timeout_ms = 0) {
+    return ::WaitForSingleObject(handle, timeout_ms) == WAIT_OBJECT_0;
+  }
+
+  void TestSyncObjects() {
+    std::wcout << L"  CreateEventExW, CreateSemaphoreExW, CreateWaitableTimerExW" << std::endl;
+
+    // Flag validation is only pinned down where winwrap is the one answering.
+    const bool winwrap_answers = !SystemHas(L"kernel32.dll", "CreateEventExW");
+
+    // --- Events: the two flags, in the combinations that tell them apart ---
+    HANDLE event = ::CreateEventExW(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+    CHECK(event != nullptr, L"CreateEventExW failed (" << ::GetLastError() << L")");
+    if (event) {
+      CHECK(!Signalled(event), L"an event created without INITIAL_SET was signalled");
+      ::SetEvent(event);
+      CHECK(Signalled(event), L"SetEvent did not signal the event");
+      CHECK(!Signalled(event), L"an auto-reset event stayed signalled after a wait");
+      ::CloseHandle(event);
+    }
+
+    event = ::CreateEventExW(nullptr, nullptr, CREATE_EVENT_INITIAL_SET, EVENT_ALL_ACCESS);
+    CHECK(event != nullptr, L"CreateEventExW(INITIAL_SET) failed");
+    if (event) {
+      CHECK(Signalled(event), L"CREATE_EVENT_INITIAL_SET did not signal the event");
+      CHECK(!Signalled(event), L"INITIAL_SET alone produced a manual-reset event");
+      ::CloseHandle(event);
+    }
+
+    event = ::CreateEventExW(nullptr, nullptr,
+                             CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
+                             EVENT_ALL_ACCESS);
+    CHECK(event != nullptr, L"CreateEventExW(MANUAL_RESET | INITIAL_SET) failed");
+    if (event) {
+      CHECK(Signalled(event) && Signalled(event),
+            L"CREATE_EVENT_MANUAL_RESET did not keep the event signalled across a wait");
+      ::ResetEvent(event);
+      CHECK(!Signalled(event), L"ResetEvent did not clear a manual-reset event");
+      ::CloseHandle(event);
+    }
+
+    if (winwrap_answers) {
+      ::SetLastError(0);
+      event = ::CreateEventExW(nullptr, nullptr, 0x80, EVENT_ALL_ACCESS);
+      CHECK(event == nullptr && ::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"an unknown event flag was not refused with ERROR_INVALID_PARAMETER");
+      if (event) {
+        ::CloseHandle(event);
+      }
+    }
+
+    // --- A named event: the second create opens the first ---
+    wchar_t name[64] = {};
+    ::wsprintfW(name, L"winwrap-test-event-%lu", ::GetCurrentProcessId());
+    HANDLE first = ::CreateEventExW(nullptr, name, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
+    CHECK(first != nullptr && ::GetLastError() != ERROR_ALREADY_EXISTS,
+          L"creating a new named event failed or claimed it already existed");
+    ::SetLastError(0);
+    HANDLE second = ::CreateEventExW(nullptr, name, 0, EVENT_ALL_ACCESS);
+    CHECK(second != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS,
+          L"re-creating a named event did not report ERROR_ALREADY_EXISTS ("
+              << ::GetLastError() << L")");
+    if (first && second) {
+      ::SetEvent(first);
+      CHECK(Signalled(second), L"the two handles to one named event were different objects");
+    }
+    if (second) {
+      ::CloseHandle(second);
+    }
+    if (first) {
+      ::CloseHandle(first);
+    }
+
+    // --- A named event this caller may only wait on ---
+    //
+    // The descriptor grants Everyone SYNCHRONIZE and nothing else, so opening
+    // it for all access is refused. The Vista function asked for SYNCHRONIZE
+    // only and gets it; a shim that merely called CreateEventW would fail.
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    if (::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:(A;;0x00100000;;;WD)", SDDL_REVISION_1, &descriptor, nullptr)) {
+      SECURITY_ATTRIBUTES attributes = {sizeof(attributes), descriptor, FALSE};
+      ::wsprintfW(name, L"winwrap-test-waitonly-%lu", ::GetCurrentProcessId());
+      HANDLE guarded = ::CreateEventExW(&attributes, name,
+                                        CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
+                                        EVENT_ALL_ACCESS);
+      CHECK(guarded != nullptr, L"creating the wait-only event failed (" << ::GetLastError()
+                                                                         << L")");
+      if (guarded) {
+        ::SetLastError(0);
+        HANDLE waiter = ::CreateEventExW(nullptr, name, 0, SYNCHRONIZE);
+        CHECK(waiter != nullptr, L"an existing event could not be opened for SYNCHRONIZE alone ("
+                                     << ::GetLastError() << L")");
+        if (waiter) {
+          CHECK(::GetLastError() == ERROR_ALREADY_EXISTS,
+                L"opening the wait-only event did not report ERROR_ALREADY_EXISTS");
+          CHECK(Signalled(waiter), L"the SYNCHRONIZE-only handle could not be waited on");
+          ::CloseHandle(waiter);
+        }
+        ::CloseHandle(guarded);
+      }
+      ::LocalFree(descriptor);
+    } else {
+      std::wcout << L"    (no security descriptor, wait-only event not exercised)" << std::endl;
+    }
+
+    // --- Semaphores ---
+    HANDLE semaphore = ::CreateSemaphoreExW(nullptr, 1, 2, nullptr, 0, SEMAPHORE_ALL_ACCESS);
+    CHECK(semaphore != nullptr, L"CreateSemaphoreExW failed (" << ::GetLastError() << L")");
+    if (semaphore) {
+      CHECK(Signalled(semaphore), L"a semaphore with an initial count of 1 could not be taken");
+      CHECK(!Signalled(semaphore), L"a semaphore with an initial count of 1 was taken twice");
+      LONG previous = -1;
+      CHECK(::ReleaseSemaphore(semaphore, 2, &previous) && previous == 0,
+            L"releasing up to the maximum failed, or the previous count was " << previous);
+      CHECK(!::ReleaseSemaphore(semaphore, 1, nullptr),
+            L"a semaphore was released past its maximum count");
+      ::CloseHandle(semaphore);
+    }
+    if (winwrap_answers) {
+      ::SetLastError(0);
+      semaphore = ::CreateSemaphoreExW(nullptr, 0, 1, nullptr, 1, SEMAPHORE_ALL_ACCESS);
+      CHECK(semaphore == nullptr && ::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"a non-zero reserved semaphore flag was not refused");
+      if (semaphore) {
+        ::CloseHandle(semaphore);
+      }
+    }
+
+    // --- Waitable timers: 10 ms, relative ---
+    LARGE_INTEGER due = {};
+    due.QuadPart      = -100000;
+
+    HANDLE timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_ALL_ACCESS);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW failed (" << ::GetLastError() << L")");
+    if (timer) {
+      CHECK(!Signalled(timer), L"a timer that was never set was signalled");
+      CHECK(::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE),
+            L"SetWaitableTimer failed");
+      CHECK(Signalled(timer, 2000), L"the timer never fired");
+      CHECK(!Signalled(timer), L"a synchronisation timer stayed signalled after a wait");
+      ::CloseHandle(timer);
+    }
+
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_MANUAL_RESET,
+                                     TIMER_ALL_ACCESS);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW(MANUAL_RESET) failed");
+    if (timer) {
+      CHECK(::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE),
+            L"SetWaitableTimer failed on the manual-reset timer");
+      CHECK(Signalled(timer, 2000) && Signalled(timer),
+            L"a manual-reset timer did not stay signalled across a wait");
+      ::CloseHandle(timer);
+    }
+
+    // The high-resolution flag, 0x2, is Windows 10 1803's. winwrap refuses it
+    // as every earlier Windows does; a system that has it is simply reported.
+    ::SetLastError(0);
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0x00000002, TIMER_ALL_ACCESS);
+    if (winwrap_answers) {
+      CHECK(timer == nullptr && ::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"the high-resolution timer flag was not refused with ERROR_INVALID_PARAMETER");
+    } else {
+      std::wcout << L"    (high-resolution timers: "
+                 << (timer ? L"supported" : L"not supported") << L" by this system)" << std::endl;
+    }
+    if (timer) {
+      ::CloseHandle(timer);
+    }
+
+    // --- The access mask is a limit, not a suggestion ---
+    //
+    // True of the system's function and, by duplicating the handle down, of
+    // winwrap's; so this is asserted either way.
+    event = ::CreateEventExW(nullptr, nullptr, CREATE_EVENT_INITIAL_SET, SYNCHRONIZE);
+    CHECK(event != nullptr, L"CreateEventExW(SYNCHRONIZE) failed (" << ::GetLastError() << L")");
+    if (event) {
+      CHECK(Signalled(event), L"a SYNCHRONIZE-only event could not be waited on");
+      ::SetLastError(0);
+      CHECK(!::SetEvent(event) && ::GetLastError() == ERROR_ACCESS_DENIED,
+            L"a handle created with SYNCHRONIZE alone was able to SetEvent");
+      ::CloseHandle(event);
+    }
+
+    // Generic rights have to be mapped onto the event's own, not dropped.
+    event = ::CreateEventExW(nullptr, nullptr, 0, GENERIC_ALL);
+    CHECK(event != nullptr, L"CreateEventExW(GENERIC_ALL) failed (" << ::GetLastError() << L")");
+    if (event) {
+      CHECK(::SetEvent(event) && Signalled(event),
+            L"a GENERIC_ALL event handle could not be set and waited on");
+      ::CloseHandle(event);
+    }
+
+    event = ::CreateEventExW(nullptr, nullptr, 0, MAXIMUM_ALLOWED);
+    CHECK(event != nullptr, L"CreateEventExW(MAXIMUM_ALLOWED) failed (" << ::GetLastError()
+                                                                        << L")");
+    if (event) {
+      CHECK(::SetEvent(event) && Signalled(event),
+            L"a MAXIMUM_ALLOWED event handle could not be set and waited on");
+      ::CloseHandle(event);
+    }
+
+    // Narrowing must not lose the "it was already there" report.
+    ::wsprintfW(name, L"winwrap-test-narrow-%lu", ::GetCurrentProcessId());
+    first = ::CreateEventExW(nullptr, name, 0, EVENT_MODIFY_STATE);
+    CHECK(first != nullptr && ::GetLastError() != ERROR_ALREADY_EXISTS,
+          L"creating a named event with EVENT_MODIFY_STATE failed");
+    ::SetLastError(0);
+    second = ::CreateEventExW(nullptr, name, 0, SYNCHRONIZE);
+    CHECK(second != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS,
+          L"re-creating a named event with a narrow mask lost ERROR_ALREADY_EXISTS ("
+              << ::GetLastError() << L")");
+    if (first && second) {
+      CHECK(::SetEvent(first) && Signalled(second),
+            L"the narrowed handles to one named event did not each keep their own right");
+      CHECK(!::SetEvent(second), L"the SYNCHRONIZE-only handle to a named event could set it");
+    }
+    if (second) {
+      ::CloseHandle(second);
+    }
+    if (first) {
+      ::CloseHandle(first);
+    }
+
+    semaphore = ::CreateSemaphoreExW(nullptr, 1, 1, nullptr, 0, SYNCHRONIZE);
+    CHECK(semaphore != nullptr, L"CreateSemaphoreExW(SYNCHRONIZE) failed");
+    if (semaphore) {
+      CHECK(Signalled(semaphore), L"a SYNCHRONIZE-only semaphore could not be taken");
+      CHECK(!::ReleaseSemaphore(semaphore, 1, nullptr),
+            L"a handle created with SYNCHRONIZE alone was able to ReleaseSemaphore");
+      ::CloseHandle(semaphore);
+    }
+
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0, SYNCHRONIZE);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW(SYNCHRONIZE) failed");
+    if (timer) {
+      CHECK(!::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE),
+            L"a handle created with SYNCHRONIZE alone was able to SetWaitableTimer");
+      ::CloseHandle(timer);
+    }
+
+    // What V8's PreciseSleepTimer asks for, minus the high-resolution flag.
+    timer = ::CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_MODIFY_STATE | SYNCHRONIZE);
+    CHECK(timer != nullptr, L"CreateWaitableTimerExW(TIMER_MODIFY_STATE | SYNCHRONIZE) failed");
+    if (timer) {
+      CHECK(::SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE) && Signalled(timer, 2000),
+            L"a timer with exactly the rights to set and wait could not do both");
+      ::CloseHandle(timer);
+    }
+  }
+
+  // --- The last of node's XP imports ------------------------------------------
+
+  DWORD WINAPI FlushCaller(LPVOID) {
+    for (int i = 0; i < 50; ++i) {
+      ::FlushProcessWriteBuffers();
+    }
+    return 0;
+  }
+
+  // Burns roughly `milliseconds` of this thread's processor time, by the
+  // thread's own accounting rather than the wall clock, so the amount is the
+  // same however busy the machine is.
+  ULONGLONG ThreadProcessorTime() {
+    FILETIME creation, exit, kernel, user;
+    if (!::GetThreadTimes(::GetCurrentThread(), &creation, &exit, &kernel, &user)) {
+      return 0;
+    }
+    return ((static_cast<ULONGLONG>(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime) +
+           ((static_cast<ULONGLONG>(user.dwHighDateTime) << 32) | user.dwLowDateTime);
+  }
+
+  void BurnProcessorTime(DWORD milliseconds) {
+    const ULONGLONG target = static_cast<ULONGLONG>(milliseconds) * 10000;
+    const ULONGLONG start  = ThreadProcessorTime();
+    const DWORD deadline   = ::GetTickCount() + 30000; // In case the accounting never moves.
+    volatile unsigned sink = 0;
+    while (ThreadProcessorTime() - start < target &&
+           static_cast<LONG>(deadline - ::GetTickCount()) > 0) {
+      for (unsigned i = 0; i < 1000000; ++i) {
+        sink = sink + i;
+      }
+    }
+  }
+
+  void TestFlushAndCycleTime() {
+    std::wcout << L"  FlushProcessWriteBuffers, QueryThreadCycleTime" << std::endl;
+
+    // There is no observing a store buffer from here. What can be shown is
+    // that the call returns, repeatedly, and that many threads making it at
+    // once neither deadlock nor fault -- the fallback changes a page's
+    // protection and writes to it, which is exactly what would fault if its
+    // lock were wrong.
+    ::FlushProcessWriteBuffers();
+    ::FlushProcessWriteBuffers();
+    RunThreads(FlushCaller, kThreads);
+
+    ULONG64 before = 0;
+    ::SetLastError(0);
+    if (!::QueryThreadCycleTime(::GetCurrentThread(), &before) &&
+        ::GetLastError() == ERROR_CALL_NOT_IMPLEMENTED) {
+      // Wine exports the function and implements none of it. Nothing of
+      // winwrap's is involved, the export being there, so there is nothing
+      // here to test.
+      std::wcout << L"    (QueryThreadCycleTime is a stub on this system, not exercised)"
+                 << std::endl;
+      return;
+    }
+    CHECK(::QueryThreadCycleTime(::GetCurrentThread(), &before),
+          L"QueryThreadCycleTime failed (" << ::GetLastError() << L")");
+    BurnProcessorTime(200);
+    ULONG64 after = 0;
+    CHECK(::QueryThreadCycleTime(::GetCurrentThread(), &after),
+          L"the second QueryThreadCycleTime failed (" << ::GetLastError() << L")");
+    CHECK(after > before, L"200 ms of processor time did not advance the cycle count ("
+                              << before << L" -> " << after << L")");
+
+    // Cycles, not time: 200 ms at even 100 MHz is twenty million. This is
+    // what tells a count scaled by the processor's rate from one left in
+    // 100 ns units, which would show two million.
+    CHECK(after - before >= 20000000ULL,
+          L"200 ms of processor time came to only " << (after - before) << L" cycles");
+    std::wcout << L"    (200 ms of processor time: " << (after - before) << L" cycles)"
+               << std::endl;
+
+    ULONG64 untouched = 12345;
+    CHECK(!::QueryThreadCycleTime(nullptr, &untouched),
+          L"QueryThreadCycleTime accepted a null thread handle");
+  }
+
+  void TestDynamicTimeZone() {
+    std::wcout << L"  GetDynamicTimeZoneInformation" << std::endl;
+
+    TIME_ZONE_INFORMATION plain = {};
+    const DWORD plain_result    = ::GetTimeZoneInformation(&plain);
+
+    DYNAMIC_TIME_ZONE_INFORMATION dynamic;
+    memset(&dynamic, 0xCC, sizeof(dynamic));
+    const DWORD result = ::GetDynamicTimeZoneInformation(&dynamic);
+
+    CHECK(result != TIME_ZONE_ID_INVALID,
+          L"GetDynamicTimeZoneInformation failed (" << ::GetLastError() << L")");
+    if (result == TIME_ZONE_ID_INVALID) {
+      return;
+    }
+    CHECK(result == plain_result, L"GetDynamicTimeZoneInformation returned "
+                                      << result << L" where GetTimeZoneInformation returned "
+                                      << plain_result);
+    CHECK(dynamic.Bias == plain.Bias && dynamic.StandardBias == plain.StandardBias &&
+              dynamic.DaylightBias == plain.DaylightBias,
+          L"the dynamic and plain time zone information disagree on a bias");
+    CHECK(memcmp(&dynamic.StandardDate, &plain.StandardDate, sizeof(SYSTEMTIME)) == 0 &&
+              memcmp(&dynamic.DaylightDate, &plain.DaylightDate, sizeof(SYSTEMTIME)) == 0,
+          L"the dynamic and plain time zone information disagree on a transition date");
+
+    // The key name must be a terminated string whatever else it is; the
+    // buffer went in full of 0xCC.
+    bool terminated = false;
+    for (const wchar_t character : dynamic.TimeZoneKeyName) {
+      if (character == L'\0') {
+        terminated = true;
+        break;
+      }
+    }
+    CHECK(terminated, L"TimeZoneKeyName was not terminated");
+    if (!terminated) {
+      return;
+    }
+    CHECK(dynamic.DynamicDaylightTimeDisabled == 0 || dynamic.DynamicDaylightTimeDisabled == 1,
+          L"DynamicDaylightTimeDisabled was neither 0 nor 1");
+
+    std::wcout << L"    (zone key: \""
+               << (dynamic.TimeZoneKeyName[0] ? dynamic.TimeZoneKeyName : L"<none found>")
+               << L"\", automatic daylight time "
+               << (dynamic.DynamicDaylightTimeDisabled ? L"off" : L"on") << L")" << std::endl;
+
+    // A name that was found has to be the name of a real zone.
+    if (dynamic.TimeZoneKeyName[0] != L'\0') {
+      wchar_t path[256] = {};
+      ::wsprintfW(path, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones\\%s",
+                  dynamic.TimeZoneKeyName);
+      HKEY key          = nullptr;
+      // KEY_WOW64_64KEY, as the shim's search uses: the system's own list,
+      // not a 32-bit process's private view of it.
+      const LONG status =
+          ::RegOpenKeyExW(HKEY_LOCAL_MACHINE, path, 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key);
+      CHECK(status == ERROR_SUCCESS, L"TimeZoneKeyName names no key under Time Zones");
+      if (status == ERROR_SUCCESS) {
+        ::RegCloseKey(key);
+      }
+    }
+  }
+
+  void TestKnownFolderPath() {
+    std::wcout << L"  SHGetKnownFolderPath" << std::endl;
+
+    const bool winwrap_answers = !SystemHas(L"shell32.dll", "SHGetKnownFolderPath");
+
+    // Written out, as libuv does, rather than taken from knownfolders.h: the
+    // FOLDERID_* objects live in uuid.lib, which this test does not link.
+    static const GUID kLocalAppData = {
+        0xF1B32785, 0x6FBA, 0x4FCF, {0x9D, 0x55, 0x7B, 0x8E, 0x7F, 0x15, 0x70, 0x91}};
+    static const GUID kRoamingAppData = {
+        0x3EB685DB, 0x65F9, 0x4CF6, {0xA0, 0x3A, 0xE3, 0xEF, 0x65, 0x72, 0x9F, 0x3D}};
+    static const GUID kWindows = {
+        0xF38BF404, 0x1D43, 0x42F2, {0x93, 0x05, 0x67, 0xDE, 0x0B, 0x28, 0xFC, 0x23}};
+#if !defined(_WIN64)
+    static const GUID kProgramFiles = {
+        0x905E63B6, 0xC1BF, 0x494E, {0xB2, 0x9C, 0x65, 0xB7, 0x32, 0xD3, 0xD2, 0x1A}};
+#endif
+    static const GUID kProgramFilesX86 = {
+        0x7C5A40EF, 0xA0FB, 0x4BFC, {0x87, 0x4A, 0xC0, 0xF2, 0xE0, 0xB9, 0xFA, 0x8E}};
+    static const GUID kSystemX86 = {
+        0xD65231B0, 0xB2F1, 0x4857, {0xA4, 0xCE, 0xA8, 0xE7, 0xC6, 0xEA, 0x7D, 0x27}};
+    static const GUID kNoSuchFolder = {
+        0x12345678, 0x1234, 0x1234, {0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34}};
+
+    // Each known folder must be the folder its CSIDL has always named.
+    const struct {
+      const GUID* id;
+      int csidl;
+      const wchar_t* label;
+    } folders[] = {
+        {&kLocalAppData, CSIDL_LOCAL_APPDATA, L"LocalAppData"},
+        {&kRoamingAppData, CSIDL_APPDATA, L"RoamingAppData"},
+        {&kWindows, CSIDL_WINDOWS, L"Windows"},
+    };
+    for (const auto& folder : folders) {
+      PWSTR path           = nullptr;
+      const HRESULT result = ::SHGetKnownFolderPath(*folder.id, 0, nullptr, &path);
+      CHECK(result == S_OK && path != nullptr, L"SHGetKnownFolderPath(" << folder.label
+                                                                        << L") failed with 0x"
+                                                                        << std::hex << result
+                                                                        << std::dec);
+      if (result == S_OK && path) {
+        wchar_t expected[MAX_PATH] = {};
+        if (SUCCEEDED(::SHGetFolderPathW(nullptr, folder.csidl, nullptr, SHGFP_TYPE_CURRENT,
+                                         expected))) {
+          CHECK(::lstrcmpiW(path, expected) == 0,
+                folder.label << L" is \"" << path << L"\" but its CSIDL says \"" << expected
+                             << L"\"");
+        }
+        if (folder.id == &kLocalAppData) {
+          std::wcout << L"    (LocalAppData: " << path << L")" << std::endl;
+        }
+      }
+      ::CoTaskMemFree(path);
+    }
+
+    // The X86 folders exist on every Windows, 32-bit ones included, where
+    // they are simply the only Program Files and system directory there are.
+    // Not compared against their CSIDLs, which is the point: on 32-bit XP
+    // those CSIDLs may not answer, and the shim has to cope.
+    PWSTR program_files_x86 = nullptr;
+    HRESULT x86_result = ::SHGetKnownFolderPath(kProgramFilesX86, 0, nullptr, &program_files_x86);
+    CHECK(x86_result == S_OK && program_files_x86 && program_files_x86[0] != L'\0',
+          L"SHGetKnownFolderPath(ProgramFilesX86) failed with 0x" << std::hex << x86_result
+                                                                  << std::dec);
+#if !defined(_WIN64)
+    // To a 32-bit process, on either kind of Windows, it is Program Files.
+    PWSTR program_files = nullptr;
+    if (program_files_x86 &&
+        ::SHGetKnownFolderPath(kProgramFiles, 0, nullptr, &program_files) == S_OK) {
+      CHECK(::lstrcmpiW(program_files_x86, program_files) == 0,
+            L"ProgramFilesX86 is \"" << program_files_x86 << L"\" but ProgramFiles is \""
+                                     << program_files << L"\"");
+    }
+    ::CoTaskMemFree(program_files);
+#endif
+    ::CoTaskMemFree(program_files_x86);
+
+    PWSTR system_x86 = nullptr;
+    x86_result       = ::SHGetKnownFolderPath(kSystemX86, 0, nullptr, &system_x86);
+    CHECK(x86_result == S_OK && system_x86 && system_x86[0] != L'\0',
+          L"SHGetKnownFolderPath(SystemX86) failed with 0x" << std::hex << x86_result
+                                                            << std::dec);
+    ::CoTaskMemFree(system_x86);
+
+    // An ID no system has. The out parameter must come back null, because
+    // callers free it without looking -- libuv's does.
+    PWSTR path     = reinterpret_cast<PWSTR>(static_cast<ULONG_PTR>(0x1));
+    HRESULT result = ::SHGetKnownFolderPath(kNoSuchFolder, 0, nullptr, &path);
+    CHECK(FAILED(result), L"SHGetKnownFolderPath succeeded for a folder ID that does not exist");
+    CHECK(path == nullptr, L"a failed SHGetKnownFolderPath left the out parameter set");
+    // Printed either way. The documentation says E_INVALIDARG for an ID the
+    // system lacks and winwrap answers ERROR_FILE_NOT_FOUND, on the strength
+    // of what Windows has been seen to do; this line is how to find out.
+    std::wcout << L"    (unknown folder ID: 0x" << std::hex << static_cast<unsigned long>(result)
+               << std::dec << (winwrap_answers ? L" from winwrap)" : L" from the system)")
+               << std::endl;
+    if (winwrap_answers) {
+      CHECK(result == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND),
+            L"an unknown folder ID gave 0x" << std::hex << result << std::dec);
+
+      // KF_FLAG_DEFAULT_PATH takes the other SHGetFolderPathW mode.
+      path   = nullptr;
+      result = ::SHGetKnownFolderPath(kWindows, 0x00000400, nullptr, &path);
+      CHECK(result == S_OK && path != nullptr,
+            L"KF_FLAG_DEFAULT_PATH failed with 0x" << std::hex << result << std::dec);
+      ::CoTaskMemFree(path);
+
+      // KF_FLAG_ALIAS_ONLY has no CSIDL form.
+      path   = reinterpret_cast<PWSTR>(static_cast<ULONG_PTR>(0x1));
+      result = ::SHGetKnownFolderPath(kWindows, 0x80000000, nullptr, &path);
+      CHECK(result == E_INVALIDARG && path == nullptr,
+            L"KF_FLAG_ALIAS_ONLY was not refused cleanly (0x" << std::hex << result << std::dec
+                                                              << L")");
+    }
+  }
+
+  // --- Network interfaces -----------------------------------------------------
+
+  // MIB_IFROW and MIB_IFTABLE, written out for the reason the declarations at
+  // the top of this file are: iphlpapi.h cannot be included here.
+  struct InterfaceRow {
+    WCHAR wszName[256];
+    DWORD dwIndex;
+    DWORD dwType;
+    DWORD dwMtu;
+    DWORD dwSpeed;
+    DWORD dwPhysAddrLen;
+    UCHAR bPhysAddr[8];
+    DWORD dwAdminStatus;
+    DWORD dwOperStatus;
+    DWORD dwLastChange;
+    DWORD dwCounters[12]; // dwInOctets through dwOutQLen; not read.
+    DWORD dwDescrLen;
+    UCHAR bDescr[256];
+  };
+  static_assert(sizeof(InterfaceRow) == 860, "InterfaceRow does not match MIB_IFROW");
+
+  struct InterfaceTable {
+    DWORD dwNumEntries;
+    InterfaceRow table[1];
+  };
+
+  void TestNetworkInterfaces() {
+    std::wcout << L"  ConvertInterfaceIndexToLuid, ConvertInterfaceLuidToNameW" << std::endl;
+
+    // Loaded rather than linked, so that neither the Makefile nor the GN and
+    // GYP tests need iphlpapi.lib for one call.
+    HMODULE iphlpapi = ::LoadLibraryW(L"iphlpapi.dll");
+    CHECK(iphlpapi != nullptr, L"iphlpapi.dll could not be loaded");
+    if (!iphlpapi) {
+      return;
+    }
+    const bool winwrap_answers = !::GetProcAddress(iphlpapi, "ConvertInterfaceIndexToLuid");
+
+    using GetIfTableFn = DWORD(WINAPI*)(InterfaceTable*, PULONG, BOOL);
+    const auto get_if_table =
+        reinterpret_cast<GetIfTableFn>(::GetProcAddress(iphlpapi, "GetIfTable"));
+    CHECK(get_if_table != nullptr, L"iphlpapi.dll has no GetIfTable");
+    if (!get_if_table) {
+      return;
+    }
+
+    ULONG size = 0;
+    get_if_table(nullptr, &size, FALSE);
+    std::vector<BYTE> storage(size + sizeof(InterfaceTable));
+    size                  = static_cast<ULONG>(storage.size());
+    InterfaceTable* table = reinterpret_cast<InterfaceTable*>(storage.data());
+    const DWORD status    = get_if_table(table, &size, FALSE);
+    CHECK(status == NO_ERROR, L"GetIfTable failed with " << status);
+    if (status != NO_ERROR) {
+      return;
+    }
+    if (table->dwNumEntries == 0) {
+      std::wcout << L"    (no network interfaces, nothing to convert)" << std::endl;
+    }
+
+    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+      const InterfaceRow& row = table->table[i];
+
+      NET_LUID luid;
+      luid.Value         = ~0ULL;
+      const DWORD result = ::ConvertInterfaceIndexToLuid(row.dwIndex, &luid);
+      CHECK(result == NO_ERROR, L"ConvertInterfaceIndexToLuid(" << row.dwIndex
+                                                                << L") failed with " << result);
+      if (result != NO_ERROR) {
+        continue;
+      }
+      CHECK(luid.Info.IfType == row.dwType,
+            L"interface " << row.dwIndex << L" has type " << row.dwType
+                          << L" but its LUID says " << static_cast<DWORD>(luid.Info.IfType));
+
+      wchar_t name[64]        = {};
+      const DWORD name_result = ::ConvertInterfaceLuidToNameW(&luid, name, ARRAYSIZE(name));
+      CHECK(name_result == NO_ERROR && name[0] != L'\0',
+            L"ConvertInterfaceLuidToNameW failed with " << name_result << L" for interface "
+                                                        << row.dwIndex);
+      if (name_result != NO_ERROR) {
+        continue;
+      }
+      std::wcout << L"    (interface " << row.dwIndex << L", type " << row.dwType << L": "
+                 << name << L")" << std::endl;
+
+      // "<type>_<number>" on every Windows, with the well-known types named.
+      const wchar_t* separator = wcschr(name, L'_');
+      CHECK(separator != nullptr && separator[1] >= L'0' && separator[1] <= L'9',
+            L"\"" << name << L"\" is not a type, an underscore and a number");
+      if (row.dwType == 24) { // IF_TYPE_SOFTWARE_LOOPBACK
+        CHECK(wcsncmp(name, L"loopback_", 9) == 0,
+              L"the loopback interface is called \"" << name << L"\"");
+      }
+      if (row.dwType == 6) { // IF_TYPE_ETHERNET_CSMACD
+        CHECK(wcsncmp(name, L"ethernet_", 9) == 0,
+              L"an Ethernet interface is called \"" << name << L"\"");
+      }
+
+      // A buffer that cannot hold the name has to be refused, not overrun.
+      wchar_t tiny[2] = {L'#', L'#'};
+      CHECK(::ConvertInterfaceLuidToNameW(&luid, tiny, 1) != NO_ERROR,
+            L"a one-character buffer was reported as holding \"" << name << L"\"");
+      CHECK(tiny[1] == L'#', L"a one-character buffer was written past its end");
+      if (winwrap_answers) {
+        CHECK(tiny[0] == L'\0', L"a refused buffer was left holding an unterminated fragment");
+      }
+    }
+
+    // An index nothing has.
+    NET_LUID luid;
+    luid.Value         = ~0ULL;
+    const DWORD result = ::ConvertInterfaceIndexToLuid(0x00FFFFF0, &luid);
+    CHECK(result != NO_ERROR, L"ConvertInterfaceIndexToLuid accepted an index no interface has");
+    if (winwrap_answers) {
+      CHECK(result == ERROR_FILE_NOT_FOUND, L"an unknown interface index gave " << result);
+      CHECK(luid.Value == 0, L"a failed conversion did not zero the LUID");
+
+      // A type with no name of its own is spelled out by number.
+      NET_LUID odd;
+      odd.Value             = 0;
+      odd.Info.IfType       = 200;
+      odd.Info.NetLuidIndex = 7;
+      wchar_t name[64]      = {};
+      CHECK(::ConvertInterfaceLuidToNameW(&odd, name, ARRAYSIZE(name)) == NO_ERROR &&
+                wcscmp(name, L"iftype200_7") == 0,
+            L"an unnamed interface type was rendered as \"" << name << L"\"");
+
+      // Exactly enough room, and one short of it.
+      wchar_t exact[12] = {};
+      CHECK(::ConvertInterfaceLuidToNameW(&odd, exact, 12) == NO_ERROR,
+            L"a buffer of exactly the right size was refused");
+      CHECK(::ConvertInterfaceLuidToNameW(&odd, exact, 11) == ERROR_NOT_ENOUGH_MEMORY,
+            L"a buffer one character short was not refused with ERROR_NOT_ENOUGH_MEMORY");
+      CHECK(exact[0] == L'\0', L"a buffer one character short was left unterminated");
+
+      // An index too wide for the LUID's 24-bit field. No interface has one
+      // to convert, so the LUID is laid out as the conversion would: top byte
+      // in Reserved. The name has to carry all 32 bits, 0x12ABCDEF.
+      NET_LUID wide;
+      wide.Value             = 0;
+      wide.Info.IfType       = 6;
+      wide.Info.Reserved     = 0x12;
+      wide.Info.NetLuidIndex = 0xABCDEF;
+      CHECK(::ConvertInterfaceLuidToNameW(&wide, name, ARRAYSIZE(name)) == NO_ERROR &&
+                wcscmp(name, L"ethernet_313249263") == 0,
+            L"an index above 24 bits was rendered as \"" << name << L"\"");
+    }
+    ::FreeLibrary(iphlpapi);
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -2491,8 +3375,25 @@ namespace {
   void TestAppUserModelId() {
     std::wcout << L"  Get/SetCurrentProcessExplicitAppUserModelID" << std::endl;
 
-    CHECK(::SetCurrentProcessExplicitAppUserModelID(nullptr) == E_INVALIDARG,
-          L"a null application ID was accepted");
+    // A null ID goes only to winwrap's own implementation, which is defined
+    // to refuse it. The system's is not: handed null it has been seen to fault
+    // on Windows 10 and to report success under Wine, and neither is a fact
+    // about winwrap. The system answers whenever shell32 has the export, now
+    // that the shim loads shell32 rather than hoping it is already there --
+    // which is how this came to light, the test having quietly exercised the
+    // fallback on every Windows until it linked shell32 for another reason.
+    HMODULE shell32 = ::LoadLibraryW(L"shell32.dll");
+    const bool winwrap_answers =
+        !shell32 || !::GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID");
+    if (winwrap_answers) {
+      CHECK(::SetCurrentProcessExplicitAppUserModelID(nullptr) == E_INVALIDARG,
+            L"a null application ID was accepted");
+    } else {
+      std::wcout << L"    forwarding to the system; a null ID is not safe to pass it" << std::endl;
+    }
+    if (shell32) {
+      ::FreeLibrary(shell32);
+    }
 
     HRESULT hr = ::SetCurrentProcessExplicitAppUserModelID(L"winwrap.test");
     CHECK(SUCCEEDED(hr), L"setting an application ID failed (" << Hex(hr) << L")");
@@ -2615,6 +3516,11 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFibers();
   TestMainThreadFiberSequence();
   TestCriticalSectionEx();
+  TestSyncObjects();
+  TestFlushAndCycleTime();
+  TestDynamicTimeZone();
+  TestKnownFolderPath();
+  TestNetworkInterfaces();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();

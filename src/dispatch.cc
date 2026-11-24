@@ -18,6 +18,10 @@ namespace winwrap {
     // never change what is loaded. Every DLL named here is either already present
     // in any process that could call these functions, or genuinely absent -- in
     // which case the answer is "no such function", which is the right one.
+    //
+    // "Throughout" means everything that resolves through this table. The
+    // shims for delay-imported DLLs do not, and load their library instead:
+    // see LoadSystemLibrary below, and dispatch.h for why.
     std::atomic<void*> g_modules[static_cast<size_t>(Module::kCount)];
 
     const wchar_t* ModuleName(Module module) {
@@ -28,8 +32,6 @@ namespace winwrap {
           return kUser32;
         case Module::hAdvapi32:
           return kAdvapi32;
-        case Module::hShell32:
-          return kShell32;
         case Module::hNtDll:
           return kNtDll;
         case Module::kCount:
@@ -75,6 +77,45 @@ namespace winwrap {
 
     ::SetLastError(entry_error);
     return result;
+  }
+
+  HMODULE LoadSystemLibrary(std::atomic<void*>& slot, const wchar_t* file_name) {
+    void* cached = slot.load(std::memory_order_relaxed);
+    if (cached != nullptr) {
+      return cached == kAbsent ? nullptr : static_cast<HMODULE>(cached);
+    }
+    // LoadLibraryW sets the last error on failure, and may on success; the
+    // caller's is kept, for the reason ResolveSlot gives.
+    const DWORD entry_error = ::GetLastError();
+
+    wchar_t path[MAX_PATH]   = {};
+    const UINT length        = ::GetSystemDirectoryW(path, MAX_PATH);
+    const size_t name_length = wcslen(file_name);
+    HMODULE module           = nullptr;
+    if (length != 0 && length + 1 + name_length < MAX_PATH) {
+      path[length] = L'\\';
+      // Terminator included; the bound above has left room for it.
+      memcpy(path + length + 1, file_name, (name_length + 1) * sizeof(wchar_t));
+      module = ::LoadLibraryW(path);
+    }
+    // Two threads arriving together both load it, which costs one surplus
+    // reference on a library that is never unloaded anyway.
+    slot.store(module ? static_cast<void*>(module) : kAbsent, std::memory_order_relaxed);
+
+    ::SetLastError(entry_error);
+    return module;
+  }
+
+  void* ResolveFrom(std::atomic<void*>& slot, HMODULE module, const char* name) {
+    void* cached = slot.load(std::memory_order_relaxed);
+    if (cached == nullptr) {
+      const DWORD entry_error = ::GetLastError();
+      void* address = module ? reinterpret_cast<void*>(::GetProcAddress(module, name)) : nullptr;
+      cached        = address ? address : kAbsent;
+      slot.store(cached, std::memory_order_relaxed);
+      ::SetLastError(entry_error);
+    }
+    return cached == kAbsent ? nullptr : cached;
   }
 
 } // namespace winwrap

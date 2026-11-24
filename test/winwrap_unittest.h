@@ -10,11 +10,28 @@
 #endif
 
 // clang-format off
-#include <windows.h>
+// WIN32_NO_STATUS around <windows.h>, as framework.h does it. winwrap.h below
+// reaches framework.h, which includes <ntstatus.h> for the full STATUS_* set;
+// if winnt.h has already defined its own subset of those, ntstatus.h redefines
+// every one -- twenty C4005 warnings per build. framework.h cannot prevent
+// that from where it sits, because by then <windows.h> is behind its include
+// guard. So the first include of it, which is this one, has to ask.
+//
+// <windows.h> still comes first rather than leaving it to winwrap.h: this
+// file builds against the current SDK, and framework.h would otherwise set
+// _WIN32_WINNT to XP before the SDK headers were read.
+#ifdef _MSC_VER
+ #define WIN32_NO_STATUS
+#endif
+#include <windows.h> // Main Windows header
+#ifdef _MSC_VER
+ #undef WIN32_NO_STATUS
+#endif
 
+// C Std Libs
 #include <fcntl.h>
 #include <io.h>
-
+// clang-format on
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -22,7 +39,7 @@
 #include <string_view>
 #include <vector>
 #include <type_traits>
-
+// clang-format off
 #include <winwrap.h>
 #include <winwrap_public.h>
 // clang-format on
