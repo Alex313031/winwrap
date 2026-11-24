@@ -230,6 +230,7 @@
         'src/lock_family.cc',
         'src/lock_family.h',
         'src/misc.cc',
+        'src/net.cc',
         'src/parking_lot.cc',
         'src/parking_lot.h',
         'src/pipes.cc',

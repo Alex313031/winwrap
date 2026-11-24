@@ -217,6 +217,11 @@ WINWRAP_REDIRECT(FlsFree, 4);
 // instead; shell32.cc defines that name as well, and says why at length.
 WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
 
+// iphlpapi, delay-imported by node as shell32 is. 8 and 12: an index and a
+// pointer, then two pointers and a SIZE_T. net.cc defines the plain names too.
+WINWRAP_REDIRECT(ConvertInterfaceIndexToLuid, 8);
+WINWRAP_REDIRECT(ConvertInterfaceLuidToNameW, 12);
+
 // --- Present on XP SP3, missing on SP2 and earlier -------------------------
 //
 // Its own section because the heading above does not describe it: XP SP3 and

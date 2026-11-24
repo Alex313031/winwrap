@@ -61,6 +61,9 @@
 // event in TestSyncObjects. advapi32, which the registry tests already link.
 #include <sddl.h>
 
+// NET_LUID, for the iphlpapi pair declared below.
+#include <ifdef.h>
+
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
 // because a linkage specification may only appear at namespace scope -- inside
@@ -76,6 +79,17 @@ extern "C" LSTATUS APIENTRY winwrap_RegGetValueFallbackW(HKEY hkey,
                                                          LPDWORD pdwType,
                                                          PVOID pvData,
                                                          LPDWORD pcbData);
+
+// The two iphlpapi functions TestNetworkInterfaces calls, declared here rather
+// than by including iphlpapi.h: that header wants Winsock 2 ahead of it, and
+// <windows.h> has already brought in Winsock 1. Declared without dllimport,
+// which is the harder of the two cases for winwrap to satisfy -- the call
+// references the function itself rather than its import slot. See net.cc.
+extern "C" DWORD WINAPI ConvertInterfaceIndexToLuid(ULONG InterfaceIndex,
+                                                    NET_LUID* InterfaceLuid);
+extern "C" DWORD WINAPI ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
+                                                    PWSTR InterfaceName,
+                                                    SIZE_T Length);
 
 namespace {
 
@@ -3009,6 +3023,141 @@ namespace {
     }
   }
 
+  // --- Network interfaces -----------------------------------------------------
+
+  // MIB_IFROW and MIB_IFTABLE, written out for the reason the declarations at
+  // the top of this file are: iphlpapi.h cannot be included here.
+  struct InterfaceRow {
+    WCHAR wszName[256];
+    DWORD dwIndex;
+    DWORD dwType;
+    DWORD dwMtu;
+    DWORD dwSpeed;
+    DWORD dwPhysAddrLen;
+    UCHAR bPhysAddr[8];
+    DWORD dwAdminStatus;
+    DWORD dwOperStatus;
+    DWORD dwLastChange;
+    DWORD dwCounters[12]; // dwInOctets through dwOutQLen; not read.
+    DWORD dwDescrLen;
+    UCHAR bDescr[256];
+  };
+  static_assert(sizeof(InterfaceRow) == 860, "InterfaceRow does not match MIB_IFROW");
+
+  struct InterfaceTable {
+    DWORD dwNumEntries;
+    InterfaceRow table[1];
+  };
+
+  void TestNetworkInterfaces() {
+    std::wcout << L"  ConvertInterfaceIndexToLuid, ConvertInterfaceLuidToNameW" << std::endl;
+
+    // Loaded rather than linked, so that neither the Makefile nor the GN and
+    // GYP tests need iphlpapi.lib for one call.
+    HMODULE iphlpapi = ::LoadLibraryW(L"iphlpapi.dll");
+    CHECK(iphlpapi != nullptr, L"iphlpapi.dll could not be loaded");
+    if (!iphlpapi) {
+      return;
+    }
+    const bool winwrap_answers = !::GetProcAddress(iphlpapi, "ConvertInterfaceIndexToLuid");
+
+    using GetIfTableFn = DWORD(WINAPI*)(InterfaceTable*, PULONG, BOOL);
+    const auto get_if_table =
+        reinterpret_cast<GetIfTableFn>(::GetProcAddress(iphlpapi, "GetIfTable"));
+    CHECK(get_if_table != nullptr, L"iphlpapi.dll has no GetIfTable");
+    if (!get_if_table) {
+      return;
+    }
+
+    ULONG size = 0;
+    get_if_table(nullptr, &size, FALSE);
+    std::vector<BYTE> storage(size + sizeof(InterfaceTable));
+    size                  = static_cast<ULONG>(storage.size());
+    InterfaceTable* table = reinterpret_cast<InterfaceTable*>(storage.data());
+    const DWORD status    = get_if_table(table, &size, FALSE);
+    CHECK(status == NO_ERROR, L"GetIfTable failed with " << status);
+    if (status != NO_ERROR) {
+      return;
+    }
+    if (table->dwNumEntries == 0) {
+      std::wcout << L"    (no network interfaces, nothing to convert)" << std::endl;
+    }
+
+    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+      const InterfaceRow& row = table->table[i];
+
+      NET_LUID luid;
+      luid.Value         = ~0ULL;
+      const DWORD result = ::ConvertInterfaceIndexToLuid(row.dwIndex, &luid);
+      CHECK(result == NO_ERROR, L"ConvertInterfaceIndexToLuid(" << row.dwIndex
+                                                                << L") failed with " << result);
+      if (result != NO_ERROR) {
+        continue;
+      }
+      CHECK(luid.Info.IfType == row.dwType,
+            L"interface " << row.dwIndex << L" has type " << row.dwType
+                          << L" but its LUID says " << static_cast<DWORD>(luid.Info.IfType));
+
+      wchar_t name[64]        = {};
+      const DWORD name_result = ::ConvertInterfaceLuidToNameW(&luid, name, ARRAYSIZE(name));
+      CHECK(name_result == NO_ERROR && name[0] != L'\0',
+            L"ConvertInterfaceLuidToNameW failed with " << name_result << L" for interface "
+                                                        << row.dwIndex);
+      if (name_result != NO_ERROR) {
+        continue;
+      }
+      std::wcout << L"    (interface " << row.dwIndex << L", type " << row.dwType << L": "
+                 << name << L")" << std::endl;
+
+      // "<type>_<number>" on every Windows, with the well-known types named.
+      const wchar_t* separator = wcschr(name, L'_');
+      CHECK(separator != nullptr && separator[1] >= L'0' && separator[1] <= L'9',
+            L"\"" << name << L"\" is not a type, an underscore and a number");
+      if (row.dwType == 24) { // IF_TYPE_SOFTWARE_LOOPBACK
+        CHECK(wcsncmp(name, L"loopback_", 9) == 0,
+              L"the loopback interface is called \"" << name << L"\"");
+      }
+      if (row.dwType == 6) { // IF_TYPE_ETHERNET_CSMACD
+        CHECK(wcsncmp(name, L"ethernet_", 9) == 0,
+              L"an Ethernet interface is called \"" << name << L"\"");
+      }
+
+      // A buffer that cannot hold the name has to be refused, not overrun.
+      wchar_t tiny[2] = {L'#', L'#'};
+      CHECK(::ConvertInterfaceLuidToNameW(&luid, tiny, 1) != NO_ERROR,
+            L"a one-character buffer was reported as holding \"" << name << L"\"");
+      CHECK(tiny[1] == L'#', L"a one-character buffer was written past its end");
+    }
+
+    // An index nothing has.
+    NET_LUID luid;
+    luid.Value         = ~0ULL;
+    const DWORD result = ::ConvertInterfaceIndexToLuid(0x00FFFFF0, &luid);
+    CHECK(result != NO_ERROR, L"ConvertInterfaceIndexToLuid accepted an index no interface has");
+    if (winwrap_answers) {
+      CHECK(result == ERROR_FILE_NOT_FOUND, L"an unknown interface index gave " << result);
+      CHECK(luid.Value == 0, L"a failed conversion did not zero the LUID");
+
+      // A type with no name of its own is spelled out by number.
+      NET_LUID odd;
+      odd.Value             = 0;
+      odd.Info.IfType       = 200;
+      odd.Info.NetLuidIndex = 7;
+      wchar_t name[64]      = {};
+      CHECK(::ConvertInterfaceLuidToNameW(&odd, name, ARRAYSIZE(name)) == NO_ERROR &&
+                wcscmp(name, L"iftype200_7") == 0,
+            L"an unnamed interface type was rendered as \"" << name << L"\"");
+
+      // Exactly enough room, and one short of it.
+      wchar_t exact[12] = {};
+      CHECK(::ConvertInterfaceLuidToNameW(&odd, exact, 12) == NO_ERROR,
+            L"a buffer of exactly the right size was refused");
+      CHECK(::ConvertInterfaceLuidToNameW(&odd, exact, 11) == ERROR_NOT_ENOUGH_MEMORY,
+            L"a buffer one character short was not refused with ERROR_NOT_ENOUGH_MEMORY");
+    }
+    ::FreeLibrary(iphlpapi);
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -3210,8 +3359,22 @@ namespace {
   void TestAppUserModelId() {
     std::wcout << L"  Get/SetCurrentProcessExplicitAppUserModelID" << std::endl;
 
-    CHECK(::SetCurrentProcessExplicitAppUserModelID(nullptr) == E_INVALIDARG,
-          L"a null application ID was accepted");
+    // A null ID goes only to winwrap's own implementation, which is defined
+    // to refuse it. The system's is not: handed null it has been seen to fault
+    // on Windows 10 and to report success under Wine, and neither is a fact
+    // about winwrap. The system answers whenever shell32 has the export, now
+    // that the shim loads shell32 rather than hoping it is already there --
+    // which is how this came to light, the test having quietly exercised the
+    // fallback on every Windows until it linked shell32 for another reason.
+    HMODULE shell32 = ::LoadLibraryW(L"shell32.dll");
+    const bool winwrap_answers =
+        !shell32 || !::GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID");
+    if (winwrap_answers) {
+      CHECK(::SetCurrentProcessExplicitAppUserModelID(nullptr) == E_INVALIDARG,
+            L"a null application ID was accepted");
+    } else {
+      std::wcout << L"    forwarding to the system; a null ID is not safe to pass it" << std::endl;
+    }
 
     HRESULT hr = ::SetCurrentProcessExplicitAppUserModelID(L"winwrap.test");
     CHECK(SUCCEEDED(hr), L"setting an application ID failed (" << Hex(hr) << L")");
@@ -3338,6 +3501,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFlushAndCycleTime();
   TestDynamicTimeZone();
   TestKnownFolderPath();
+  TestNetworkInterfaces();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();

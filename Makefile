@@ -198,6 +198,7 @@ OBJECTS = \
 	$(OBJDIR)\locale.obj \
 	$(OBJDIR)\lock_family.obj \
 	$(OBJDIR)\misc.obj \
+	$(OBJDIR)\net.obj \
 	$(OBJDIR)\parking_lot.obj \
 	$(OBJDIR)\pipes.obj \
 	$(OBJDIR)\process.obj \

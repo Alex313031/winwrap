@@ -67,6 +67,25 @@ namespace winwrap {
   // a given slot, or again by a thread that raced with the first.
   void* ResolveSlot(std::atomic<void*>& slot, Module module, const char* name);
 
+  // The exception to "never loads anything", for the shims whose DLL their
+  // consumers delay-import: all of shell32.cc and net.cc. A redirect means no delay
+  // thunk is generated for the function, so nothing else will load the DLL on
+  // the caller's behalf, and a GetModuleHandleW probe made before it arrived
+  // would answer "absent" for the life of the process. Calling one of those
+  // functions is a request for its DLL; these honour it the way the thunk
+  // would have. Neither goes through the Module table above, whose promise
+  // stays intact for everything that does.
+  //
+  // Loads `file_name` from the system directory, once per slot, and returns
+  // the handle or null. By full path, so the name cannot be answered by a file
+  // planted beside the executable. The reference is kept for the life of the
+  // process, as a static import's would be.
+  HMODULE LoadSystemLibrary(std::atomic<void*>& slot, const wchar_t* file_name);
+
+  // GetProcAddress in a module obtained from LoadSystemLibrary, once per
+  // slot. Null if `module` is null or has no such export.
+  void* ResolveFrom(std::atomic<void*>& slot, HMODULE module, const char* name);
+
 } // namespace winwrap
 
 // The system's `name` from `module`, with the type given explicitly and the

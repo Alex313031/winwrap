@@ -415,6 +415,20 @@ HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
                                        HANDLE hToken,
                                        PWSTR* ppszPath);
 
+// --- Network interfaces ----------------------------------------------------
+// iphlpapi, Vista+. An index to a NET_LUID and a NET_LUID to its name, which
+// together are libuv's uv_if_indextoname(). XP has no LUIDs; one is made from
+// the interface's type and index. See net.cc.
+//
+// NET_LUID is named by its tag so that this header need not include ifdef.h
+// for the sake of two declarations; net.cc includes it.
+union _NET_LUID_LH;
+DWORD WINAPI ww_ConvertInterfaceIndexToLuid(ULONG InterfaceIndex,
+                                            union _NET_LUID_LH* InterfaceLuid);
+DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const union _NET_LUID_LH* InterfaceLuid,
+                                            PWSTR InterfaceName,
+                                            SIZE_T Length);
+
 #ifdef WINWRAP_DLL
 HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi);
 #endif // WINWRAP_DLL

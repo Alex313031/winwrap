@@ -249,12 +249,35 @@ the system lacks. None is redirected to a near equivalent. `KF_FLAG_ALIAS_ONLY`
 fails with `E_INVALIDARG`, and `hToken` is passed through to
 `SHGetFolderPathW`, which honours it for the per-user folders.
 
-This is the one shim that **loads libraries**: shell32 for the folder lookup
+This is one of the two places winwrap **loads libraries** (the network
+interface pair below is the other): shell32 for the folder lookup
 and ole32 for `CoTaskMemAlloc`, by full path from the system directory, kept
 for the life of the process. Consumers delay-load shell32, and because the
 redirect means no delay thunk exists for this function, nothing else would
 load it. It should not be called from `DllMain`, which is equally true of the
 function it stands in for.
+
+### `ConvertInterfaceIndexToLuid`, `ConvertInterfaceLuidToNameW`: a made-up LUID
+
+XP identifies a network interface by its index and has no `NET_LUID` to look
+up, so `ConvertInterfaceIndexToLuid` builds one: the interface type from
+`GetIfEntry`, and the index itself where the LUID's own number would go. It is
+well formed, different for every interface, and as stable as the index.
+
+`ConvertInterfaceLuidToNameW` then formats it as Windows would — `ethernet_2`,
+`loopback_1`, `iftype200_7` — but the number is the index, so the name is not
+what a later Windows would call the same adapter (`ethernet_32769`, say).
+Windows assigns that number per machine, so nothing portable could depend on
+it; within one XP session the names are consistent, which is what
+`uv_if_indextoname()` needs.
+
+A LUID from here means something only to the other function in the pair. None
+of the rest of the Vista interface API is supplied — `ConvertInterfaceLuidToIndex`,
+`ConvertInterfaceNameToLuidW`, `GetIfEntry2` and so on — so there is nothing
+else to hand one to.
+
+Like `SHGetKnownFolderPath`, the pair loads its DLL, iphlpapi, from the system
+directory on first use, because consumers delay-load it.
 
 ### `GetCurrentProcessorNumber`: a hint
 

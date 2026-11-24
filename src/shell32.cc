@@ -36,13 +36,37 @@
 // here, so shell32.lib's member is never extracted and no delay thunk is
 // generated for it. winwrap.dll.lib is a link input, which the toolchain lists
 // ahead of `libs`, so it is reached before the explicit shell32.lib.
+//
+// That has a consequence these two used to get wrong. With no delay thunk,
+// nothing loads shell32 when one of them is called; they probed for it with
+// GetModuleHandleW, as the rest of winwrap does for its DLLs, and a process
+// that had not yet loaded shell32 for some other reason was told the system
+// had no such function. On Windows 7 and later that meant the fallback
+// answered S_OK and the real call -- the one that makes the taskbar group the
+// process's windows -- was never made, for the life of the process, since
+// the answer is cached. Now they load shell32 as the thunk would have, by the
+// same route SHGetKnownFolderPath below takes; see dispatch.h.
+
+namespace {
+
+  std::atomic<void*> g_shell32{nullptr};
+  std::atomic<void*> g_set_app_id{nullptr};
+  std::atomic<void*> g_get_app_id{nullptr};
+
+  HMODULE Shell32() {
+    return ::winwrap::LoadSystemLibrary(g_shell32, L"shell32.dll");
+  }
+
+} // namespace
 
 extern "C" {
 
 HRESULT WINAPI ww_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WW_TRYFUNC(::winwrap::Module::hShell32, SetCurrentProcessExplicitAppUserModelID)) {
+          reinterpret_cast<decltype(&ww_SetCurrentProcessExplicitAppUserModelID)>(
+              ::winwrap::ResolveFrom(g_set_app_id, Shell32(),
+                                     "SetCurrentProcessExplicitAppUserModelID"))) {
     return system_fn(AppID);
   }
   // Reject a null ID the way the real function does, rather than reporting
@@ -66,7 +90,9 @@ HRESULT WINAPI ww_SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) {
 HRESULT WINAPI ww_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID) {
   // Hand straight over where Windows has this itself.
   if (const auto system_fn =
-          WW_TRYFUNC(::winwrap::Module::hShell32, GetCurrentProcessExplicitAppUserModelID)) {
+          reinterpret_cast<decltype(&ww_GetCurrentProcessExplicitAppUserModelID)>(
+              ::winwrap::ResolveFrom(g_get_app_id, Shell32(),
+                                     "GetCurrentProcessExplicitAppUserModelID"))) {
     return system_fn(AppID);
   }
   // E_FAIL is what Windows itself returns for a process that never called Set,
@@ -127,8 +153,6 @@ HRESULT WINAPI ww_GetCurrentProcessExplicitAppUserModelID(PWSTR* AppID) {
 // ole32.lib on every consumer's link line, for one function few of them call.
 
 namespace {
-
-  using winwrap::kAbsent;
 
   struct KnownFolder {
     GUID id;
@@ -288,43 +312,6 @@ namespace {
            memcmp(a.Data4, b.Data4, sizeof(a.Data4)) == 0;
   }
 
-  // Loads `file_name` from the system directory, once. By full path, so that
-  // the name cannot be answered by a file planted beside the executable; both
-  // libraries this is used for are KnownDLLs, which would settle it anyway,
-  // but the path costs nothing. The reference is kept for the life of the
-  // process, as a static import's would be.
-  HMODULE SystemLibrary(std::atomic<void*>& slot, const wchar_t* file_name) {
-    void* cached = slot.load(std::memory_order_relaxed);
-    if (cached != nullptr) {
-      return cached == kAbsent ? nullptr : static_cast<HMODULE>(cached);
-    }
-    wchar_t path[MAX_PATH] = {};
-    const UINT length      = ::GetSystemDirectoryW(path, MAX_PATH);
-    HMODULE module         = nullptr;
-    const size_t name_length = wcslen(file_name);
-    if (length != 0 && length + 1 + name_length < MAX_PATH) {
-      path[length] = L'\\';
-      // Terminator included; the bound above has left room for it.
-      memcpy(path + length + 1, file_name, (name_length + 1) * sizeof(wchar_t));
-      module = ::LoadLibraryW(path);
-    }
-    slot.store(module ? static_cast<void*>(module) : kAbsent, std::memory_order_relaxed);
-    return module;
-  }
-
-  // GetProcAddress, once per slot. The same benign race as dispatch.cc: two
-  // threads arriving together write the same value.
-  void* Function(std::atomic<void*>& slot, HMODULE module, const char* name) {
-    void* cached = slot.load(std::memory_order_relaxed);
-    if (cached == nullptr) {
-      void* address = module ? reinterpret_cast<void*>(::GetProcAddress(module, name)) : nullptr;
-      cached        = address ? address : kAbsent;
-      slot.store(cached, std::memory_order_relaxed);
-    }
-    return cached == kAbsent ? nullptr : cached;
-  }
-
-  std::atomic<void*> g_shell32{nullptr};
   std::atomic<void*> g_ole32{nullptr};
   std::atomic<void*> g_known_folder_path{nullptr};
   std::atomic<void*> g_folder_path{nullptr};
@@ -336,11 +323,11 @@ extern "C" HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
                                                   DWORD dwFlags,
                                                   HANDLE hToken,
                                                   PWSTR* ppszPath) {
-  const HMODULE shell32 = SystemLibrary(g_shell32, L"shell32.dll");
+  const HMODULE shell32 = Shell32();
 
   // Hand straight over where Windows has this itself.
   if (const auto system_fn = reinterpret_cast<decltype(&ww_SHGetKnownFolderPath)>(
-          Function(g_known_folder_path, shell32, "SHGetKnownFolderPath"))) {
+          ::winwrap::ResolveFrom(g_known_folder_path, shell32, "SHGetKnownFolderPath"))) {
     return system_fn(rfid, dwFlags, hToken, ppszPath);
   }
 
@@ -352,9 +339,9 @@ extern "C" HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
   *ppszPath = nullptr;
 
   const auto get_folder_path =
-      reinterpret_cast<SHGetFolderPathWFn>(Function(g_folder_path, shell32, "SHGetFolderPathW"));
+      reinterpret_cast<SHGetFolderPathWFn>(::winwrap::ResolveFrom(g_folder_path, shell32, "SHGetFolderPathW"));
   const auto task_alloc = reinterpret_cast<CoTaskMemAllocFn>(
-      Function(g_task_alloc, SystemLibrary(g_ole32, L"ole32.dll"), "CoTaskMemAlloc"));
+      ::winwrap::ResolveFrom(g_task_alloc, ::winwrap::LoadSystemLibrary(g_ole32, L"ole32.dll"), "CoTaskMemAlloc"));
   if (!get_folder_path || !task_alloc) {
     return HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
   }

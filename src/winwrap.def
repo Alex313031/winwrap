@@ -31,6 +31,8 @@ EXPORTS
     CloseThreadpoolWait = ww_CloseThreadpoolWait
     CompareStringEx = ww_CompareStringEx
     CompareStringOrdinal = ww_CompareStringOrdinal
+    ConvertInterfaceIndexToLuid = ww_ConvertInterfaceIndexToLuid
+    ConvertInterfaceLuidToNameW = ww_ConvertInterfaceLuidToNameW
     ConvertThreadToFiberEx = ww_ConvertThreadToFiberEx
     CreateEventExW = ww_CreateEventExW
     CreateFiberEx = ww_CreateFiberEx
