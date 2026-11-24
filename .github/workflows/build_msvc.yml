@@ -292,7 +292,7 @@ jobs:
   # whichever branch someone picked, and a run from a topic branch must not
   # replace the rolling release with an unmerged commit.
   publish:
-    name: Publish ci-build
+    name: Publish CI Build
     needs: build
     if: ${{ success() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-22.04
