@@ -276,6 +276,11 @@ WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
 WINWRAP_REDIRECT(ConvertInterfaceIndexToLuid, 8);
 WINWRAP_REDIRECT(ConvertInterfaceLuidToNameW, 12);
 
+// dbghelp, which consumers delay-import too, or ship beside the executable.
+// 12 and 8: a handle, a pointer and a DWORD, then a handle and a pointer.
+WINWRAP_REDIRECT(SymGetSearchPathW, 12);
+WINWRAP_REDIRECT(SymSetSearchPathW, 8);
+
 // --- Present on XP SP3, missing on SP2 and earlier -------------------------
 //
 // Its own section because the heading above does not describe it: XP SP3 and

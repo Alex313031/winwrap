@@ -96,6 +96,8 @@ EXPORTS
     SHGetKnownFolderPath = ww_SHGetKnownFolderPath
     SleepConditionVariableCS = ww_SleepConditionVariableCS
     SleepConditionVariableSRW = ww_SleepConditionVariableSRW
+    SymGetSearchPathW = ww_SymGetSearchPathW
+    SymSetSearchPathW = ww_SymSetSearchPathW
     TryAcquireSRWLockExclusive = ww_TryAcquireSRWLockExclusive
     TryAcquireSRWLockShared = ww_TryAcquireSRWLockShared
     UnregisterApplicationRestart = ww_UnregisterApplicationRestart

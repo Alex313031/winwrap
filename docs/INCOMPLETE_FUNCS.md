@@ -279,6 +279,27 @@ else to hand one to.
 Like `SHGetKnownFolderPath`, the pair loads its DLL, iphlpapi, from the system
 directory on first use, because consumers delay-load it.
 
+### `SymGetSearchPathW`, `SymSetSearchPathW`: through the ANSI code page
+
+Where the loaded dbghelp lacks the wide functions — XP's 5.1 does — these call
+the ANSI ones and convert. A directory name with a character outside the
+machine's ANSI code page does not survive the trip: that entry of the path
+will not match anything, and the rest are unaffected.
+
+`SymGetSearchPathW` fails with `ERROR_INSUFFICIENT_BUFFER` and an empty string
+when the path does not fit, rather than returning part of an entry.
+
+They call into whichever `dbghelp.dll` is **already in the process**, and load
+one by bare name only if there is none. A symbol session lives in the module
+`SymInitialize` was called in, so a program that ships its own dbghelp beside
+the executable has to be answered by that copy; System32's would know nothing
+of the session. A newer redistributable dbghelp has the wide functions itself,
+and then winwrap only forwards.
+
+Nothing else in dbghelp is supplied. A caller of `SymFromAddrW`,
+`SymGetLineFromAddrW64` and the other wide functions XP lacks still needs a
+newer dbghelp.dll shipped beside it.
+
 ### `GetCurrentProcessorNumber`: a hint
 
 Derived from the CPUID initial APIC ID. It can be stale the moment it is

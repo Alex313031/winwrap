@@ -419,6 +419,14 @@ HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
                                        HANDLE hToken,
                                        PWSTR* ppszPath);
 
+// --- Symbol search path ----------------------------------------------------
+// dbghelp 6.3, the one Vista ships; XP's dbghelp 5.1 has only the ANSI forms,
+// which these convert to and from. V8 treats a failure of either as a failure
+// to initialise symbols, so without them nothing is symbolised on XP. See
+// dbghelp.cc, including for which dbghelp.dll they call into.
+BOOL WINAPI ww_SymGetSearchPathW(HANDLE hProcess, PWSTR SearchPath, DWORD SearchPathLength);
+BOOL WINAPI ww_SymSetSearchPathW(HANDLE hProcess, PCWSTR SearchPath);
+
 // --- Network interfaces ----------------------------------------------------
 // iphlpapi, Vista+. An index to a NET_LUID and a NET_LUID to its name, which
 // together are libuv's uv_if_indextoname(). XP has no LUIDs; one is made from

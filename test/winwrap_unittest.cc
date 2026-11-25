@@ -64,6 +64,11 @@
 // NET_LUID, for the iphlpapi pair declared below.
 #include <ifdef.h>
 
+// SymGetSearchPathW and SymSetSearchPathW. Only the declarations are wanted:
+// the rest of dbghelp is reached through GetProcAddress in
+// TestSymbolSearchPath, so no build needs dbghelp.lib for this.
+#include <dbghelp.h>
+
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
 // because a linkage specification may only appear at namespace scope -- inside
@@ -3185,6 +3190,86 @@ namespace {
     ::FreeLibrary(iphlpapi);
   }
 
+  // --- Symbol search path -----------------------------------------------------
+
+  void TestSymbolSearchPath() {
+    std::wcout << L"  SymGetSearchPathW, SymSetSearchPathW" << std::endl;
+
+    // By bare name, which is how a program that did not ship its own would
+    // get it, and is the dbghelp winwrap will then find already loaded.
+    HMODULE dbghelp = ::LoadLibraryW(L"dbghelp.dll");
+    if (!dbghelp) {
+      std::wcout << L"    (no dbghelp.dll on this system, not exercised)" << std::endl;
+      return;
+    }
+    const bool winwrap_answers = !::GetProcAddress(dbghelp, "SymSetSearchPathW");
+
+    using SymInitializeFn = BOOL(WINAPI*)(HANDLE, PCSTR, BOOL);
+    using SymCleanupFn    = BOOL(WINAPI*)(HANDLE);
+    const auto initialize = reinterpret_cast<SymInitializeFn>(
+        reinterpret_cast<void*>(::GetProcAddress(dbghelp, "SymInitialize")));
+    const auto cleanup = reinterpret_cast<SymCleanupFn>(
+        reinterpret_cast<void*>(::GetProcAddress(dbghelp, "SymCleanup")));
+    CHECK(initialize && cleanup, L"dbghelp.dll has no SymInitialize or SymCleanup");
+    if (!initialize || !cleanup) {
+      ::FreeLibrary(dbghelp);
+      return;
+    }
+
+    // A search path belongs to a symbol session, so there has to be one.
+    // FALSE: do not go and load symbols for every module in the process.
+    const HANDLE process = ::GetCurrentProcess();
+    if (!initialize(process, nullptr, FALSE)) {
+      std::wcout << L"    (SymInitialize failed with " << ::GetLastError() << L", not exercised)"
+                 << std::endl;
+      ::FreeLibrary(dbghelp);
+      return;
+    }
+
+    wchar_t path[1024] = {};
+    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)),
+          L"SymGetSearchPathW failed (" << ::GetLastError() << L")");
+    std::wcout << L"    (default path: " << path << L"; "
+               << (winwrap_answers ? L"winwrap, over the ANSI functions)"
+                                   : L"this dbghelp's own function)")
+               << std::endl;
+
+    // What V8 does: read it, append a directory, write it back.
+    const wchar_t kWanted[] = L"C:\\winwrap-test-symbols;C:\\winwrap-test-second";
+    CHECK(::SymSetSearchPathW(process, kWanted),
+          L"SymSetSearchPathW failed (" << ::GetLastError() << L")");
+    path[0] = L'\0';
+    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)),
+          L"SymGetSearchPathW failed after a set (" << ::GetLastError() << L")");
+    CHECK(::lstrcmpiW(path, kWanted) == 0,
+          L"the search path read back as \"" << path << L"\"");
+
+    // Null puts the default back, and is not an error.
+    CHECK(::SymSetSearchPathW(process, nullptr), L"SymSetSearchPathW(null) failed");
+    path[0] = L'#';
+    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)) &&
+              ::lstrcmpiW(path, kWanted) != 0,
+          L"a null search path did not replace the one that was set");
+
+    if (winwrap_answers) {
+      // A buffer too small for the path is refused and left empty, not left
+      // holding part of an entry.
+      CHECK(::SymSetSearchPathW(process, kWanted), L"SymSetSearchPathW failed the second time");
+      wchar_t cramped[8] = {L'#', L'#', L'#', L'#', L'#', L'#', L'#', L'#'};
+      ::SetLastError(0);
+      CHECK(!::SymGetSearchPathW(process, cramped, 4) &&
+                ::GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+            L"a four-character buffer was reported as holding the search path");
+      CHECK(cramped[0] == L'\0' && cramped[4] == L'#',
+            L"a refused buffer was left unterminated or written past its end");
+      CHECK(!::SymGetSearchPathW(process, nullptr, 16),
+            L"SymGetSearchPathW accepted a null buffer");
+    }
+
+    cleanup(process);
+    ::FreeLibrary(dbghelp);
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -3535,6 +3620,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestDynamicTimeZone();
   TestKnownFolderPath();
   TestNetworkInterfaces();
+  TestSymbolSearchPath();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();

@@ -103,6 +103,8 @@ EXTERN _ww_FlsFree@4 : PROC
 EXTERN _ww_SHGetKnownFolderPath@16 : PROC
 EXTERN _ww_ConvertInterfaceIndexToLuid@8 : PROC
 EXTERN _ww_ConvertInterfaceLuidToNameW@12 : PROC
+EXTERN _ww_SymGetSearchPathW@12 : PROC
+EXTERN _ww_SymSetSearchPathW@8 : PROC
 EXTERN _ww_GetLogicalProcessorInformation@8 : PROC
 EXTERN _ww_TryAcquireSRWLockExclusive@4 : PROC
 EXTERN _ww_TryAcquireSRWLockShared@4 : PROC
@@ -253,6 +255,10 @@ PUBLIC __imp__ConvertInterfaceIndexToLuid@8
 __imp__ConvertInterfaceIndexToLuid@8 dd _ww_ConvertInterfaceIndexToLuid@8
 PUBLIC __imp__ConvertInterfaceLuidToNameW@12
 __imp__ConvertInterfaceLuidToNameW@12 dd _ww_ConvertInterfaceLuidToNameW@12
+PUBLIC __imp__SymGetSearchPathW@12
+__imp__SymGetSearchPathW@12 dd _ww_SymGetSearchPathW@12
+PUBLIC __imp__SymSetSearchPathW@8
+__imp__SymSetSearchPathW@8 dd _ww_SymSetSearchPathW@8
 PUBLIC __imp__GetLogicalProcessorInformation@8
 __imp__GetLogicalProcessorInformation@8 dd _ww_GetLogicalProcessorInformation@8
 PUBLIC __imp__TryAcquireSRWLockExclusive@4

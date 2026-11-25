@@ -188,6 +188,7 @@ OBJECTS = \
 	$(OBJDIR)\cancel_io.obj \
 	$(OBJDIR)\condition_variable.obj \
 	$(OBJDIR)\critical_section.obj \
+	$(OBJDIR)\dbghelp.obj \
 	$(OBJDIR)\directories.obj \
 	$(OBJDIR)\dispatch.obj \
 	$(OBJDIR)\etw.obj \
