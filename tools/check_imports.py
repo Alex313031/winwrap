@@ -59,7 +59,8 @@ REDIRECTS = os.path.join(ROOT, 'src', 'static_redirects.cc')
 # of these is the failure this tool exists to catch; the same name imported
 # from winwrap.dll is the shared form working correctly.
 SYSTEM_DLLS = frozenset(
-    ['kernel32.dll', 'advapi32.dll', 'user32.dll', 'shell32.dll', 'ntdll.dll'])
+    ['kernel32.dll', 'advapi32.dll', 'user32.dll', 'shell32.dll', 'ntdll.dll',
+     'iphlpapi.dll', 'dbghelp.dll'])
 
 
 def covered_functions(path=REDIRECTS):

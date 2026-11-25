@@ -138,6 +138,75 @@ which is step 1 or step 2 — winwrap is linked but losing. `--show-all` lists
 every import and marks the covered ones, which is what to reach for when the
 answer is not obvious from that.
 
+### Porting a new program: finding what is still missing
+The same tool is the quickest way into a program that has never run on an old
+Windows. Passing step 5 means winwrap won every function it covers. It does
+not mean the program will start: an import of a newer function winwrap has no
+shim for has nothing to be compared against, and passes in silence. On the old
+Windows that shows up as the loader refusing the program and naming one
+function it could not find — one per attempt, however many there are.
+
+`--show-all` gives the whole list at once:
+
+```bat
+python3 tools\check_imports.py --show-all --min-os 5.01 YourProgram.exe
+```
+
+```
+  [import] kernel32.dll (212)
+      AcquireSRWLockExclusive   <- covered by winwrap
+      CreateFileW
+      GetProductInfo
+      ...
+  [delay] shell32.dll (9)
+      ...
+```
+
+Every import is there, grouped by DLL, static imports first and delay-loaded
+ones after, with the functions winwrap supplies marked.
+The unmarked ones are the candidates. The tool does not know which Windows
+each of those arrived in, so that part is yours: the loader's error message
+names the first, Microsoft's documentation gives a "minimum supported client"
+for each, and Dependency Walker run on the old system flags every missing one
+in a single pass.
+
+For each function that turns out to be missing there are two ways out.
+
+**Change the program.** Often the better answer, and sometimes the only one:
+
+- If the call sits on a path the old Windows never needs, look the function up
+  with `GetProcAddress` and skip it when it is absent, or delay-load the DLL so
+  that the import is only resolved if the call is made.
+- If an older function does the same job, call that.
+- If the import came from a header rather than from anything the program
+  wrote, a build setting may remove it. `PSAPI_VERSION=1` is the usual
+  example: without it, a Windows 7 SDK turns `GetProcessMemoryInfo` into
+  `K32GetProcessMemoryInfo`, which XP and Vista do not have, and with it the
+  call goes to psapi.dll, which they do.
+
+**Add it to winwrap.** Worth doing when the function can be built honestly out
+of what the old Windows has, and when a second program is likely to want it.
+[FUNCTION_LIST.md](FUNCTION_LIST.md) shows what is already covered and how, and
+[INCOMPLETE_FUNCS.md](INCOMPLETE_FUNCS.md) shows the standard for a shim that
+cannot do everything the real function does: it says so, and fails in a way the
+caller already handles. A new one needs:
+
+1. the implementation, `ww_<Name>` in the source file for its area, handing
+   over to the system's own function wherever that exists;
+2. its declaration in `src/winwrap.h`;
+3. a `WINWRAP_REDIRECT(<Name>, <bytes>)` line in `src/static_redirects.cc`,
+   where `<bytes>` is the x86 `__stdcall` argument size;
+4. an export line in `src/winwrap.def`;
+5. `python3 tools/gen_forwarders.py`, which regenerates the MASM tables and
+   the MinGW `.def` from those;
+6. a unit test in `test/winwrap_unittest.cc` — every shim has one;
+7. a row in `FUNCTION_LIST.md`, and an entry in `INCOMPLETE_FUNCS.md` if it
+   does less than the real function.
+
+Pull requests for new functions are welcome. Say which program needed it and
+which Windows you ran the unit tests on; a shim that has only been compiled is
+worth much less than one that has been run on the system it is for.
+
 ### Using the shared form
 Linking `winwrap.dll` instead changes two of the five steps:
 
