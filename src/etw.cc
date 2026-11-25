@@ -121,10 +121,14 @@ ULONG WINAPI ww_EventRegister(LPCGUID ProviderId,
   if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hAdvapi32, EventRegister)) {
     return system_fn(ProviderId, EnableCallback, CallbackContext, RegHandle);
   }
+  // Zeroed before anything else can return, so that the handle is zero on
+  // every failure and not only on the one that got as far as the end.
+  if (RegHandle) {
+    *RegHandle = 0;
+  }
   if (!ProviderId || !RegHandle) {
     return ERROR_INVALID_PARAMETER;
   }
-  *RegHandle = 0;
   return ERROR_NOT_SUPPORTED;
 }
 

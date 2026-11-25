@@ -289,8 +289,10 @@ will not match anything, and the rest are unaffected.
 `SymGetSearchPathW` fails with `ERROR_INSUFFICIENT_BUFFER` and an empty string
 when the path does not fit, rather than returning part of an entry.
 
-They call into whichever `dbghelp.dll` is **already in the process**, and load
-one by bare name only if there is none. A symbol session lives in the module
+They call into whichever `dbghelp.dll` is **already in the process**, asking
+for it by bare name, which loads one only if there is none. winwrap keeps a
+reference to it from then on, so that copy stays loaded for the life of the
+process even if the program frees its own. A symbol session lives in the module
 `SymInitialize` was called in, so a program that ships its own dbghelp beside
 the executable has to be answered by that copy; System32's would know nothing
 of the session. A newer redistributable dbghelp has the wide functions itself,
@@ -299,6 +301,15 @@ and then winwrap only forwards.
 Nothing else in dbghelp is supplied. A caller of `SymFromAddrW`,
 `SymGetLineFromAddrW64` and the other wide functions XP lacks still needs a
 newer dbghelp.dll shipped beside it.
+
+### `GetThreadId`: needs `THREAD_QUERY_INFORMATION`
+
+The result is exact; it comes from the same kernel query the real function
+makes. What differs is the access the handle must carry. From Vista on,
+`THREAD_QUERY_LIMITED_INFORMATION` is enough. XP has no such right, so there
+the handle needs `THREAD_QUERY_INFORMATION`, and one opened with only the
+limited right — which XP's `OpenThread` would refuse to grant anyway — fails
+with `ERROR_ACCESS_DENIED`.
 
 ### `GetCurrentProcessorNumber`: a hint
 

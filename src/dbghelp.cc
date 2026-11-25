@@ -23,12 +23,21 @@
 // belongs to the module instance SymInitialize was called in: a program that
 // ships its own dbghelp.dll beside the executable and one that uses the
 // system's have sessions in different DLLs, and a call made into the other
-// one finds nothing. So this takes whichever dbghelp is already in the
-// process, which by the time a search path is being asked about is the one
-// the caller initialised. Only if there is none does it load one, by bare
-// name, so that the search goes exactly as it would have for the delay-load
-// thunk this stands in for. That is why it does not use LoadSystemLibrary,
-// which would insist on System32's.
+// one finds nothing. So this asks for dbghelp by bare name. If a module of
+// that name is already in the process the loader hands that one back
+// whatever directory it came from, and by the time a search path is being
+// asked about that is the one the caller initialised; if there is none, the
+// search goes exactly as it would have for the delay-load thunk this stands
+// in for. That is why it does not use LoadSystemLibrary, which would insist
+// on System32's.
+//
+// LoadLibraryW even when the module is already there, and not
+// GetModuleHandleW, because the handle and the function addresses found in it
+// are kept for the life of the process and so need a reference to match. A
+// borrowed handle would go stale the moment the program unloaded its dbghelp,
+// and the next call here would jump into memory that was no longer a DLL.
+// Holding the reference also means a later load by name can only ever find
+// this same copy.
 
 #include "dispatch.h"
 #include "winwrap.h"
@@ -52,10 +61,9 @@ namespace {
       return cached == kAbsent ? nullptr : static_cast<HMODULE>(cached);
     }
     const DWORD entry_error = ::GetLastError();
-    HMODULE module          = ::GetModuleHandleW(L"dbghelp.dll");
-    if (!module) {
-      module = ::LoadLibraryW(L"dbghelp.dll");
-    }
+    // Two threads arriving together take a reference each, which costs one
+    // surplus count on a library that is now never unloaded anyway.
+    HMODULE module = ::LoadLibraryW(L"dbghelp.dll");
     g_dbghelp.store(module ? static_cast<void*>(module) : kAbsent, std::memory_order_relaxed);
     ::SetLastError(entry_error);
     return module;

@@ -1080,6 +1080,10 @@ namespace {
             L"the fallback EventUnregister did not refuse the zero handle");
       CHECK(::EventRegister(&kProvider, nullptr, nullptr, nullptr) == ERROR_INVALID_PARAMETER,
             L"the fallback EventRegister accepted a null handle pointer");
+      handle = 0x1234567812345678ULL;
+      CHECK(::EventRegister(nullptr, nullptr, nullptr, &handle) == ERROR_INVALID_PARAMETER &&
+                handle == 0,
+            L"the fallback EventRegister, refusing a null provider, left the handle set");
       std::wcout << L"    no manifest-based ETW here; winwrap answered" << std::endl;
     } else {
       CHECK(registered == ERROR_SUCCESS,
@@ -3335,23 +3339,37 @@ namespace {
               ::lstrcmpiW(path, kWanted) != 0,
           L"a null search path did not replace the one that was set");
 
+    // A buffer too small for the path. winwrap refuses it and leaves it
+    // empty; what a dbghelp with its own wide function does is printed rather
+    // than asserted, because that is how to find out whether the two agree.
+    CHECK(::SymSetSearchPathW(process, kWanted), L"SymSetSearchPathW failed the second time");
+    wchar_t cramped[8] = {L'#', L'#', L'#', L'#', L'#', L'#', L'#', L'#'};
+    ::SetLastError(0);
+    const BOOL cramped_ok     = ::SymGetSearchPathW(process, cramped, 4);
+    const DWORD cramped_error = ::GetLastError();
+    CHECK(cramped[4] == L'#', L"a four-character buffer was written past its end");
     if (winwrap_answers) {
-      // A buffer too small for the path is refused and left empty, not left
-      // holding part of an entry.
-      CHECK(::SymSetSearchPathW(process, kWanted), L"SymSetSearchPathW failed the second time");
-      wchar_t cramped[8] = {L'#', L'#', L'#', L'#', L'#', L'#', L'#', L'#'};
-      ::SetLastError(0);
-      CHECK(!::SymGetSearchPathW(process, cramped, 4) &&
-                ::GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+      CHECK(!cramped_ok && cramped_error == ERROR_INSUFFICIENT_BUFFER,
             L"a four-character buffer was reported as holding the search path");
-      CHECK(cramped[0] == L'\0' && cramped[4] == L'#',
-            L"a refused buffer was left unterminated or written past its end");
+      CHECK(cramped[0] == L'\0', L"a refused buffer was left unterminated");
       CHECK(!::SymGetSearchPathW(process, nullptr, 16),
             L"SymGetSearchPathW accepted a null buffer");
+    } else {
+      cramped[3] = L'\0'; // In case it filled all four and terminated nothing.
+      std::wcout << L"    (a 4-character buffer: this dbghelp returned "
+                 << (cramped_ok ? L"TRUE" : L"FALSE") << L", last error " << cramped_error
+                 << L", and left \"" << cramped << L"\")" << std::endl;
     }
 
+    // The library is released here, as a program is entitled to do, and the
+    // pair is then called again. winwrap keeps its own reference to the
+    // dbghelp it resolved against, so this must fail cleanly -- the session
+    // is gone -- or succeed, and must not fault.
     cleanup(process);
     ::FreeLibrary(dbghelp);
+    wchar_t after[64] = {};
+    ::SymGetSearchPathW(process, after, ARRAYSIZE(after));
+    ::SymSetSearchPathW(process, L"C:\\winwrap-test-after-unload");
   }
 
   void TestIoCancellation() {
