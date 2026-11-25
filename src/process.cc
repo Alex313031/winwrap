@@ -61,42 +61,100 @@ namespace {
                             static_cast<int>(prefix_length)) == CSTR_EQUAL;
   }
 
+  enum class Translation { kNoMatch, kDone, kTooLong };
+
+  // One drive letter's worth of NativeToDosPath, below: given that `letter`
+  // maps to `device`, rewrites `native` into `dos` if the mapping applies to
+  // it. Separate from the loop that asks Windows for the mappings so that the
+  // string handling stands by itself.
+  //
+  // A mapping comes in two shapes.
+  //
+  // A local volume maps to a bare device, \Device\HarddiskVolume1, and a path
+  // on it is that device followed by the rest: the device is replaced by the
+  // letter.
+  //
+  // A mapped network drive maps to the redirector's device, then a component
+  // beginning with a semicolon that names the letter and the logon session,
+  // then the server and share:
+  //
+  //     \Device\LanmanRedirector\;Z:000000000001a2b3\server\share
+  //     \Device\VBoxMiniRdr\;Z:\VBoxSvr\share
+  //
+  // The kernel's name for a file reached through it has no such component --
+  // \Device\VBoxMiniRdr\VBoxSvr\share\dir\x.exe -- so the two never match as
+  // strings, and for some time this function simply failed for anything run
+  // from a share. What the mapping does establish is that the device is a
+  // network redirector, and for one of those everything after the device is
+  // the server, the share and the path: a UNC name short of one backslash.
+  // That is the form the real function returns for a program on a share --
+  // \\server\share\dir\x.exe, not the drive letter -- so it is the form
+  // returned here, and it is right for any share on that redirector, mapped
+  // or not.
+  Translation TranslateWithMapping(const wchar_t* native,
+                                   wchar_t letter,
+                                   const wchar_t* device,
+                                   wchar_t* dos,
+                                   DWORD dos_chars) {
+    const size_t native_length = wcslen(native);
+    const wchar_t* session     = wcsstr(device, L"\\;");
+    const size_t device_length = session ? static_cast<size_t>(session - device) : wcslen(device);
+
+    // The device name has to be the whole of the first components, not a
+    // prefix of them: HarddiskVolume1 is not HarddiskVolume10.
+    if (device_length == 0 || device_length >= native_length ||
+        native[device_length] != L'\\' || !StartsWithNoCase(native, device, device_length)) {
+      return Translation::kNoMatch;
+    }
+    const wchar_t* rest      = native + device_length; // Begins with a backslash.
+    const size_t rest_length = native_length - device_length;
+
+    if (session) {
+      // "\" + "\server\share\dir\x.exe".
+      if (1 + rest_length + 1 > dos_chars) {
+        return Translation::kTooLong;
+      }
+      dos[0] = L'\\';
+      memcpy(dos + 1, rest, (rest_length + 1) * sizeof(wchar_t));
+      return Translation::kDone;
+    }
+    // "C:" + "\dir\x.exe".
+    if (2 + rest_length + 1 > dos_chars) {
+      return Translation::kTooLong;
+    }
+    dos[0] = letter;
+    dos[1] = L':';
+    memcpy(dos + 2, rest, (rest_length + 1) * sizeof(wchar_t));
+    return Translation::kDone;
+  }
+
   // Rewrites `native`, a path such as \Device\HarddiskVolume1\Windows\x.exe,
-  // as the drive-letter path a Win32 program expects, into `dos`. The kernel
-  // knows a file by its device; which letter that device wears is a mapping
-  // kept per session, and QueryDosDeviceW reads it back one letter at a time.
-  // False if no drive letter maps to the path's device.
+  // as the path a Win32 program expects, into `dos`. The kernel knows a file
+  // by its device; which letter that device wears is a mapping kept per
+  // session, and QueryDosDeviceW reads it back one letter at a time. False if
+  // no mapping accounts for the path's device.
   bool NativeToDosPath(const wchar_t* native, wchar_t* dos, DWORD dos_chars) {
     wchar_t drives[512] = {};
     const DWORD length  = ::GetLogicalDriveStringsW(ARRAYSIZE(drives) - 1, drives);
     if (length == 0 || length >= ARRAYSIZE(drives)) {
       return false;
     }
-    const size_t native_length = wcslen(native);
 
     // "C:\", then a terminator, then the next, ending with an empty string.
     for (const wchar_t* drive = drives; *drive != L'\0'; drive += wcslen(drive) + 1) {
-      const wchar_t letter[3] = {drive[0], L':', L'\0'};
+      const wchar_t letter[3]  = {drive[0], L':', L'\0'};
       wchar_t device[MAX_PATH] = {};
       if (::QueryDosDeviceW(letter, device, ARRAYSIZE(device)) == 0) {
         continue;
       }
-      const size_t device_length = wcslen(device);
-      // The device name has to be the whole of the first components, not a
-      // prefix of them: HarddiskVolume1 is not HarddiskVolume10.
-      if (device_length == 0 || device_length >= native_length ||
-          native[device_length] != L'\\' ||
-          !StartsWithNoCase(native, device, device_length)) {
-        continue;
+      switch (TranslateWithMapping(native, letter[0], device, dos, dos_chars)) {
+        case Translation::kDone:
+          return true;
+        case Translation::kTooLong:
+          return false;
+        case Translation::kNoMatch:
+          break;
       }
-      const size_t rest_length = native_length - device_length;
-      if (2 + rest_length + 1 > dos_chars) {
-        return false;
-      }
-      dos[0] = letter[0];
-      dos[1] = L':';
-      memcpy(dos + 2, native + device_length, (rest_length + 1) * sizeof(wchar_t));
-      return true;
     }
     return false;
   }
@@ -246,10 +304,13 @@ VOID WINAPI ww_FlushProcessWriteBuffers(void) {
 // process could be named without being opened wide. XP has no such right and
 // the handle has to carry PROCESS_QUERY_INFORMATION.
 //
-// Where the device has no drive letter -- a network path, a volume mounted
-// only as a folder -- the translation has nothing to offer, and the path
-// GetModuleFileNameExW reads from the process is used instead, which wants
-// PROCESS_VM_READ as well. INCOMPLETE_FUNCS.md has the entry.
+// A program on a network share comes back as a UNC path, \\server\share\...,
+// as the real function returns it, provided some drive letter is mapped
+// through the same redirector to identify the device as one. Where nothing
+// accounts for the device -- a share reached with no drive mapped at all, a
+// volume mounted only as a folder -- the translation has nothing to offer,
+// and the path GetModuleFileNameExW reads from the process is used instead,
+// which wants PROCESS_VM_READ as well. INCOMPLETE_FUNCS.md has the entry.
 BOOL WINAPI ww_QueryFullProcessImageNameW(HANDLE hProcess,
                                           DWORD dwFlags,
                                           LPWSTR lpExeName,

@@ -3489,13 +3489,14 @@ namespace {
       const BOOL named        = ::QueryFullProcessImageNameW(self, 0, again, &size);
       const DWORD named_error = ::GetLastError();
       if (!named && winwrap_answers) {
-        // winwrap's documented limit, and where it shows: run from a network
-        // share or a VM shared folder, the executable's device has no drive
-        // letter, the fallback reads the path from the process's memory, and
-        // this handle was opened without the right to. Not a failure of the
-        // shim, so reported and not counted.
+        // winwrap's documented limit, and where it shows: run from a volume
+        // no drive mapping accounts for -- a share with no letter mapped
+        // through its redirector, a folder-mounted volume -- the fallback
+        // reads the path from the process's memory, and this handle was
+        // opened without the right to. Not a failure of the shim, so reported
+        // and not counted.
         std::wcout << L"    (a PROCESS_QUERY_INFORMATION handle was refused with " << named_error
-                   << L"; expected when this runs from a volume with no drive letter)"
+                   << L"; expected when no drive mapping accounts for this volume)"
                    << std::endl;
       } else {
         CHECK(named && ::lstrcmpiW(again, name) == 0,

@@ -336,12 +336,17 @@ with `PROCESS_QUERY_LIMITED_INFORMATION`, a right XP does not have, so a
 process that could be named on Vista with a narrowly opened handle may answer
 `ERROR_ACCESS_DENIED` here.
 
-Without `PROCESS_NAME_NATIVE` the kernel's device path is translated to a
-drive letter by looking for the letter mapped to that device. An executable
-on a volume with no letter — run from a network share, or from a volume
-mounted only as a folder — has none to find. The shim then falls back to
-`GetModuleFileNameExW`, which reads the path from the process's own memory
-and so needs `PROCESS_VM_READ` as well; if that fails too the call fails with
+Without `PROCESS_NAME_NATIVE` the kernel's device path is translated by
+looking at what the drive letters are mapped to. A local volume becomes its
+drive letter. A network share becomes a UNC path, `\\server\share\...`, which
+is what the real function returns for one — but only if some drive letter is
+mapped through the same redirector, since that mapping is how the device is
+recognised as a network one.
+
+Where nothing accounts for the device — a share reached with no drive mapped
+at all, or a volume mounted only as a folder — the shim falls back to
+`GetModuleFileNameExW`, which reads the path from the process's own memory and
+so needs `PROCESS_VM_READ` as well; if that fails too the call fails with
 psapi's own error, `ERROR_ACCESS_DENIED` for a handle without that right.
 `PROCESS_NAME_NATIVE` is unaffected.
 
