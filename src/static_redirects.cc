@@ -173,6 +173,7 @@ WINWRAP_REDIRECT(GetNamedPipeClientProcessId, 8);
 WINWRAP_REDIRECT(GetNamedPipeServerProcessId, 8);
 
 WINWRAP_REDIRECT(GetCurrentProcessorNumber, 0);
+WINWRAP_REDIRECT(GetThreadId, 4);
 WINWRAP_REDIRECT(GetErrorMode, 0);
 WINWRAP_REDIRECT(SetProcessDPIAware, 0);
 WINWRAP_REDIRECT(RegGetValueW, 28);

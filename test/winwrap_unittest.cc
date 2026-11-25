@@ -2040,6 +2040,55 @@ namespace {
 
   // --- Threads, error mode, restart ------------------------------------------
 
+  DWORD WINAPI IdleUntilSignalled(LPVOID event) {
+    ::WaitForSingleObject(static_cast<HANDLE>(event), INFINITE);
+    return 0;
+  }
+
+  void TestThreadId() {
+    std::wcout << L"  GetThreadId" << std::endl;
+
+    // The pseudo-handle for this thread is the one case with an independent
+    // answer already to hand.
+    CHECK(::GetThreadId(::GetCurrentThread()) == ::GetCurrentThreadId(),
+          L"GetThreadId(GetCurrentThread()) gave " << ::GetThreadId(::GetCurrentThread())
+                                                   << L", GetCurrentThreadId "
+                                                   << ::GetCurrentThreadId());
+
+    // A real handle to another thread, kept alive so the ID is asked of a
+    // running thread; CreateThread reports the same ID by its own route.
+    HANDLE release = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    DWORD created  = 0;
+    HANDLE thread  = ::CreateThread(nullptr, 0, IdleUntilSignalled, release, 0, &created);
+    CHECK(release && thread, L"could not create a thread to ask about");
+    if (release && thread) {
+      CHECK(::GetThreadId(thread) == created,
+            L"GetThreadId gave " << ::GetThreadId(thread) << L" for thread " << created);
+
+      // And still, once it has exited: the handle keeps the thread object,
+      // and with it the ID, until it is closed.
+      ::SetEvent(release);
+      ::WaitForSingleObject(thread, INFINITE);
+      CHECK(::GetThreadId(thread) == created,
+            L"GetThreadId gave " << ::GetThreadId(thread) << L" for exited thread " << created);
+
+      // A handle that is not a thread's. An event will do.
+      ::SetLastError(0);
+      CHECK(::GetThreadId(release) == 0 && ::GetLastError() != 0,
+            L"GetThreadId accepted an event handle, or failed without an error");
+    }
+    if (thread) {
+      ::CloseHandle(thread);
+    }
+    if (release) {
+      ::CloseHandle(release);
+    }
+    std::wcout << (SystemHas(L"kernel32.dll", "GetThreadId")
+                       ? L"    forwarded to the system's own GetThreadId"
+                       : L"    winwrap answered, through NtQueryInformationThread")
+               << std::endl;
+  }
+
   void TestProcessorNumber() {
     std::wcout << L"  GetCurrentProcessorNumber" << std::endl;
 
@@ -3644,6 +3693,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFinalPathAndReOpen();
   TestNamedPipes();
   TestProcessorNumber();
+  TestThreadId();
   TestLogicalProcessorInformation();
   TestErrorModeAndRestart();
   TestDirectories();

@@ -67,6 +67,7 @@ EXPORTS
     GetNumberFormatEx = ww_GetNumberFormatEx
     GetQueuedCompletionStatusEx = ww_GetQueuedCompletionStatusEx
     GetRealNTVersion
+    GetThreadId = ww_GetThreadId
     GetTickCount64 = ww_GetTickCount64
     GetTimeFormatEx = ww_GetTimeFormatEx
     GetWinWrapVersion

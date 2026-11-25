@@ -27,6 +27,7 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetNamedPipeClientProcessId` | kernel32 | Vista | Asks npfs through the control code the real function uses; fails where the kernel has no answer |
 | `GetNamedPipeServerProcessId` | kernel32 | Vista | Always fails on XP: npfs records neither party and no inference is safe |
 | `GetCurrentProcessorNumber` | kernel32 | Server 2003 | From the CPUID initial APIC ID; a hint, as the real one is too |
+| `GetThreadId` | kernel32 | Server 2003 | `NtQueryInformationThread`, which is what the real one calls; the handle needs `THREAD_QUERY_INFORMATION`, XP having no limited-query right |
 | `GetLogicalProcessorInformation` | kernel32 | XP SP3 | Hands over to the system where it exists. Where it does not, builds the result from `GetSystemInfo`: the processor count is exact, every processor is reported as its own core with no SMT, and no caches are reported. The only entry here whose floor is a service pack rather than a Windows version -- it is what stops a binary loading on SP2 |
 | `SetProcessDPIAware` | user32 | Vista | Reports success: XP has no DPI virtualisation to opt out of, so the state already holds |
 | `RegGetValueW` | advapi32 | Vista | Built on `RegQueryValueExW`: type filter, guaranteed termination, environment expansion |

@@ -90,6 +90,9 @@ DWORD WINAPI ww_GetCurrentProcessorNumber(void);
 // processor's nominal rate, so it has the clock tick's resolution rather than
 // the counter's. See threads.cc.
 BOOL WINAPI ww_QueryThreadCycleTime(HANDLE ThreadHandle, PULONG64 CycleTime);
+// GetThreadId: Server 2003+, so missing from 32-bit XP only. The same
+// NtQueryInformationThread the real one is built on.
+DWORD WINAPI ww_GetThreadId(HANDLE Thread);
 
 // --- Process-wide state ----------------------------------------------------
 // Both Vista+. GetErrorMode reads what the kernel already tracks;

@@ -42,6 +42,7 @@ EXTERN ww_NeedCurrentDirectoryForExePathW : PROC
 EXTERN ww_GetNamedPipeClientProcessId : PROC
 EXTERN ww_GetNamedPipeServerProcessId : PROC
 EXTERN ww_GetCurrentProcessorNumber : PROC
+EXTERN ww_GetThreadId : PROC
 EXTERN ww_GetErrorMode : PROC
 EXTERN ww_SetProcessDPIAware : PROC
 EXTERN ww_RegGetValueW : PROC
@@ -138,6 +139,8 @@ PUBLIC __imp_GetNamedPipeServerProcessId
 __imp_GetNamedPipeServerProcessId dq ww_GetNamedPipeServerProcessId
 PUBLIC __imp_GetCurrentProcessorNumber
 __imp_GetCurrentProcessorNumber dq ww_GetCurrentProcessorNumber
+PUBLIC __imp_GetThreadId
+__imp_GetThreadId dq ww_GetThreadId
 PUBLIC __imp_GetErrorMode
 __imp_GetErrorMode dq ww_GetErrorMode
 PUBLIC __imp_SetProcessDPIAware
