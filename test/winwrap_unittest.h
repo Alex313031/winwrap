@@ -1,6 +1,7 @@
 #ifndef WINWRAP_WINWRAP_UNITTEST_H_
 #define WINWRAP_WINWRAP_UNITTEST_H_
 
+// clang-format off
 #ifndef UNICODE
  #define UNICODE
 #endif
@@ -9,7 +10,6 @@
  #define _UNICODE
 #endif
 
-// clang-format off
 // WIN32_NO_STATUS around <windows.h>, as framework.h does it. winwrap.h below
 // reaches framework.h, which includes <ntstatus.h> for the full STATUS_* set;
 // if winnt.h has already defined its own subset of those, ntstatus.h redefines
@@ -23,23 +23,57 @@
 #ifdef _MSC_VER
  #define WIN32_NO_STATUS
 #endif
-#include <windows.h> // Main Windows header
+#include <windows.h> // Main Windows header, comes first
 #ifdef _MSC_VER
  #undef WIN32_NO_STATUS
 #endif
 
+// _getch, for holding the window open when this was double-clicked. A CRT
+// function rather than ReadConsoleInput so there is no console mode to save
+// and restore, and no risk of leaving the console in a different state than it
+// was found in.
+#include <conio.h>
+// SymGetSearchPathW and SymSetSearchPathW. Only the declarations are wanted:
+// the rest of dbghelp is reached through GetProcAddress in
+// TestSymbolSearchPath, so no build needs dbghelp.lib for this.
+#include <dbghelp.h>
+// EventWriteTransfer and EVENT_DESCRIPTOR, likewise not in windows.h. Gated on
+// WINVER >= 0x0600, which this file is built at -- it deliberately does not
+// take winwrap's own lowered target, since it has to be able to call the Win32
+// names to test them.
+#include <evntprov.h>
+// NET_LUID, for the iphlpapi pair.
+#include <ifdef.h>
+// The AppUserModelID pair lives in shlobj.h, and CoTaskMemFree in objbase.h;
+// neither arrives with windows.h.
+#include <objbase.h>
+// ConvertStringSecurityDescriptorToSecurityDescriptorW, for the wait-only
+// event in TestSyncObjects. advapi32, which the registry tests already link.
+#include <sddl.h>
+// Shell objects
+#include <shlobj.h>
+// clang-format on
+
 // C Std Libs
+#include <cstdint>
+#include <cwchar>
 #include <fcntl.h>
 #include <io.h>
-// clang-format on
+#include <stdlib.h>
+// memcmp, for comparing the two RegGetValueW results byte for byte.
+#include <string.h>
+
+// C++ Std Libs
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <vector>
 #include <type_traits>
+#include <vector>
+
 // clang-format off
+// winwrap's headers, comes last.
 #include <winwrap.h>
 #include <winwrap_public.h>
 // clang-format on

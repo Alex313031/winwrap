@@ -21,53 +21,17 @@
 
 #include "winwrap_unittest.h"
 
-// The AppUserModelID pair lives in shlobj.h, and CoTaskMemFree in objbase.h;
-// neither arrives with windows.h.
-#include <objbase.h>
-
-#include <shlobj.h>
-
-// EventWriteTransfer and EVENT_DESCRIPTOR, likewise not in windows.h. Gated on
-// WINVER >= 0x0600, which this file is built at -- it deliberately does not
-// take winwrap's own lowered target, since it has to be able to call the Win32
-// names to test them.
-#include <evntprov.h>
-
-// _getch, for holding the window open when this was double-clicked. A CRT
-// function rather than ReadConsoleInput so there is no console mode to save
-// and restore, and no risk of leaving the console in a different state than it
-// was found in.
-#include <conio.h>
-
-// memcmp, for comparing the two RegGetValueW results byte for byte. Named
-// because nothing else here declares it: framework.h carries <stdlib.h>,
-// <cstdint> and <cwchar>, but not this one -- so the only reason this has been
-// compiling is that windows.h happens to drag it in.
-#include <string.h>
-
 #ifdef WINWRAP_DLL
-// DLLVERSIONINFO, DLLVERSIONINFO2, MAKEDLLVERULL and DLLVER_PLATFORM_NT, for
-// the DllGetVersion coverage below. framework.h pulls this in under the same
-// condition, but named here because this file is what uses those four, and a
-// test should not depend on a private header's conditional includes.
-//
-// No shlwapi.lib needed: all four are a struct, a struct, a macro and a macro,
-// and DllGetVersion itself is reached through GetProcAddress. So neither
-// TESTLIBS in the Makefile nor the link settings in test/BUILD.gn change.
-#include <shlwapi.h>
+ // DLLVERSIONINFO, DLLVERSIONINFO2, MAKEDLLVERULL and DLLVER_PLATFORM_NT, for
+ // the DllGetVersion coverage below. framework.h pulls this in under the same
+ // condition, but named here because this file is what uses those four, and a
+ // test should not depend on a private header's conditional includes.
+ //
+ // No shlwapi.lib needed: all four are a struct, a struct, a macro and a macro,
+ // and DllGetVersion itself is reached through GetProcAddress. So neither
+ // TESTLIBS in the Makefile nor the link settings in test/BUILD.gn change.
+ #include <shlwapi.h>
 #endif // WINWRAP_DLL
-
-// ConvertStringSecurityDescriptorToSecurityDescriptorW, for the wait-only
-// event in TestSyncObjects. advapi32, which the registry tests already link.
-#include <sddl.h>
-
-// NET_LUID, for the iphlpapi pair declared below.
-#include <ifdef.h>
-
-// SymGetSearchPathW and SymSetSearchPathW. Only the declarations are wanted:
-// the rest of dbghelp is reached through GetProcAddress in
-// TestSymbolSearchPath, so no build needs dbghelp.lib for this.
-#include <dbghelp.h>
 
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
@@ -3489,13 +3453,14 @@ namespace {
       const BOOL named        = ::QueryFullProcessImageNameW(self, 0, again, &size);
       const DWORD named_error = ::GetLastError();
       if (!named && winwrap_answers) {
-        // winwrap's documented limit, and where it shows: run from a network
-        // share or a VM shared folder, the executable's device has no drive
-        // letter, the fallback reads the path from the process's memory, and
-        // this handle was opened without the right to. Not a failure of the
-        // shim, so reported and not counted.
+        // winwrap's documented limit, and where it shows: run from a volume
+        // no drive mapping accounts for -- a share with no letter mapped
+        // through its redirector, a folder-mounted volume -- the fallback
+        // reads the path from the process's memory, and this handle was
+        // opened without the right to. Not a failure of the shim, so reported
+        // and not counted.
         std::wcout << L"    (a PROCESS_QUERY_INFORMATION handle was refused with " << named_error
-                   << L"; expected when this runs from a volume with no drive letter)"
+                   << L"; expected when no drive mapping accounts for this volume)"
                    << std::endl;
       } else {
         CHECK(named && ::lstrcmpiW(again, name) == 0,
