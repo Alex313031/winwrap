@@ -42,7 +42,9 @@ EXPORTS
     CreateThreadpoolWait@12 = ww_CreateThreadpoolWait@12
     CreateWaitableTimerExW@16 = ww_CreateWaitableTimerExW@16
     DllGetVersion@4
+    EventRegister@16 = ww_EventRegister@16
     EventSetInformation@20 = ww_EventSetInformation@20
+    EventUnregister@8 = ww_EventUnregister@8
     EventWriteTransfer@28 = ww_EventWriteTransfer@28
     FlsAlloc@4 = ww_FlsAlloc@4
     FlsFree@4 = ww_FlsFree@4

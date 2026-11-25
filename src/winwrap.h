@@ -281,8 +281,8 @@ int WINAPI ww_GetCurrencyFormatEx(LPCWSTR lpLocaleName,
 
 // --- ETW manifest-based providers ------------------------------------------
 // advapi32. Not emulable -- XP's ETW has no manifest-based half at all -- so
-// both of these always fail. See etw.cc for why, and for which siblings are
-// deliberately left alone.
+// all four of these always fail. See etw.cc for why, and for the one sibling,
+// EventWrite, that is not here.
 //
 // EventWriteTransfer is Vista+; EventSetInformation did not arrive until
 // Windows 8, so Vista and Windows 7 need the second and not the first.
@@ -318,6 +318,15 @@ ULONG WINAPI ww_EventSetInformation(REGHANDLE RegHandle,
                                     int InformationClass,
                                     void* EventInformation,
                                     ULONG InformationLength);
+
+// EventRegister and EventUnregister: Vista+. Registration fails with
+// ERROR_NOT_SUPPORTED and a zero handle, which the other three then refuse.
+// EnableCallback is a PENABLECALLBACK, opaque here like the descriptors.
+ULONG WINAPI ww_EventRegister(LPCGUID ProviderId,
+                              PVOID EnableCallback,
+                              PVOID CallbackContext,
+                              REGHANDLE* RegHandle);
+ULONG WINAPI ww_EventUnregister(REGHANDLE RegHandle);
 
 // --- I/O completion ports --------------------------------------------------
 // Both Vista+. OVERLAPPED_ENTRY needs no declaration here: minwinbase.h

@@ -1057,6 +1057,41 @@ namespace {
     }
     std::wcout << L"    unregistered handle -> " << Hex(result) << std::endl;
 
+    std::wcout << L"  EventRegister, EventUnregister" << std::endl;
+
+    // Zero is no provider's handle on any Windows, so unregistering it fails
+    // everywhere, whoever answers.
+    CHECK(::EventUnregister(0) != ERROR_SUCCESS,
+          L"unregistering a handle that was never issued reported success");
+
+    // A GUID nothing else uses. Where the system has manifest-based ETW this
+    // registers and has to be undone; where it does not, winwrap says so and
+    // leaves a zero handle, which is what lets a caller that ignored the
+    // result go on to write and unregister harmlessly.
+    static const GUID kProvider = {
+        0x8f6c3b21, 0x54de, 0x4a70, {0x9b, 0x1e, 0x77, 0x61, 0x6e, 0x77, 0x72, 0x70}};
+    REGHANDLE handle       = 0x1234567812345678ULL;
+    const ULONG registered = ::EventRegister(&kProvider, nullptr, nullptr, &handle);
+    if (!SystemHas(L"advapi32.dll", "EventRegister")) {
+      CHECK(registered == ERROR_NOT_SUPPORTED,
+            L"the fallback EventRegister returned " << Hex(registered));
+      CHECK(handle == 0, L"a failed EventRegister left a non-zero handle");
+      CHECK(::EventUnregister(handle) == ERROR_INVALID_HANDLE,
+            L"the fallback EventUnregister did not refuse the zero handle");
+      CHECK(::EventRegister(&kProvider, nullptr, nullptr, nullptr) == ERROR_INVALID_PARAMETER,
+            L"the fallback EventRegister accepted a null handle pointer");
+      std::wcout << L"    no manifest-based ETW here; winwrap answered" << std::endl;
+    } else {
+      CHECK(registered == ERROR_SUCCESS,
+            L"the system's EventRegister failed with " << Hex(registered));
+      if (registered == ERROR_SUCCESS) {
+        CHECK(handle != 0, L"a successful EventRegister returned a zero handle");
+        CHECK(::EventUnregister(handle) == ERROR_SUCCESS,
+              L"a registered provider could not be unregistered");
+      }
+      std::wcout << L"    forwarded to the system's own EventRegister" << std::endl;
+    }
+
     std::wcout << L"  EventSetInformation" << std::endl;
 
     // Same shape, two Windows later: this arrived in Windows 8, so Vista and

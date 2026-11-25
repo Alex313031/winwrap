@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// EventWriteTransfer. advapi32, Vista.
+// The manifest-based ETW provider functions: EventRegister, EventUnregister,
+// EventWriteTransfer and EventSetInformation. advapi32, Vista, except the
+// last, which is Windows 8.
 //
 // This is the manifest-based ETW provider API from evntprov.h -- the one
 // mc.exe generates calls to from a compiled manifest. XP has only the classic
@@ -15,8 +17,8 @@
 // cannot be emulated, only failed honestly -- see docs/INCOMPLETE_FUNCS.md.
 //
 // ERROR_INVALID_HANDLE rather than ERROR_NOT_SUPPORTED, because on XP the
-// RegHandle genuinely is invalid: EventRegister is absent as well, so nothing
-// can ever have produced a valid one, and an invalid handle is exactly the
+// RegHandle genuinely is invalid: EventRegister never succeeds there, so
+// nothing can ever have produced a valid one, and an invalid handle is exactly the
 // condition the real function reports this way. A caller already has to
 // tolerate that return, which is not true of a code it has never seen.
 //
@@ -37,12 +39,19 @@
 // stop at a single missing entry point. So this slot is live on three
 // Windows versions rather than the one EventWriteTransfer covers.
 //
-// The remaining siblings -- EventRegister, EventWrite and EventUnregister --
-// are deliberately left alone. A consumer that intercepts them itself, as
-// Chromium's base does in trace_event_etw_export_win.cc, would otherwise find
-// winwrap competing for the same symbols, and whichever won would be decided
-// by link order rather than by intent. Add them only for a consumer that
-// imports them directly and does not shim them itself.
+// EventRegister and EventUnregister were once deliberately left out, on the
+// grounds that a consumer intercepting them itself, as that Chromium file
+// does, would find winwrap competing for the same symbols. That was more
+// caution than the mechanism warrants. A consumer that defines a function
+// called EventRegister defines the name; what winwrap defines, outside MinGW,
+// is the `__imp_` slot, a different symbol, which only a caller going through
+// the import table ever references. The two do not meet -- and a caller that
+// does go through the import table is exactly the one with nothing protecting
+// it. V8's TraceLogging providers were that caller: with these two absent
+// there was no way to link them for XP at all, and node's
+// 16-v8-no-etw-legacy-windows.patch compiles them out instead.
+//
+// EventWrite is still not here. Nothing has turned up that imports it.
 
 #include "dispatch.h"
 #include "winwrap.h"
@@ -73,8 +82,8 @@ ULONG WINAPI ww_EventSetInformation(REGHANDLE RegHandle,
   }
   // ERROR_NOT_SUPPORTED rather than the ERROR_INVALID_HANDLE above, and the
   // difference is which Windows each sibling went missing on.
-  // EventWriteTransfer can say the handle is invalid because EventRegister is
-  // absent on XP too, so nothing there can ever have produced a valid one.
+  // EventWriteTransfer can say the handle is invalid because EventRegister
+  // never succeeds on XP, so nothing there can ever have produced a valid one.
   // That reasoning does not carry here: this one did not arrive until
   // Windows 8, and Vista and 7 both have a real EventRegister, so a caller
   // reaching this is quite likely holding a perfectly good handle, and
@@ -86,6 +95,47 @@ ULONG WINAPI ww_EventSetInformation(REGHANDLE RegHandle,
   // recognise, so a caller that handles this function failing at all handles
   // this.
   return ERROR_NOT_SUPPORTED;
+}
+
+// Register a provider. Fails, and that is the whole of what can be said: a
+// manifest provider registers with a session infrastructure XP does not have.
+//
+// ERROR_NOT_SUPPORTED, for the reason EventSetInformation gives -- it is what
+// is true, this Windows cannot do it -- and not ERROR_INVALID_HANDLE, there
+// being no handle yet to call invalid.
+//
+// The handle is zeroed on the way out, and that is what makes the rest of the
+// family hang together. A caller that ignores the result, as TraceLogging's
+// registration macro lets it, goes on to write and unregister with whatever
+// is in that variable; zero is the value every sibling here, and the real
+// functions too, already turn away as ERROR_INVALID_HANDLE.
+//
+// EnableCallback is a PENABLECALLBACK and declared as a plain pointer, for
+// the reason the descriptors above are: it is never called from here, only
+// forwarded, and evntprov.h is not visible at the level winwrap compiles at.
+ULONG WINAPI ww_EventRegister(LPCGUID ProviderId,
+                              PVOID EnableCallback,
+                              PVOID CallbackContext,
+                              REGHANDLE* RegHandle) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hAdvapi32, EventRegister)) {
+    return system_fn(ProviderId, EnableCallback, CallbackContext, RegHandle);
+  }
+  if (!ProviderId || !RegHandle) {
+    return ERROR_INVALID_PARAMETER;
+  }
+  *RegHandle = 0;
+  return ERROR_NOT_SUPPORTED;
+}
+
+// Unregister one. ERROR_INVALID_HANDLE, as EventWriteTransfer says and for
+// its reason: where this code runs, EventRegister above is the only source of
+// handles and it has never issued one.
+ULONG WINAPI ww_EventUnregister(REGHANDLE RegHandle) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hAdvapi32, EventUnregister)) {
+    return system_fn(RegHandle);
+  }
+  return ERROR_INVALID_HANDLE;
 }
 
 } // extern "C"

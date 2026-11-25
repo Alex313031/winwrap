@@ -30,6 +30,8 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetLogicalProcessorInformation` | kernel32 | XP SP3 | Hands over to the system where it exists. Where it does not, builds the result from `GetSystemInfo`: the processor count is exact, every processor is reported as its own core with no SMT, and no caches are reported. The only entry here whose floor is a service pack rather than a Windows version -- it is what stops a binary loading on SP2 |
 | `SetProcessDPIAware` | user32 | Vista | Reports success: XP has no DPI virtualisation to opt out of, so the state already holds |
 | `RegGetValueW` | advapi32 | Vista | Built on `RegQueryValueExW`: type filter, guaranteed termination, environment expansion |
+| `EventRegister` | advapi32 | Vista | Always `ERROR_NOT_SUPPORTED`, with the handle zeroed so that the rest of the family refuses it. Lets a TraceLogging provider link for XP; it simply never registers |
+| `EventUnregister` | advapi32 | Vista | Always `ERROR_INVALID_HANDLE`: no handle was ever issued |
 | `EventSetInformation` | advapi32 | 8 | Always `ERROR_NOT_SUPPORTED`; XP has no manifest-based provider to describe, and Vista and 7 have the rest of the family but not this |
 | `EventWriteTransfer` | advapi32 | Vista | Always `ERROR_INVALID_HANDLE`; XP's ETW has no manifest-based provider model to write into |
 | `GetErrorMode` | kernel32 | Vista | Read from the process information NT already keeps, with the low bit inverted |

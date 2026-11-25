@@ -187,6 +187,9 @@ WINWRAP_REDIRECT(RegGetValueW, 28);
 // than the version each went missing on does. etw.cc has that per function.
 WINWRAP_REDIRECT(EventWriteTransfer, 28);
 WINWRAP_REDIRECT(EventSetInformation, 20);
+// Four pointers, and then the one REGHANDLE: 16 and 8.
+WINWRAP_REDIRECT(EventRegister, 16);
+WINWRAP_REDIRECT(EventUnregister, 8);
 WINWRAP_REDIRECT(RegisterApplicationRestart, 8);
 WINWRAP_REDIRECT(UnregisterApplicationRestart, 0);
 
