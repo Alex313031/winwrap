@@ -62,6 +62,8 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetQueuedCompletionStatusEx` | kernel32 | Vista | `GetQueuedCompletionStatus` in a loop; `fAlertable` ignored, no alertable form exists |
 | `SetFileCompletionNotificationModes` | kernel32 | Vista | Always fails with `ERROR_INVALID_FUNCTION`; no XP equivalent. See the libuv note below |
 | `GetTickCount64` | kernel32 | Vista | Built on the 32-bit counter plus a wrap extension |
+| `GetSystemTimePreciseAsFileTime` | kernel32 | 8 | `GetSystemTimeAsFileTime`: the same clock at tick resolution, there being no interpolated one before Windows 8. Live on 7 as well as Vista and XP |
+| `QueryFullProcessImageNameW` | kernel32 | Vista | psapi's `GetProcessImageFileNameW`, with the device translated to its drive letter unless `PROCESS_NAME_NATIVE` asks for it as is. Needs `PROCESS_QUERY_INFORMATION` -- see INCOMPLETE_FUNCS.md |
 | `InitializeCriticalSectionEx` | kernel32 | Vista | Forwards to `InitializeCriticalSectionAndSpinCount`, flag folded into the spin count |
 | `CreateEventExW` | kernel32 | Vista | `CreateEventW` with the two flags translated, then the handle duplicated down to the requested access mask. An existing named object that refuses full access is opened with the requested mask instead |
 | `CreateSemaphoreExW` | kernel32 | Vista | `CreateSemaphoreW`, same access-mask treatment. The reserved flags word must be zero |

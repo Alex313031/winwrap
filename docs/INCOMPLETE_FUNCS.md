@@ -286,8 +286,10 @@ the ANSI ones and convert. A directory name with a character outside the
 machine's ANSI code page does not survive the trip: that entry of the path
 will not match anything, and the rest are unaffected.
 
-`SymGetSearchPathW` fails with `ERROR_INSUFFICIENT_BUFFER` and an empty string
-when the path does not fit, rather than returning part of an entry.
+When the path does not fit the buffer, `SymGetSearchPathW` returns `TRUE` and
+an empty string. That is odd, and it is what dbghelp's own wide function does
+on Vista, 7 and 8, where it was observed rather than assumed; the shim matches
+it so that a short buffer behaves the same on XP as everywhere else.
 
 They call into whichever `dbghelp.dll` is **already in the process**, asking
 for it by bare name, which loads one only if there is none. winwrap keeps a
@@ -310,6 +312,40 @@ makes. What differs is the access the handle must carry. From Vista on,
 the handle needs `THREAD_QUERY_INFORMATION`, and one opened with only the
 limited right — which XP's `OpenThread` would refuse to grant anyway — fails
 with `ERROR_ACCESS_DENIED`.
+
+### `GetSystemTimePreciseAsFileTime`: precise only where the system is
+
+Windows 8 added an interpolated clock, and this function reads it. Before
+that there is none, so on XP, Vista and 7 the shim returns
+`GetSystemTimeAsFileTime`: the correct time, in steps of up to 15.6 ms. Two
+calls in quick succession return the same value far more often than they
+would on Windows 8.
+
+It is deliberately not improved with `QueryPerformanceCounter`. That would
+give more digits from a second clock that runs at a slightly different rate,
+and the result would drift against file times and against
+`GetSystemTimeAsFileTime`, both of which callers compare it with.
+
+### `QueryFullProcessImageNameW`: needs more access, and a drive letter
+
+The name comes from the kernel, through psapi's `GetProcessImageFileNameW`,
+as the real function's does. Two things differ.
+
+The handle needs `PROCESS_QUERY_INFORMATION`. The real function is satisfied
+with `PROCESS_QUERY_LIMITED_INFORMATION`, a right XP does not have, so a
+process that could be named on Vista with a narrowly opened handle may answer
+`ERROR_ACCESS_DENIED` here.
+
+Without `PROCESS_NAME_NATIVE` the kernel's device path is translated to a
+drive letter by looking for the letter mapped to that device. An executable
+on a volume with no letter — run from a network share, or from a volume
+mounted only as a folder — has none to find. The shim then falls back to
+`GetModuleFileNameExW`, which reads the path from the process's own memory
+and so needs `PROCESS_VM_READ` as well; if that fails too the call fails with
+psapi's own error, `ERROR_ACCESS_DENIED` for a handle without that right.
+`PROCESS_NAME_NATIVE` is unaffected.
+
+psapi.dll is loaded from the system directory on first use.
 
 ### `GetCurrentProcessorNumber`: a hint
 

@@ -15,6 +15,92 @@ namespace {
 
   using NtQueryInformationProcessFn = NTSTATUS(NTAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
 
+  // psapi's two ways of naming a process's executable, both in XP. psapi is
+  // loaded on first use: winwrap links kernel32 and advapi32 only, and psapi
+  // need not be in the process already.
+  using GetProcessImageFileNameWFn = DWORD(WINAPI*)(HANDLE, LPWSTR, DWORD);
+  using GetModuleFileNameExWFn     = DWORD(WINAPI*)(HANDLE, HMODULE, LPWSTR, DWORD);
+
+  std::atomic<void*> g_psapi{nullptr};
+  std::atomic<void*> g_image_file_name{nullptr};
+  std::atomic<void*> g_module_file_name{nullptr};
+
+  constexpr DWORD kProcessNameNative = 0x00000001; // PROCESS_NAME_NATIVE
+
+  // The longest path NT has: 32767 characters and a terminator. The scratch
+  // buffers are this size whatever the caller's is, so that a path too long
+  // for the caller is reported as too long for the caller -- and a caller
+  // that grows its buffer and tries again gets somewhere. Too big for the
+  // stack, hence the heap.
+  constexpr DWORD kMaxNativePath = 32768;
+
+  // A zeroed array of wide characters from the process heap, freed on the way
+  // out. Not the CRT's allocator, which winwrap otherwise has no use for.
+  class WideBuffer {
+   public:
+    explicit WideBuffer(DWORD characters)
+        : text_(static_cast<wchar_t*>(::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                                  characters * sizeof(wchar_t)))) {}
+    ~WideBuffer() {
+      if (text_) {
+        ::HeapFree(::GetProcessHeap(), 0, text_);
+      }
+    }
+    WideBuffer(const WideBuffer&)            = delete;
+    WideBuffer& operator=(const WideBuffer&) = delete;
+
+    wchar_t* get() const { return text_; }
+
+   private:
+    wchar_t* text_;
+  };
+
+  bool StartsWithNoCase(const wchar_t* text, const wchar_t* prefix, size_t prefix_length) {
+    return ::CompareStringW(LOCALE_INVARIANT, NORM_IGNORECASE, text,
+                            static_cast<int>(prefix_length), prefix,
+                            static_cast<int>(prefix_length)) == CSTR_EQUAL;
+  }
+
+  // Rewrites `native`, a path such as \Device\HarddiskVolume1\Windows\x.exe,
+  // as the drive-letter path a Win32 program expects, into `dos`. The kernel
+  // knows a file by its device; which letter that device wears is a mapping
+  // kept per session, and QueryDosDeviceW reads it back one letter at a time.
+  // False if no drive letter maps to the path's device.
+  bool NativeToDosPath(const wchar_t* native, wchar_t* dos, DWORD dos_chars) {
+    wchar_t drives[512] = {};
+    const DWORD length  = ::GetLogicalDriveStringsW(ARRAYSIZE(drives) - 1, drives);
+    if (length == 0 || length >= ARRAYSIZE(drives)) {
+      return false;
+    }
+    const size_t native_length = wcslen(native);
+
+    // "C:\", then a terminator, then the next, ending with an empty string.
+    for (const wchar_t* drive = drives; *drive != L'\0'; drive += wcslen(drive) + 1) {
+      const wchar_t letter[3] = {drive[0], L':', L'\0'};
+      wchar_t device[MAX_PATH] = {};
+      if (::QueryDosDeviceW(letter, device, ARRAYSIZE(device)) == 0) {
+        continue;
+      }
+      const size_t device_length = wcslen(device);
+      // The device name has to be the whole of the first components, not a
+      // prefix of them: HarddiskVolume1 is not HarddiskVolume10.
+      if (device_length == 0 || device_length >= native_length ||
+          native[device_length] != L'\\' ||
+          !StartsWithNoCase(native, device, device_length)) {
+        continue;
+      }
+      const size_t rest_length = native_length - device_length;
+      if (2 + rest_length + 1 > dos_chars) {
+        return false;
+      }
+      dos[0] = letter[0];
+      dos[1] = L':';
+      memcpy(dos + 2, native + device_length, (rest_length + 1) * sizeof(wchar_t));
+      return true;
+    }
+    return false;
+  }
+
 } // namespace
 
 extern "C" {
@@ -142,6 +228,102 @@ VOID WINAPI ww_FlushProcessWriteBuffers(void) {
     ::VirtualProtect(page, 1, PAGE_READONLY, &previous);
   }
   ww_ReleaseSRWLockExclusive(&g_lock);
+}
+
+// The full path of a process's executable. kernel32, Vista.
+//
+// Vista added it for two reasons, and XP can honour the first. It names the
+// file the way the kernel knows it, from the image the process was created
+// from, rather than reading a string out of the target's own memory as
+// GetModuleFileNameEx does -- a string the target can rewrite, and one that
+// for the earliest system processes is not a Win32 path at all. psapi's
+// GetProcessImageFileNameW has given that kernel name since XP, as a device
+// path; PROCESS_NAME_NATIVE asks for exactly that, and without the flag the
+// device is translated back to its drive letter.
+//
+// The second reason was access: the real function needs only
+// PROCESS_QUERY_LIMITED_INFORMATION, a right Vista introduced so that a
+// process could be named without being opened wide. XP has no such right and
+// the handle has to carry PROCESS_QUERY_INFORMATION.
+//
+// Where the device has no drive letter -- a network path, a volume mounted
+// only as a folder -- the translation has nothing to offer, and the path
+// GetModuleFileNameExW reads from the process is used instead, which wants
+// PROCESS_VM_READ as well. INCOMPLETE_FUNCS.md has the entry.
+BOOL WINAPI ww_QueryFullProcessImageNameW(HANDLE hProcess,
+                                          DWORD dwFlags,
+                                          LPWSTR lpExeName,
+                                          PDWORD lpdwSize) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn =
+          WW_TRYFUNC(::winwrap::Module::hKernel32, QueryFullProcessImageNameW)) {
+    return system_fn(hProcess, dwFlags, lpExeName, lpdwSize);
+  }
+  if (!lpExeName || !lpdwSize || (dwFlags & ~kProcessNameNative) != 0) {
+    ::SetLastError(ERROR_INVALID_PARAMETER);
+    return FALSE;
+  }
+
+  const HMODULE psapi  = ::winwrap::LoadSystemLibrary(g_psapi, L"psapi.dll");
+  const auto get_image = reinterpret_cast<GetProcessImageFileNameWFn>(
+      ::winwrap::ResolveFrom(g_image_file_name, psapi, "GetProcessImageFileNameW"));
+  if (!get_image) {
+    ::SetLastError(ERROR_PROC_NOT_FOUND);
+    return FALSE;
+  }
+
+  WideBuffer native_buffer(kMaxNativePath);
+  WideBuffer dos_buffer(kMaxNativePath);
+  wchar_t* const native = native_buffer.get();
+  wchar_t* const dos    = dos_buffer.get();
+  if (!native || !dos) {
+    ::SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    return FALSE;
+  }
+
+  const DWORD native_length = get_image(hProcess, native, kMaxNativePath);
+  if (native_length == 0 || native_length >= kMaxNativePath) {
+    return FALSE; // With psapi's error: access denied, or not a process.
+  }
+
+  const wchar_t* result = native;
+  if ((dwFlags & kProcessNameNative) == 0) {
+    if (NativeToDosPath(native, dos, kMaxNativePath)) {
+      result = dos;
+    } else {
+      const auto get_module = reinterpret_cast<GetModuleFileNameExWFn>(
+          ::winwrap::ResolveFrom(g_module_file_name, psapi, "GetModuleFileNameExW"));
+      if (!get_module) {
+        ::SetLastError(ERROR_PATH_NOT_FOUND);
+        return FALSE;
+      }
+      const DWORD copied = get_module(hProcess, nullptr, dos, kMaxNativePath);
+      if (copied == 0) {
+        // With psapi's error, which says why: ERROR_ACCESS_DENIED for a
+        // handle without PROCESS_VM_READ, most often.
+        return FALSE;
+      }
+      // It truncates without saying so, and a full buffer is how that shows.
+      // Not reachable with a buffer the size of the longest path there is,
+      // but the terminator is not something to take on trust.
+      if (copied >= kMaxNativePath - 1) {
+        ::SetLastError(ERROR_PATH_NOT_FOUND);
+        return FALSE;
+      }
+      result = dos;
+    }
+  }
+
+  // In: the buffer's size in characters. Out: the length written, without the
+  // terminator. A buffer that cannot hold the terminator too is too small.
+  const size_t length = wcslen(result);
+  if (*lpdwSize <= length) {
+    ::SetLastError(ERROR_INSUFFICIENT_BUFFER);
+    return FALSE;
+  }
+  memcpy(lpExeName, result, (length + 1) * sizeof(wchar_t));
+  *lpdwSize = static_cast<DWORD>(length);
+  return TRUE;
 }
 
 } // extern "C"

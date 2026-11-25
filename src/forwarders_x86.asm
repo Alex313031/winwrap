@@ -90,6 +90,7 @@ EXTERN _ww_CreateWaitableTimerExW@16 : PROC
 EXTERN _ww_FlushProcessWriteBuffers@0 : PROC
 EXTERN _ww_QueryThreadCycleTime@8 : PROC
 EXTERN _ww_GetDynamicTimeZoneInformation@4 : PROC
+EXTERN _ww_QueryFullProcessImageNameW@16 : PROC
 EXTERN _ww_CreateThreadpoolTimer@12 : PROC
 EXTERN _ww_SetThreadpoolTimer@16 : PROC
 EXTERN _ww_WaitForThreadpoolTimerCallbacks@8 : PROC
@@ -111,6 +112,7 @@ EXTERN _ww_SymSetSearchPathW@8 : PROC
 EXTERN _ww_GetLogicalProcessorInformation@8 : PROC
 EXTERN _ww_TryAcquireSRWLockExclusive@4 : PROC
 EXTERN _ww_TryAcquireSRWLockShared@4 : PROC
+EXTERN _ww_GetSystemTimePreciseAsFileTime@4 : PROC
 EXTERN _ww_SetCurrentProcessExplicitAppUserModelID@4 : PROC
 EXTERN _ww_GetCurrentProcessExplicitAppUserModelID@4 : PROC
 
@@ -232,6 +234,8 @@ PUBLIC __imp__QueryThreadCycleTime@8
 __imp__QueryThreadCycleTime@8 dd _ww_QueryThreadCycleTime@8
 PUBLIC __imp__GetDynamicTimeZoneInformation@4
 __imp__GetDynamicTimeZoneInformation@4 dd _ww_GetDynamicTimeZoneInformation@4
+PUBLIC __imp__QueryFullProcessImageNameW@16
+__imp__QueryFullProcessImageNameW@16 dd _ww_QueryFullProcessImageNameW@16
 PUBLIC __imp__CreateThreadpoolTimer@12
 __imp__CreateThreadpoolTimer@12 dd _ww_CreateThreadpoolTimer@12
 PUBLIC __imp__SetThreadpoolTimer@16
@@ -274,6 +278,8 @@ PUBLIC __imp__TryAcquireSRWLockExclusive@4
 __imp__TryAcquireSRWLockExclusive@4 dd _ww_TryAcquireSRWLockExclusive@4
 PUBLIC __imp__TryAcquireSRWLockShared@4
 __imp__TryAcquireSRWLockShared@4 dd _ww_TryAcquireSRWLockShared@4
+PUBLIC __imp__GetSystemTimePreciseAsFileTime@4
+__imp__GetSystemTimePreciseAsFileTime@4 dd _ww_GetSystemTimePreciseAsFileTime@4
 PUBLIC __imp__SetCurrentProcessExplicitAppUserModelID@4
 __imp__SetCurrentProcessExplicitAppUserModelID@4 dd _ww_SetCurrentProcessExplicitAppUserModelID@4
 PUBLIC __imp__GetCurrentProcessExplicitAppUserModelID@4
