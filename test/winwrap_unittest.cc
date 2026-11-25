@@ -21,53 +21,17 @@
 
 #include "winwrap_unittest.h"
 
-// The AppUserModelID pair lives in shlobj.h, and CoTaskMemFree in objbase.h;
-// neither arrives with windows.h.
-#include <objbase.h>
-
-#include <shlobj.h>
-
-// EventWriteTransfer and EVENT_DESCRIPTOR, likewise not in windows.h. Gated on
-// WINVER >= 0x0600, which this file is built at -- it deliberately does not
-// take winwrap's own lowered target, since it has to be able to call the Win32
-// names to test them.
-#include <evntprov.h>
-
-// _getch, for holding the window open when this was double-clicked. A CRT
-// function rather than ReadConsoleInput so there is no console mode to save
-// and restore, and no risk of leaving the console in a different state than it
-// was found in.
-#include <conio.h>
-
-// memcmp, for comparing the two RegGetValueW results byte for byte. Named
-// because nothing else here declares it: framework.h carries <stdlib.h>,
-// <cstdint> and <cwchar>, but not this one -- so the only reason this has been
-// compiling is that windows.h happens to drag it in.
-#include <string.h>
-
 #ifdef WINWRAP_DLL
-// DLLVERSIONINFO, DLLVERSIONINFO2, MAKEDLLVERULL and DLLVER_PLATFORM_NT, for
-// the DllGetVersion coverage below. framework.h pulls this in under the same
-// condition, but named here because this file is what uses those four, and a
-// test should not depend on a private header's conditional includes.
-//
-// No shlwapi.lib needed: all four are a struct, a struct, a macro and a macro,
-// and DllGetVersion itself is reached through GetProcAddress. So neither
-// TESTLIBS in the Makefile nor the link settings in test/BUILD.gn change.
-#include <shlwapi.h>
+ // DLLVERSIONINFO, DLLVERSIONINFO2, MAKEDLLVERULL and DLLVER_PLATFORM_NT, for
+ // the DllGetVersion coverage below. framework.h pulls this in under the same
+ // condition, but named here because this file is what uses those four, and a
+ // test should not depend on a private header's conditional includes.
+ //
+ // No shlwapi.lib needed: all four are a struct, a struct, a macro and a macro,
+ // and DllGetVersion itself is reached through GetProcAddress. So neither
+ // TESTLIBS in the Makefile nor the link settings in test/BUILD.gn change.
+ #include <shlwapi.h>
 #endif // WINWRAP_DLL
-
-// ConvertStringSecurityDescriptorToSecurityDescriptorW, for the wait-only
-// event in TestSyncObjects. advapi32, which the registry tests already link.
-#include <sddl.h>
-
-// NET_LUID, for the iphlpapi pair declared below.
-#include <ifdef.h>
-
-// SymGetSearchPathW and SymSetSearchPathW. Only the declarations are wanted:
-// the rest of dbghelp is reached through GetProcAddress in
-// TestSymbolSearchPath, so no build needs dbghelp.lib for this.
-#include <dbghelp.h>
 
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
