@@ -149,6 +149,7 @@ SOURCES := \
 	cancel_io \
 	condition_variable \
 	critical_section \
+	dbghelp \
 	directories \
 	dispatch \
 	etw \
@@ -219,7 +220,7 @@ endif
 # test/BUILD.gn does. $(FORMDEF) tells it which form it was linked against.
 TESTDEFS := -D_WIN32_WINNT=0x0A00 -DNTDDI_VERSION=0x0A000000 -DWINVER=0x0A00
 
-TESTFLAGS := -std=c++17 -Wall -Wextra $(FORMDEF) -DWINWRAP_TEST \
+TESTCXXFLAGS := -std=c++17 -Wall -Wextra $(FORMDEF) -DWINWRAP_TEST \
 	-DUSING_WINWRAP -DUNICODE -D_UNICODE $(TESTDEFS) \
 	-Isrc -Isrc/public -Itest $(OPTFLAGS)
 
@@ -239,8 +240,6 @@ else
 DEFFILE  := src/winwrap_gnu_x86.def
 DLLFLAGS := -Wl,--kill-at
 endif
-
-.PHONY: help all static dll dll-build test check-forwarders clean
 
 # FIRST, and so the default: a bare `make` prints usage and builds nothing.
 help:
@@ -299,7 +298,7 @@ $(TESTEXE): $(OBJDIR)/winwrap_unittest.o $(LIBTARGET)
 
 $(OBJDIR)/winwrap_unittest.o: test/winwrap_unittest.cc test/winwrap_unittest.h $(HEADERS)
 	@$(call MKDIR,$(OBJDIR))
-	$(CXX) -c $(TESTFLAGS) -o $@ test/winwrap_unittest.cc
+	$(CXX) -c $(TESTCXXFLAGS) -o $@ test/winwrap_unittest.cc
 
 # Rebuilt from scratch each time, because `ar r` adds to an existing archive
 # and would leave a removed source's object behind in it.
@@ -339,3 +338,5 @@ check-forwarders:
 clean:
 	@$(call RMRF,out)
 	@echo  Cleaned.
+
+.PHONY: help all static dll dll-build test check-forwarders clean

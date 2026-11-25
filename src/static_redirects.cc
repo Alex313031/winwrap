@@ -173,6 +173,7 @@ WINWRAP_REDIRECT(GetNamedPipeClientProcessId, 8);
 WINWRAP_REDIRECT(GetNamedPipeServerProcessId, 8);
 
 WINWRAP_REDIRECT(GetCurrentProcessorNumber, 0);
+WINWRAP_REDIRECT(GetThreadId, 4);
 WINWRAP_REDIRECT(GetErrorMode, 0);
 WINWRAP_REDIRECT(SetProcessDPIAware, 0);
 WINWRAP_REDIRECT(RegGetValueW, 28);
@@ -187,6 +188,9 @@ WINWRAP_REDIRECT(RegGetValueW, 28);
 // than the version each went missing on does. etw.cc has that per function.
 WINWRAP_REDIRECT(EventWriteTransfer, 28);
 WINWRAP_REDIRECT(EventSetInformation, 20);
+// Four pointers, and then the one REGHANDLE: 16 and 8.
+WINWRAP_REDIRECT(EventRegister, 16);
+WINWRAP_REDIRECT(EventUnregister, 8);
 WINWRAP_REDIRECT(RegisterApplicationRestart, 8);
 WINWRAP_REDIRECT(UnregisterApplicationRestart, 0);
 
@@ -275,6 +279,11 @@ WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
 // pointer, then two pointers and a SIZE_T. net.cc defines the plain names too.
 WINWRAP_REDIRECT(ConvertInterfaceIndexToLuid, 8);
 WINWRAP_REDIRECT(ConvertInterfaceLuidToNameW, 12);
+
+// dbghelp, which consumers delay-import too, or ship beside the executable.
+// 12 and 8: a handle, a pointer and a DWORD, then a handle and a pointer.
+WINWRAP_REDIRECT(SymGetSearchPathW, 12);
+WINWRAP_REDIRECT(SymSetSearchPathW, 8);
 
 // --- Present on XP SP3, missing on SP2 and earlier -------------------------
 //

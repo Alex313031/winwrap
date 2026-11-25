@@ -27,9 +27,12 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `GetNamedPipeClientProcessId` | kernel32 | Vista | Asks npfs through the control code the real function uses; fails where the kernel has no answer |
 | `GetNamedPipeServerProcessId` | kernel32 | Vista | Always fails on XP: npfs records neither party and no inference is safe |
 | `GetCurrentProcessorNumber` | kernel32 | Server 2003 | From the CPUID initial APIC ID; a hint, as the real one is too |
+| `GetThreadId` | kernel32 | Server 2003 | `NtQueryInformationThread`, which is what the real one calls; the handle needs `THREAD_QUERY_INFORMATION`, XP having no limited-query right |
 | `GetLogicalProcessorInformation` | kernel32 | XP SP3 | Hands over to the system where it exists. Where it does not, builds the result from `GetSystemInfo`: the processor count is exact, every processor is reported as its own core with no SMT, and no caches are reported. The only entry here whose floor is a service pack rather than a Windows version -- it is what stops a binary loading on SP2 |
 | `SetProcessDPIAware` | user32 | Vista | Reports success: XP has no DPI virtualisation to opt out of, so the state already holds |
 | `RegGetValueW` | advapi32 | Vista | Built on `RegQueryValueExW`: type filter, guaranteed termination, environment expansion |
+| `EventRegister` | advapi32 | Vista | Always `ERROR_NOT_SUPPORTED`, with the handle zeroed so that the rest of the family refuses it. Lets a TraceLogging provider link for XP; it simply never registers |
+| `EventUnregister` | advapi32 | Vista | Always `ERROR_INVALID_HANDLE`: no handle was ever issued |
 | `EventSetInformation` | advapi32 | 8 | Always `ERROR_NOT_SUPPORTED`; XP has no manifest-based provider to describe, and Vista and 7 have the rest of the family but not this |
 | `EventWriteTransfer` | advapi32 | Vista | Always `ERROR_INVALID_HANDLE`; XP's ETW has no manifest-based provider model to write into |
 | `GetErrorMode` | kernel32 | Vista | Read from the process information NT already keeps, with the low bit inverted |
@@ -69,6 +72,8 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `SHGetKnownFolderPath` | shell32 | Vista | The 44 folder IDs that have a CSIDL (46 on x64), through `SHGetFolderPathW`. Folders Vista introduced fail with `ERROR_FILE_NOT_FOUND`. Loads shell32 and ole32 -- see INCOMPLETE_FUNCS.md |
 | `ConvertInterfaceIndexToLuid` | iphlpapi | Vista | `GetIfEntry` for the interface's type; the index stands in for the LUID's own number, XP having no LUIDs. Loads iphlpapi -- see INCOMPLETE_FUNCS.md |
 | `ConvertInterfaceLuidToNameW` | iphlpapi | Vista | Formats `<type>_<number>` the way Windows does, `iftype<N>_<number>` for a type without a name. With the one above, this is libuv's `uv_if_indextoname()` |
+| `SymGetSearchPathW` | dbghelp | Vista (dbghelp 6.3) | XP's dbghelp 5.1 has only the ANSI form; calls it and converts. Uses whichever `dbghelp.dll` is already in the process -- see INCOMPLETE_FUNCS.md |
+| `SymSetSearchPathW` | dbghelp | Vista (dbghelp 6.3) | The same in the other direction. V8 treats a failure of either as a failure to initialise symbols, so these are what let a native stack trace be symbolised on XP |
 | `InitOnceExecuteOnce` | kernel32 | Vista | Tagged-pointer state machine with ntdll's state numbering; the callback's context is stored and handed to later callers. Waiters sleep in the parking lot. libuv's `uv_once()` is built directly on this |
 | `InitOnceBeginInitialize` | kernel32 | Vista | The same state word, so it mixes freely with the other two. Synchronous, `INIT_ONCE_ASYNC` and `INIT_ONCE_CHECK_ONLY` are all supported |
 | `InitOnceComplete` | kernel32 | Vista | Stores the context and wakes the waiters; `INIT_ONCE_INIT_FAILED` hands the `INIT_ONCE` back for another attempt. The losing asynchronous completion fails, as on Windows |

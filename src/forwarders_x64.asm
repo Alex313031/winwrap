@@ -42,11 +42,14 @@ EXTERN ww_NeedCurrentDirectoryForExePathW : PROC
 EXTERN ww_GetNamedPipeClientProcessId : PROC
 EXTERN ww_GetNamedPipeServerProcessId : PROC
 EXTERN ww_GetCurrentProcessorNumber : PROC
+EXTERN ww_GetThreadId : PROC
 EXTERN ww_GetErrorMode : PROC
 EXTERN ww_SetProcessDPIAware : PROC
 EXTERN ww_RegGetValueW : PROC
 EXTERN ww_EventWriteTransfer : PROC
 EXTERN ww_EventSetInformation : PROC
+EXTERN ww_EventRegister : PROC
+EXTERN ww_EventUnregister : PROC
 EXTERN ww_RegisterApplicationRestart : PROC
 EXTERN ww_UnregisterApplicationRestart : PROC
 EXTERN ww_ConvertThreadToFiberEx : PROC
@@ -100,6 +103,8 @@ EXTERN ww_FlsFree : PROC
 EXTERN ww_SHGetKnownFolderPath : PROC
 EXTERN ww_ConvertInterfaceIndexToLuid : PROC
 EXTERN ww_ConvertInterfaceLuidToNameW : PROC
+EXTERN ww_SymGetSearchPathW : PROC
+EXTERN ww_SymSetSearchPathW : PROC
 EXTERN ww_GetLogicalProcessorInformation : PROC
 EXTERN ww_TryAcquireSRWLockExclusive : PROC
 EXTERN ww_TryAcquireSRWLockShared : PROC
@@ -134,6 +139,8 @@ PUBLIC __imp_GetNamedPipeServerProcessId
 __imp_GetNamedPipeServerProcessId dq ww_GetNamedPipeServerProcessId
 PUBLIC __imp_GetCurrentProcessorNumber
 __imp_GetCurrentProcessorNumber dq ww_GetCurrentProcessorNumber
+PUBLIC __imp_GetThreadId
+__imp_GetThreadId dq ww_GetThreadId
 PUBLIC __imp_GetErrorMode
 __imp_GetErrorMode dq ww_GetErrorMode
 PUBLIC __imp_SetProcessDPIAware
@@ -144,6 +151,10 @@ PUBLIC __imp_EventWriteTransfer
 __imp_EventWriteTransfer dq ww_EventWriteTransfer
 PUBLIC __imp_EventSetInformation
 __imp_EventSetInformation dq ww_EventSetInformation
+PUBLIC __imp_EventRegister
+__imp_EventRegister dq ww_EventRegister
+PUBLIC __imp_EventUnregister
+__imp_EventUnregister dq ww_EventUnregister
 PUBLIC __imp_RegisterApplicationRestart
 __imp_RegisterApplicationRestart dq ww_RegisterApplicationRestart
 PUBLIC __imp_UnregisterApplicationRestart
@@ -250,6 +261,10 @@ PUBLIC __imp_ConvertInterfaceIndexToLuid
 __imp_ConvertInterfaceIndexToLuid dq ww_ConvertInterfaceIndexToLuid
 PUBLIC __imp_ConvertInterfaceLuidToNameW
 __imp_ConvertInterfaceLuidToNameW dq ww_ConvertInterfaceLuidToNameW
+PUBLIC __imp_SymGetSearchPathW
+__imp_SymGetSearchPathW dq ww_SymGetSearchPathW
+PUBLIC __imp_SymSetSearchPathW
+__imp_SymSetSearchPathW dq ww_SymSetSearchPathW
 PUBLIC __imp_GetLogicalProcessorInformation
 __imp_GetLogicalProcessorInformation dq ww_GetLogicalProcessorInformation
 PUBLIC __imp_TryAcquireSRWLockExclusive

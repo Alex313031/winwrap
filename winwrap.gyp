@@ -215,6 +215,7 @@
         'src/cancel_io.cc',
         'src/condition_variable.cc',
         'src/critical_section.cc',
+        'src/dbghelp.cc',
         'src/directories.cc',
         'src/dispatch.cc',
         'src/dispatch.h',

@@ -45,11 +45,14 @@ EXTERN _ww_NeedCurrentDirectoryForExePathW@4 : PROC
 EXTERN _ww_GetNamedPipeClientProcessId@8 : PROC
 EXTERN _ww_GetNamedPipeServerProcessId@8 : PROC
 EXTERN _ww_GetCurrentProcessorNumber@0 : PROC
+EXTERN _ww_GetThreadId@4 : PROC
 EXTERN _ww_GetErrorMode@0 : PROC
 EXTERN _ww_SetProcessDPIAware@0 : PROC
 EXTERN _ww_RegGetValueW@28 : PROC
 EXTERN _ww_EventWriteTransfer@28 : PROC
 EXTERN _ww_EventSetInformation@20 : PROC
+EXTERN _ww_EventRegister@16 : PROC
+EXTERN _ww_EventUnregister@8 : PROC
 EXTERN _ww_RegisterApplicationRestart@8 : PROC
 EXTERN _ww_UnregisterApplicationRestart@0 : PROC
 EXTERN _ww_ConvertThreadToFiberEx@8 : PROC
@@ -103,6 +106,8 @@ EXTERN _ww_FlsFree@4 : PROC
 EXTERN _ww_SHGetKnownFolderPath@16 : PROC
 EXTERN _ww_ConvertInterfaceIndexToLuid@8 : PROC
 EXTERN _ww_ConvertInterfaceLuidToNameW@12 : PROC
+EXTERN _ww_SymGetSearchPathW@12 : PROC
+EXTERN _ww_SymSetSearchPathW@8 : PROC
 EXTERN _ww_GetLogicalProcessorInformation@8 : PROC
 EXTERN _ww_TryAcquireSRWLockExclusive@4 : PROC
 EXTERN _ww_TryAcquireSRWLockShared@4 : PROC
@@ -137,6 +142,8 @@ PUBLIC __imp__GetNamedPipeServerProcessId@8
 __imp__GetNamedPipeServerProcessId@8 dd _ww_GetNamedPipeServerProcessId@8
 PUBLIC __imp__GetCurrentProcessorNumber@0
 __imp__GetCurrentProcessorNumber@0 dd _ww_GetCurrentProcessorNumber@0
+PUBLIC __imp__GetThreadId@4
+__imp__GetThreadId@4 dd _ww_GetThreadId@4
 PUBLIC __imp__GetErrorMode@0
 __imp__GetErrorMode@0 dd _ww_GetErrorMode@0
 PUBLIC __imp__SetProcessDPIAware@0
@@ -147,6 +154,10 @@ PUBLIC __imp__EventWriteTransfer@28
 __imp__EventWriteTransfer@28 dd _ww_EventWriteTransfer@28
 PUBLIC __imp__EventSetInformation@20
 __imp__EventSetInformation@20 dd _ww_EventSetInformation@20
+PUBLIC __imp__EventRegister@16
+__imp__EventRegister@16 dd _ww_EventRegister@16
+PUBLIC __imp__EventUnregister@8
+__imp__EventUnregister@8 dd _ww_EventUnregister@8
 PUBLIC __imp__RegisterApplicationRestart@8
 __imp__RegisterApplicationRestart@8 dd _ww_RegisterApplicationRestart@8
 PUBLIC __imp__UnregisterApplicationRestart@0
@@ -253,6 +264,10 @@ PUBLIC __imp__ConvertInterfaceIndexToLuid@8
 __imp__ConvertInterfaceIndexToLuid@8 dd _ww_ConvertInterfaceIndexToLuid@8
 PUBLIC __imp__ConvertInterfaceLuidToNameW@12
 __imp__ConvertInterfaceLuidToNameW@12 dd _ww_ConvertInterfaceLuidToNameW@12
+PUBLIC __imp__SymGetSearchPathW@12
+__imp__SymGetSearchPathW@12 dd _ww_SymGetSearchPathW@12
+PUBLIC __imp__SymSetSearchPathW@8
+__imp__SymSetSearchPathW@8 dd _ww_SymSetSearchPathW@8
 PUBLIC __imp__GetLogicalProcessorInformation@8
 __imp__GetLogicalProcessorInformation@8 dd _ww_GetLogicalProcessorInformation@8
 PUBLIC __imp__TryAcquireSRWLockExclusive@4

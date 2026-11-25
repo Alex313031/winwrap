@@ -90,6 +90,9 @@ DWORD WINAPI ww_GetCurrentProcessorNumber(void);
 // processor's nominal rate, so it has the clock tick's resolution rather than
 // the counter's. See threads.cc.
 BOOL WINAPI ww_QueryThreadCycleTime(HANDLE ThreadHandle, PULONG64 CycleTime);
+// GetThreadId: Server 2003+, so missing from 32-bit XP only. The same
+// NtQueryInformationThread the real one is built on.
+DWORD WINAPI ww_GetThreadId(HANDLE Thread);
 
 // --- Process-wide state ----------------------------------------------------
 // Both Vista+. GetErrorMode reads what the kernel already tracks;
@@ -281,8 +284,8 @@ int WINAPI ww_GetCurrencyFormatEx(LPCWSTR lpLocaleName,
 
 // --- ETW manifest-based providers ------------------------------------------
 // advapi32. Not emulable -- XP's ETW has no manifest-based half at all -- so
-// both of these always fail. See etw.cc for why, and for which siblings are
-// deliberately left alone.
+// all four of these always fail. See etw.cc for why, and for the one sibling,
+// EventWrite, that is not here.
 //
 // EventWriteTransfer is Vista+; EventSetInformation did not arrive until
 // Windows 8, so Vista and Windows 7 need the second and not the first.
@@ -318,6 +321,15 @@ ULONG WINAPI ww_EventSetInformation(REGHANDLE RegHandle,
                                     int InformationClass,
                                     void* EventInformation,
                                     ULONG InformationLength);
+
+// EventRegister and EventUnregister: Vista+. Registration fails with
+// ERROR_NOT_SUPPORTED and a zero handle, which the other three then refuse.
+// EnableCallback is a PENABLECALLBACK, opaque here like the descriptors.
+ULONG WINAPI ww_EventRegister(LPCGUID ProviderId,
+                              PVOID EnableCallback,
+                              PVOID CallbackContext,
+                              REGHANDLE* RegHandle);
+ULONG WINAPI ww_EventUnregister(REGHANDLE RegHandle);
 
 // --- I/O completion ports --------------------------------------------------
 // Both Vista+. OVERLAPPED_ENTRY needs no declaration here: minwinbase.h
@@ -418,6 +430,14 @@ HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
                                        DWORD dwFlags,
                                        HANDLE hToken,
                                        PWSTR* ppszPath);
+
+// --- Symbol search path ----------------------------------------------------
+// dbghelp 6.3, the one Vista ships; XP's dbghelp 5.1 has only the ANSI forms,
+// which these convert to and from. V8 treats a failure of either as a failure
+// to initialise symbols, so without them nothing is symbolised on XP. See
+// dbghelp.cc, including for which dbghelp.dll they call into.
+BOOL WINAPI ww_SymGetSearchPathW(HANDLE hProcess, PWSTR SearchPath, DWORD SearchPathLength);
+BOOL WINAPI ww_SymSetSearchPathW(HANDLE hProcess, PCWSTR SearchPath);
 
 // --- Network interfaces ----------------------------------------------------
 // iphlpapi, Vista+. An index to a NET_LUID and a NET_LUID to its name, which

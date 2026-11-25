@@ -279,6 +279,38 @@ else to hand one to.
 Like `SHGetKnownFolderPath`, the pair loads its DLL, iphlpapi, from the system
 directory on first use, because consumers delay-load it.
 
+### `SymGetSearchPathW`, `SymSetSearchPathW`: through the ANSI code page
+
+Where the loaded dbghelp lacks the wide functions — XP's 5.1 does — these call
+the ANSI ones and convert. A directory name with a character outside the
+machine's ANSI code page does not survive the trip: that entry of the path
+will not match anything, and the rest are unaffected.
+
+`SymGetSearchPathW` fails with `ERROR_INSUFFICIENT_BUFFER` and an empty string
+when the path does not fit, rather than returning part of an entry.
+
+They call into whichever `dbghelp.dll` is **already in the process**, asking
+for it by bare name, which loads one only if there is none. winwrap keeps a
+reference to it from then on, so that copy stays loaded for the life of the
+process even if the program frees its own. A symbol session lives in the module
+`SymInitialize` was called in, so a program that ships its own dbghelp beside
+the executable has to be answered by that copy; System32's would know nothing
+of the session. A newer redistributable dbghelp has the wide functions itself,
+and then winwrap only forwards.
+
+Nothing else in dbghelp is supplied. A caller of `SymFromAddrW`,
+`SymGetLineFromAddrW64` and the other wide functions XP lacks still needs a
+newer dbghelp.dll shipped beside it.
+
+### `GetThreadId`: needs `THREAD_QUERY_INFORMATION`
+
+The result is exact; it comes from the same kernel query the real function
+makes. What differs is the access the handle must carry. From Vista on,
+`THREAD_QUERY_LIMITED_INFORMATION` is enough. XP has no such right, so there
+the handle needs `THREAD_QUERY_INFORMATION`, and one opened with only the
+limited right — which XP's `OpenThread` would refuse to grant anyway — fails
+with `ERROR_ACCESS_DENIED`.
+
 ### `GetCurrentProcessorNumber`: a hint
 
 Derived from the CPUID initial APIC ID. It can be stale the moment it is
@@ -532,8 +564,10 @@ No emulation is possible. Each returns the error its callers already test for.
 |---|---|---|
 | `CreateSymbolicLinkW` | `ERROR_NOT_SUPPORTED` | XP has no symbolic links to create. |
 | `CancelSynchronousIo` | `ERROR_NOT_FOUND` | Cross-thread by definition, and XP offers no way to reach another thread's synchronous I/O. See the `CancelIoEx` note above for what this costs libuv. |
+| `EventRegister` | `ERROR_NOT_SUPPORTED` | A manifest provider registers with a session infrastructure XP does not have. The handle is set to zero, so a caller that ignores the result -- TraceLogging's registration macro permits that -- goes on to write and unregister with a value every sibling refuses. |
+| `EventUnregister` | `ERROR_INVALID_HANDLE` | `EventRegister` is the only source of handles and on such a Windows it has never issued one. |
 | `EventSetInformation` | `ERROR_NOT_SUPPORTED` | The same missing provider model, two Windows later: this arrived in Windows 8, so Vista and Windows 7 both have `EventRegister` and `EventWriteTransfer` and lack only this. Not `ERROR_INVALID_HANDLE`, because that reasoning does not carry here -- a Vista or 7 caller may be holding a perfectly good `REGHANDLE`, and calling it invalid would be a lie about the one thing it could check. What is true on all three is that the system cannot set provider information, and the real function already answers `ERROR_NOT_SUPPORTED` for an `InformationClass` it does not recognise. |
-| `EventWriteTransfer` | `ERROR_INVALID_HANDLE` | XP's ETW is the classic provider model only -- `RegisterTraceGuids` and `TraceEvent`. A manifest provider is described by a manifest the system must already know about, and there is nothing on XP for its events to be written into. `ERROR_INVALID_HANDLE` rather than `ERROR_NOT_SUPPORTED` because the `REGHANDLE` really is invalid: `EventRegister` is absent too, so nothing can ever have produced a valid one, and that is the condition the real function reports this way. |
+| `EventWriteTransfer` | `ERROR_INVALID_HANDLE` | XP's ETW is the classic provider model only -- `RegisterTraceGuids` and `TraceEvent`. A manifest provider is described by a manifest the system must already know about, and there is nothing on XP for its events to be written into. `ERROR_INVALID_HANDLE` rather than `ERROR_NOT_SUPPORTED` because the `REGHANDLE` really is invalid: `EventRegister` always fails there, so nothing can ever have produced a valid one, and that is the condition the real function reports this way. |
 | `RegisterApplicationRestart` | `E_NOTIMPL` | XP has no Restart Manager. |
 | `UnregisterApplicationRestart` | `E_NOTIMPL` | To agree with its other half. |
 | `GetNamedPipeServerProcessId` | Fails | XP's npfs records neither party to a connection, and no inference from the handle is safe. |

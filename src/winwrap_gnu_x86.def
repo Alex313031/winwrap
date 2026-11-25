@@ -42,7 +42,9 @@ EXPORTS
     CreateThreadpoolWait@12 = ww_CreateThreadpoolWait@12
     CreateWaitableTimerExW@16 = ww_CreateWaitableTimerExW@16
     DllGetVersion@4
+    EventRegister@16 = ww_EventRegister@16
     EventSetInformation@20 = ww_EventSetInformation@20
+    EventUnregister@8 = ww_EventUnregister@8
     EventWriteTransfer@28 = ww_EventWriteTransfer@28
     FlsAlloc@4 = ww_FlsAlloc@4
     FlsFree@4 = ww_FlsFree@4
@@ -65,6 +67,7 @@ EXPORTS
     GetNumberFormatEx@24 = ww_GetNumberFormatEx@24
     GetQueuedCompletionStatusEx@24 = ww_GetQueuedCompletionStatusEx@24
     GetRealNTVersion
+    GetThreadId@4 = ww_GetThreadId@4
     GetTickCount64@0 = ww_GetTickCount64@0
     GetTimeFormatEx@24 = ww_GetTimeFormatEx@24
     GetWinWrapVersion
@@ -96,6 +99,8 @@ EXPORTS
     SHGetKnownFolderPath@16 = ww_SHGetKnownFolderPath@16
     SleepConditionVariableCS@12 = ww_SleepConditionVariableCS@12
     SleepConditionVariableSRW@16 = ww_SleepConditionVariableSRW@16
+    SymGetSearchPathW@12 = ww_SymGetSearchPathW@12
+    SymSetSearchPathW@8 = ww_SymSetSearchPathW@8
     TryAcquireSRWLockExclusive@4 = ww_TryAcquireSRWLockExclusive@4
     TryAcquireSRWLockShared@4 = ww_TryAcquireSRWLockShared@4
     UnregisterApplicationRestart@0 = ww_UnregisterApplicationRestart@0

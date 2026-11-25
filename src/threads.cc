@@ -43,6 +43,23 @@ namespace {
     return megahertz;
   }
 
+  // THREAD_BASIC_INFORMATION, which NtQueryInformationThread fills for class
+  // 0. winternl.h declares the function and CLIENT_ID but not this. Not named
+  // ThreadBasicInformation, which is what the class itself is called in
+  // MinGW's winternl.h, where it is an enumerator.
+  struct BasicThreadInfo {
+    NTSTATUS ExitStatus;
+    PVOID TebBaseAddress;
+    CLIENT_ID ClientId;
+    ULONG_PTR AffinityMask;
+    LONG Priority;
+    LONG BasePriority;
+  };
+  constexpr ULONG kThreadBasicInformationClass = 0;
+
+  using NtQueryInformationThreadFn = NTSTATUS(NTAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+  using RtlNtStatusToDosErrorFn    = ULONG(NTAPI*)(NTSTATUS);
+
   ULONG64 AsTicks(const FILETIME& time) {
     return (static_cast<ULONG64>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
   }
@@ -122,6 +139,46 @@ BOOL WINAPI ww_QueryThreadCycleTime(HANDLE ThreadHandle, PULONG64 CycleTime) {
   }
   *CycleTime = (AsTicks(kernel) + AsTicks(user)) * ProcessorMegahertz() / 10;
   return TRUE;
+}
+
+// The ID of the thread a handle refers to. kernel32, Server 2003 -- so absent
+// from 32-bit XP alone, 64-bit XP being Server 2003 underneath.
+//
+// kernel32 gained the function; the kernel always had the answer. A thread's
+// basic information carries its CLIENT_ID, the process and thread IDs
+// together, and NtQueryInformationThread has returned it since NT 3.1. That
+// is what the real GetThreadId calls, so this is the same function a layer
+// down rather than an approximation of it.
+//
+// One difference, which is the handle's access rather than the result: from
+// Vista on THREAD_QUERY_LIMITED_INFORMATION is enough, and XP has no such
+// right, so a handle has to carry THREAD_QUERY_INFORMATION. Server 2003's own
+// GetThreadId asked the same.
+DWORD WINAPI ww_GetThreadId(HANDLE Thread) {
+  // Hand straight over where Windows has this itself.
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, GetThreadId)) {
+    return system_fn(Thread);
+  }
+  const auto query = WW_TRYFUNC_AS(NtQueryInformationThreadFn, ::winwrap::Module::hNtDll,
+                                   "NtQueryInformationThread");
+  if (!query) {
+    ::SetLastError(ERROR_PROC_NOT_FOUND);
+    return 0;
+  }
+
+  BasicThreadInfo information = {};
+  const NTSTATUS status =
+      query(Thread, kThreadBasicInformationClass, &information, sizeof(information), nullptr);
+  if (status < 0) {
+    // Zero is the failure value and never a real thread ID. The error is the
+    // kernel's own, translated the way kernel32 would have.
+    const auto to_dos_error = WW_TRYFUNC_AS(RtlNtStatusToDosErrorFn, ::winwrap::Module::hNtDll,
+                                            "RtlNtStatusToDosError");
+    ::SetLastError(to_dos_error ? to_dos_error(status) : ERROR_INVALID_HANDLE);
+    return 0;
+  }
+  // A thread ID is a 32-bit value carried in a pointer-sized field.
+  return static_cast<DWORD>(reinterpret_cast<ULONG_PTR>(information.ClientId.UniqueThread));
 }
 
 } // extern "C"

@@ -70,6 +70,7 @@ _winwrap_sources = [
   "cancel_io.cc",
   "condition_variable.cc",
   "critical_section.cc",
+  "dbghelp.cc",
   "directories.cc",
   "dispatch.cc",
   "dispatch.h",

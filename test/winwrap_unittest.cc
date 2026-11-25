@@ -64,6 +64,11 @@
 // NET_LUID, for the iphlpapi pair declared below.
 #include <ifdef.h>
 
+// SymGetSearchPathW and SymSetSearchPathW. Only the declarations are wanted:
+// the rest of dbghelp is reached through GetProcAddress in
+// TestSymbolSearchPath, so no build needs dbghelp.lib for this.
+#include <dbghelp.h>
+
 // The XP code path of ww_RegGetValueW, which TestRegGetValue compares against
 // the real advapi32 function. Declared here rather than at the point of use
 // because a linkage specification may only appear at namespace scope -- inside
@@ -1052,6 +1057,45 @@ namespace {
     }
     std::wcout << L"    unregistered handle -> " << Hex(result) << std::endl;
 
+    std::wcout << L"  EventRegister, EventUnregister" << std::endl;
+
+    // Zero is no provider's handle on any Windows, so unregistering it fails
+    // everywhere, whoever answers.
+    CHECK(::EventUnregister(0) != ERROR_SUCCESS,
+          L"unregistering a handle that was never issued reported success");
+
+    // A GUID nothing else uses. Where the system has manifest-based ETW this
+    // registers and has to be undone; where it does not, winwrap says so and
+    // leaves a zero handle, which is what lets a caller that ignored the
+    // result go on to write and unregister harmlessly.
+    static const GUID kProvider = {
+        0x8f6c3b21, 0x54de, 0x4a70, {0x9b, 0x1e, 0x77, 0x61, 0x6e, 0x77, 0x72, 0x70}};
+    REGHANDLE handle       = 0x1234567812345678ULL;
+    const ULONG registered = ::EventRegister(&kProvider, nullptr, nullptr, &handle);
+    if (!SystemHas(L"advapi32.dll", "EventRegister")) {
+      CHECK(registered == ERROR_NOT_SUPPORTED,
+            L"the fallback EventRegister returned " << Hex(registered));
+      CHECK(handle == 0, L"a failed EventRegister left a non-zero handle");
+      CHECK(::EventUnregister(handle) == ERROR_INVALID_HANDLE,
+            L"the fallback EventUnregister did not refuse the zero handle");
+      CHECK(::EventRegister(&kProvider, nullptr, nullptr, nullptr) == ERROR_INVALID_PARAMETER,
+            L"the fallback EventRegister accepted a null handle pointer");
+      handle = 0x1234567812345678ULL;
+      CHECK(::EventRegister(nullptr, nullptr, nullptr, &handle) == ERROR_INVALID_PARAMETER &&
+                handle == 0,
+            L"the fallback EventRegister, refusing a null provider, left the handle set");
+      std::wcout << L"    no manifest-based ETW here; winwrap answered" << std::endl;
+    } else {
+      CHECK(registered == ERROR_SUCCESS,
+            L"the system's EventRegister failed with " << Hex(registered));
+      if (registered == ERROR_SUCCESS) {
+        CHECK(handle != 0, L"a successful EventRegister returned a zero handle");
+        CHECK(::EventUnregister(handle) == ERROR_SUCCESS,
+              L"a registered provider could not be unregistered");
+      }
+      std::wcout << L"    forwarded to the system's own EventRegister" << std::endl;
+    }
+
     std::wcout << L"  EventSetInformation" << std::endl;
 
     // Same shape, two Windows later: this arrived in Windows 8, so Vista and
@@ -1999,6 +2043,55 @@ namespace {
   }
 
   // --- Threads, error mode, restart ------------------------------------------
+
+  DWORD WINAPI IdleUntilSignalled(LPVOID event) {
+    ::WaitForSingleObject(static_cast<HANDLE>(event), INFINITE);
+    return 0;
+  }
+
+  void TestThreadId() {
+    std::wcout << L"  GetThreadId" << std::endl;
+
+    // The pseudo-handle for this thread is the one case with an independent
+    // answer already to hand.
+    CHECK(::GetThreadId(::GetCurrentThread()) == ::GetCurrentThreadId(),
+          L"GetThreadId(GetCurrentThread()) gave " << ::GetThreadId(::GetCurrentThread())
+                                                   << L", GetCurrentThreadId "
+                                                   << ::GetCurrentThreadId());
+
+    // A real handle to another thread, kept alive so the ID is asked of a
+    // running thread; CreateThread reports the same ID by its own route.
+    HANDLE release = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    DWORD created  = 0;
+    HANDLE thread  = ::CreateThread(nullptr, 0, IdleUntilSignalled, release, 0, &created);
+    CHECK(release && thread, L"could not create a thread to ask about");
+    if (release && thread) {
+      CHECK(::GetThreadId(thread) == created,
+            L"GetThreadId gave " << ::GetThreadId(thread) << L" for thread " << created);
+
+      // And still, once it has exited: the handle keeps the thread object,
+      // and with it the ID, until it is closed.
+      ::SetEvent(release);
+      ::WaitForSingleObject(thread, INFINITE);
+      CHECK(::GetThreadId(thread) == created,
+            L"GetThreadId gave " << ::GetThreadId(thread) << L" for exited thread " << created);
+
+      // A handle that is not a thread's. An event will do.
+      ::SetLastError(0);
+      CHECK(::GetThreadId(release) == 0 && ::GetLastError() != 0,
+            L"GetThreadId accepted an event handle, or failed without an error");
+    }
+    if (thread) {
+      ::CloseHandle(thread);
+    }
+    if (release) {
+      ::CloseHandle(release);
+    }
+    std::wcout << (SystemHas(L"kernel32.dll", "GetThreadId")
+                       ? L"    forwarded to the system's own GetThreadId"
+                       : L"    winwrap answered, through NtQueryInformationThread")
+               << std::endl;
+  }
 
   void TestProcessorNumber() {
     std::wcout << L"  GetCurrentProcessorNumber" << std::endl;
@@ -3185,6 +3278,100 @@ namespace {
     ::FreeLibrary(iphlpapi);
   }
 
+  // --- Symbol search path -----------------------------------------------------
+
+  void TestSymbolSearchPath() {
+    std::wcout << L"  SymGetSearchPathW, SymSetSearchPathW" << std::endl;
+
+    // By bare name, which is how a program that did not ship its own would
+    // get it, and is the dbghelp winwrap will then find already loaded.
+    HMODULE dbghelp = ::LoadLibraryW(L"dbghelp.dll");
+    if (!dbghelp) {
+      std::wcout << L"    (no dbghelp.dll on this system, not exercised)" << std::endl;
+      return;
+    }
+    const bool winwrap_answers = !::GetProcAddress(dbghelp, "SymSetSearchPathW");
+
+    using SymInitializeFn = BOOL(WINAPI*)(HANDLE, PCSTR, BOOL);
+    using SymCleanupFn    = BOOL(WINAPI*)(HANDLE);
+    const auto initialize = reinterpret_cast<SymInitializeFn>(
+        reinterpret_cast<void*>(::GetProcAddress(dbghelp, "SymInitialize")));
+    const auto cleanup = reinterpret_cast<SymCleanupFn>(
+        reinterpret_cast<void*>(::GetProcAddress(dbghelp, "SymCleanup")));
+    CHECK(initialize && cleanup, L"dbghelp.dll has no SymInitialize or SymCleanup");
+    if (!initialize || !cleanup) {
+      ::FreeLibrary(dbghelp);
+      return;
+    }
+
+    // A search path belongs to a symbol session, so there has to be one.
+    // FALSE: do not go and load symbols for every module in the process.
+    const HANDLE process = ::GetCurrentProcess();
+    if (!initialize(process, nullptr, FALSE)) {
+      std::wcout << L"    (SymInitialize failed with " << ::GetLastError() << L", not exercised)"
+                 << std::endl;
+      ::FreeLibrary(dbghelp);
+      return;
+    }
+
+    wchar_t path[1024] = {};
+    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)),
+          L"SymGetSearchPathW failed (" << ::GetLastError() << L")");
+    std::wcout << L"    (default path: " << path << L"; "
+               << (winwrap_answers ? L"winwrap, over the ANSI functions)"
+                                   : L"this dbghelp's own function)")
+               << std::endl;
+
+    // What V8 does: read it, append a directory, write it back.
+    const wchar_t kWanted[] = L"C:\\winwrap-test-symbols;C:\\winwrap-test-second";
+    CHECK(::SymSetSearchPathW(process, kWanted),
+          L"SymSetSearchPathW failed (" << ::GetLastError() << L")");
+    path[0] = L'\0';
+    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)),
+          L"SymGetSearchPathW failed after a set (" << ::GetLastError() << L")");
+    CHECK(::lstrcmpiW(path, kWanted) == 0,
+          L"the search path read back as \"" << path << L"\"");
+
+    // Null puts the default back, and is not an error.
+    CHECK(::SymSetSearchPathW(process, nullptr), L"SymSetSearchPathW(null) failed");
+    path[0] = L'#';
+    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)) &&
+              ::lstrcmpiW(path, kWanted) != 0,
+          L"a null search path did not replace the one that was set");
+
+    // A buffer too small for the path. winwrap refuses it and leaves it
+    // empty; what a dbghelp with its own wide function does is printed rather
+    // than asserted, because that is how to find out whether the two agree.
+    CHECK(::SymSetSearchPathW(process, kWanted), L"SymSetSearchPathW failed the second time");
+    wchar_t cramped[8] = {L'#', L'#', L'#', L'#', L'#', L'#', L'#', L'#'};
+    ::SetLastError(0);
+    const BOOL cramped_ok     = ::SymGetSearchPathW(process, cramped, 4);
+    const DWORD cramped_error = ::GetLastError();
+    CHECK(cramped[4] == L'#', L"a four-character buffer was written past its end");
+    if (winwrap_answers) {
+      CHECK(!cramped_ok && cramped_error == ERROR_INSUFFICIENT_BUFFER,
+            L"a four-character buffer was reported as holding the search path");
+      CHECK(cramped[0] == L'\0', L"a refused buffer was left unterminated");
+      CHECK(!::SymGetSearchPathW(process, nullptr, 16),
+            L"SymGetSearchPathW accepted a null buffer");
+    } else {
+      cramped[3] = L'\0'; // In case it filled all four and terminated nothing.
+      std::wcout << L"    (a 4-character buffer: this dbghelp returned "
+                 << (cramped_ok ? L"TRUE" : L"FALSE") << L", last error " << cramped_error
+                 << L", and left \"" << cramped << L"\")" << std::endl;
+    }
+
+    // The library is released here, as a program is entitled to do, and the
+    // pair is then called again. winwrap keeps its own reference to the
+    // dbghelp it resolved against, so this must fail cleanly -- the session
+    // is gone -- or succeed, and must not fault.
+    cleanup(process);
+    ::FreeLibrary(dbghelp);
+    wchar_t after[64] = {};
+    ::SymGetSearchPathW(process, after, ARRAYSIZE(after));
+    ::SymSetSearchPathW(process, L"C:\\winwrap-test-after-unload");
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -3524,6 +3711,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestFinalPathAndReOpen();
   TestNamedPipes();
   TestProcessorNumber();
+  TestThreadId();
   TestLogicalProcessorInformation();
   TestErrorModeAndRestart();
   TestDirectories();
@@ -3535,6 +3723,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestDynamicTimeZone();
   TestKnownFolderPath();
   TestNetworkInterfaces();
+  TestSymbolSearchPath();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();
