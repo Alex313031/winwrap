@@ -42,6 +42,7 @@ EXTERN _ww_GetFinalPathNameByHandleW@16 : PROC
 EXTERN _ww_ReOpenFile@16 : PROC
 EXTERN _ww_CreateSymbolicLinkW@12 : PROC
 EXTERN _ww_NeedCurrentDirectoryForExePathW@4 : PROC
+EXTERN _ww_FindFirstFileExW@24 : PROC
 EXTERN _ww_GetNamedPipeClientProcessId@8 : PROC
 EXTERN _ww_GetNamedPipeServerProcessId@8 : PROC
 EXTERN _ww_GetCurrentProcessorNumber@0 : PROC
@@ -158,6 +159,10 @@ PUBLIC _NeedCurrentDirectoryForExePathW@4
 _NeedCurrentDirectoryForExePathW@4 PROC
     jmp _ww_NeedCurrentDirectoryForExePathW@4
 _NeedCurrentDirectoryForExePathW@4 ENDP
+PUBLIC _FindFirstFileExW@24
+_FindFirstFileExW@24 PROC
+    jmp _ww_FindFirstFileExW@24
+_FindFirstFileExW@24 ENDP
 PUBLIC _GetNamedPipeClientProcessId@8
 _GetNamedPipeClientProcessId@8 PROC
     jmp _ww_GetNamedPipeClientProcessId@8

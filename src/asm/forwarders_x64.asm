@@ -39,6 +39,7 @@ EXTERN ww_GetFinalPathNameByHandleW : PROC
 EXTERN ww_ReOpenFile : PROC
 EXTERN ww_CreateSymbolicLinkW : PROC
 EXTERN ww_NeedCurrentDirectoryForExePathW : PROC
+EXTERN ww_FindFirstFileExW : PROC
 EXTERN ww_GetNamedPipeClientProcessId : PROC
 EXTERN ww_GetNamedPipeServerProcessId : PROC
 EXTERN ww_GetCurrentProcessorNumber : PROC
@@ -135,6 +136,8 @@ PUBLIC __imp_CreateSymbolicLinkW
 __imp_CreateSymbolicLinkW dq ww_CreateSymbolicLinkW
 PUBLIC __imp_NeedCurrentDirectoryForExePathW
 __imp_NeedCurrentDirectoryForExePathW dq ww_NeedCurrentDirectoryForExePathW
+PUBLIC __imp_FindFirstFileExW
+__imp_FindFirstFileExW dq ww_FindFirstFileExW
 PUBLIC __imp_GetNamedPipeClientProcessId
 __imp_GetNamedPipeClientProcessId dq ww_GetNamedPipeClientProcessId
 PUBLIC __imp_GetNamedPipeServerProcessId
