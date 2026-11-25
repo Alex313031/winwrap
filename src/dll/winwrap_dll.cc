@@ -4,7 +4,7 @@
 
 // winwrap.dll functions
 
-#include "winwrap.h"
+#include "../winwrap.h"
 
 #ifdef WINWRAP_STATIC
  #error This file should only be built in shared dll winwrap builds

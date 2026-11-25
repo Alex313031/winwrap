@@ -396,38 +396,9 @@ extern "C" HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
   return S_OK;
 }
 
-// The same function under its undecorated-import name: SHGetKnownFolderPath
-// itself, _SHGetKnownFolderPath@16 to the x86 linker.
-//
-// Every other redirect in winwrap is an `__imp_<name>` slot and nothing more,
-// because every other function is declared __declspec(dllimport) in the SDK
-// and a call to it compiles to a load through that slot. This one is not.
-// ShlObj_core.h declares it STDAPI -- no dllimport -- so a caller references
-// the function by name, the way it would reference something in its own
-// program, and expects the linker to find a body. shell32.lib has one: its
-// member for this function defines both the name, as a jump through the slot,
-// and the slot. Pulling that member in for the name therefore brings a second
-// `__imp__SHGetKnownFolderPath@16` with it, and the link fails with LNK2005
-// against winwrap's.
-//
-// Defining the name here means the reference is settled before shell32.lib is
-// asked, its member is never extracted, and there is one slot. That depends
-// on winwrap coming ahead of shell32.lib among the libraries, which is where
-// a consumer already has to put it. Should the order ever be the other way
-// round the result is the same LNK2005 -- a build failure, not a binary that
-// quietly calls the wrong thing.
-//
-// winwrap.h does not declare this; it is not a ww_ stand-in and nothing in
-// winwrap calls it. The definition is its own declaration.
-//
-// Not for MinGW, where static_redirects.cc defines the plain name of every
-// redirected function, this one included, and a second definition here would
-// collide with it.
-#if !defined(__MINGW32__)
-extern "C" HRESULT WINAPI SHGetKnownFolderPath(const GUID& rfid,
-                                               DWORD dwFlags,
-                                               HANDLE hToken,
-                                               PWSTR* ppszPath) {
-  return ww_SHGetKnownFolderPath(rfid, dwFlags, hToken, ppszPath);
-}
-#endif // !defined(__MINGW32__)
+// The same function under its own name, SHGetKnownFolderPath rather than the
+// import slot, used to be defined here: ShlObj_core.h declares it plain
+// STDAPI with no dllimport, so a caller references the name, and shell32.lib's
+// member for the name brings a second definition of the slot with it. That
+// turned out not to be peculiar to this function, and every redirect now gets
+// the same treatment in one place -- see static_redirects.cc.

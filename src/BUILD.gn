@@ -67,6 +67,7 @@ config("winwrap_private_config") {
 # DLL imports from kernel32 the very functions it exists to supply, and fails
 # to load on XP before any of this runs.
 _winwrap_sources = [
+  "asm/plain_names.cc",
   "cancel_io.cc",
   "condition_variable.cc",
   "critical_section.cc",
@@ -114,8 +115,8 @@ shared_library("winwrap_shared") {
   # winwrap_dll.cc contains functions only a DLL would want.
   # .rc is for embedded version info.
   sources = _winwrap_sources + [
-    "winwrap.rc",
-    "winwrap_dll.cc",
+    "dll/winwrap.rc",
+    "dll/winwrap_dll.cc",
   ]
 
   # //build/config:common_deps depends on winwrap_lib, and every
@@ -128,8 +129,8 @@ shared_library("winwrap_shared") {
   # Exports the public Win32 names, aliased onto the ww_ implementations,
   # so the generated import library satisfies __imp_<name> and the linker
   # binds to winwrap.dll instead of kernel32.
-  inputs = [ "winwrap.def" ]
-  ldflags = [ "/DEF:" + rebase_path("winwrap.def", root_build_dir) ]
+  inputs = [ "dll/winwrap.def" ]
+  ldflags = [ "/DEF:" + rebase_path("dll/winwrap.def", root_build_dir) ]
 
   configs += [ ":winwrap_private_config" ]
   public_configs = [ "../:winwrap_public_config" ]

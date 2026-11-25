@@ -15,6 +15,8 @@ executable("winwrap_unit_test") {
   ]
 
   sources = [
+    "plain_names_test.c",
+    "plain_names_test.h",
     "winwrap_unittest.cc",
     "winwrap_unittest.h",
   ]

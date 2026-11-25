@@ -12,6 +12,9 @@ how the Windows SDK declares every Win32 function — does not jump to the
 function; it loads a pointer out of `__imp_<name>` and calls through that. So
 defining `__imp_<name>` is enough to capture every call site in the binary,
 including the ones inside the CRT and inside static libraries you did not build.
+The few references that name a function directly instead — a C table of
+function addresses, a declaration without `dllimport` — are answered too; see
+[*Functions referenced by name*](./BUILDING.md#functions-referenced-by-name).
 See [*About function overriding*](./BUILDING.md#about-function-overriding) for
 how that works.
 
@@ -196,9 +199,9 @@ caller already handles. A new one needs:
 2. its declaration in `src/winwrap.h`;
 3. a `WINWRAP_REDIRECT(<Name>, <bytes>)` line in `src/static_redirects.cc`,
    where `<bytes>` is the x86 `__stdcall` argument size;
-4. an export line in `src/winwrap.def`;
-5. `python3 tools/gen_forwarders.py`, which regenerates the MASM tables and
-   the MinGW `.def` from those;
+4. an export line in `src/dll/winwrap.def`;
+5. `python3 tools/gen_forwarders.py`, which regenerates the MASM tables --
+   slots and plain names both -- and the MinGW `.def` from those;
 6. a unit test in `test/winwrap_unittest.cc` — every shim has one;
 7. a row in `FUNCTION_LIST.md`, and an entry in `INCOMPLETE_FUNCS.md` if it
    does less than the real function.
@@ -211,7 +214,7 @@ worth much less than one that has been run on the system it is for.
 Linking `winwrap.dll` instead changes two of the five steps:
 
 * **Step 2 does not apply.** The import library generated from
-  `src/winwrap.def` exports the public Win32 names aliased onto the `ww_*`
+  `src/dll/winwrap.def` exports the public Win32 names aliased onto the `ww_*`
   implementations, so it supplies every `__imp_<name>` directly and there is
   nothing to force in.
 * **Step 4 does not apply** to your link line; the DLL carries advapi32 itself.

@@ -32,7 +32,7 @@
 #
 # What differs is the redirect table. MSVC cannot compile
 # src/static_redirects.cc, which names its symbols with asm labels, and
-# assembles src/forwarders_<arch>.asm in its place. GCC can, so this build
+# assembles src/asm/forwarders_<arch>.asm in its place. GCC can, so this build
 # compiles the .cc and never touches the .asm.
 #
 # --- Consuming the result --------------------------------------------------
@@ -58,6 +58,7 @@
 
 CROSS   ?=
 CXX     := $(CROSS)g++
+CC      := $(CROSS)gcc
 AR      := $(CROSS)ar
 WINDRES := $(CROSS)windres
 DLLTOOL := $(CROSS)dlltool
@@ -145,6 +146,9 @@ CXXFLAGS := -std=c++17 -Wall -Wextra -fno-exceptions -fno-rtti \
 
 # Every source except winwrap_dll.cc, which holds what only a DLL wants.
 # static_redirects.cc is in the list, unlike the Makefile's: see the top.
+# plain_names.cc is its companion -- the same table as functions' own names
+# rather than their import slots -- and an ordinary archive member, extracted
+# when a name is referenced rather than forced in by the anchor.
 SOURCES := \
 	cancel_io \
 	condition_variable \
@@ -165,6 +169,7 @@ SOURCES := \
 	net \
 	parking_lot \
 	pipes \
+	plain_names \
 	process \
 	registry \
 	shell32 \
@@ -234,10 +239,10 @@ TESTLIBS := -ladvapi32 -luser32 -lole32 -lshell32
 # the import library is built separately by dlltool, which keeps the suffix on
 # the symbols a call site references. See the header of that file.
 ifeq ($(ARCH),x64)
-DEFFILE  := src/winwrap.def
+DEFFILE  := src/dll/winwrap.def
 DLLFLAGS := -Wl,--out-implib,$(IMPLIB)
 else
-DEFFILE  := src/winwrap_gnu_x86.def
+DEFFILE  := src/dll/winwrap_gnu_x86.def
 DLLFLAGS := -Wl,--kill-at
 endif
 
@@ -292,13 +297,22 @@ test: $(TESTEXE)
 	@echo  Built $(TESTEXE).
 	@echo  Run it from that directory. Nothing needs installing.
 
-$(TESTEXE): $(OBJDIR)/winwrap_unittest.o $(LIBTARGET)
-	$(CXX) -o $@ $(OBJDIR)/winwrap_unittest.o $(FORCEREDIRECTS) $(WINWRAPLIB) \
+TESTOBJECTS := $(OBJDIR)/winwrap_unittest.o $(OBJDIR)/plain_names_test.o
+
+$(TESTEXE): $(TESTOBJECTS) $(LIBTARGET)
+	$(CXX) -o $@ $(TESTOBJECTS) $(FORCEREDIRECTS) $(WINWRAPLIB) \
 		-municode -static $(SUBSYSCON) $(LIBS) $(TESTLIBS)
 
-$(OBJDIR)/winwrap_unittest.o: test/winwrap_unittest.cc test/winwrap_unittest.h $(HEADERS)
+$(OBJDIR)/winwrap_unittest.o: test/winwrap_unittest.cc test/winwrap_unittest.h \
+		test/plain_names_test.h $(HEADERS)
 	@$(call MKDIR,$(OBJDIR))
 	$(CXX) -c $(TESTCXXFLAGS) -o $@ test/winwrap_unittest.cc
+
+# The test's one C file, which has to be C: see its header. TESTCXXFLAGS
+# without the language standard, which gcc would reject for C.
+$(OBJDIR)/plain_names_test.o: test/plain_names_test.c test/plain_names_test.h
+	@$(call MKDIR,$(OBJDIR))
+	$(CC) -c $(filter-out -std=c++17,$(TESTCXXFLAGS)) -o $@ test/plain_names_test.c
 
 # Rebuilt from scratch each time, because `ar r` adds to an existing archive
 # and would leave a removed source's object behind in it.
@@ -323,15 +337,25 @@ $(OBJDIR)/%.o: src/%.cc $(HEADERS)
 	@$(call MKDIR,$(OBJDIR))
 	$(CXX) -c $(CXXFLAGS) -o $@ $<
 
+# The same rule for the two subdirectories: src/asm for plain_names.cc and
+# src/dll for winwrap_dll.cc. The objects still land flat in $(OBJDIR).
+$(OBJDIR)/%.o: src/asm/%.cc $(HEADERS)
+	@$(call MKDIR,$(OBJDIR))
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+$(OBJDIR)/%.o: src/dll/%.cc $(HEADERS)
+	@$(call MKDIR,$(OBJDIR))
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
 # The version resource. The same three inputs rc gets in the Makefile: the
 # form, the marker and the include directory.
-$(OBJDIR)/winwrap_res.o: src/winwrap.rc src/winwrap_version.h
+$(OBJDIR)/winwrap_res.o: src/dll/winwrap.rc src/winwrap_version.h
 	@$(call MKDIR,$(OBJDIR))
-	$(WINDRES) $(FORMDEF) -DUSING_WINWRAP -Isrc -O coff -o $@ src/winwrap.rc
+	$(WINDRES) $(FORMDEF) -DUSING_WINWRAP -Isrc -O coff -o $@ src/dll/winwrap.rc
 
 # The generated files are checked in, so this build needs no Python. This
 # target only verifies they agree with their sources. One of them,
-# src/winwrap_gnu_x86.def, is this build's own input.
+# src/dll/winwrap_gnu_x86.def, is this build's own input.
 check-forwarders:
 	$(PYTHON) tools/gen_forwarders.py --check
 
