@@ -32,7 +32,7 @@
 #
 # What differs is the redirect table. MSVC cannot compile
 # src/static_redirects.cc, which names its symbols with asm labels, and
-# assembles src/forwarders_<arch>.asm in its place. GCC can, so this build
+# assembles src/asm/forwarders_<arch>.asm in its place. GCC can, so this build
 # compiles the .cc and never touches the .asm.
 #
 # --- Consuming the result --------------------------------------------------
@@ -239,10 +239,10 @@ TESTLIBS := -ladvapi32 -luser32 -lole32 -lshell32
 # the import library is built separately by dlltool, which keeps the suffix on
 # the symbols a call site references. See the header of that file.
 ifeq ($(ARCH),x64)
-DEFFILE  := src/winwrap.def
+DEFFILE  := src/dll/winwrap.def
 DLLFLAGS := -Wl,--out-implib,$(IMPLIB)
 else
-DEFFILE  := src/winwrap_gnu_x86.def
+DEFFILE  := src/dll/winwrap_gnu_x86.def
 DLLFLAGS := -Wl,--kill-at
 endif
 
@@ -337,15 +337,25 @@ $(OBJDIR)/%.o: src/%.cc $(HEADERS)
 	@$(call MKDIR,$(OBJDIR))
 	$(CXX) -c $(CXXFLAGS) -o $@ $<
 
+# The same rule for the two subdirectories: src/asm for plain_names.cc and
+# src/dll for winwrap_dll.cc. The objects still land flat in $(OBJDIR).
+$(OBJDIR)/%.o: src/asm/%.cc $(HEADERS)
+	@$(call MKDIR,$(OBJDIR))
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
+$(OBJDIR)/%.o: src/dll/%.cc $(HEADERS)
+	@$(call MKDIR,$(OBJDIR))
+	$(CXX) -c $(CXXFLAGS) -o $@ $<
+
 # The version resource. The same three inputs rc gets in the Makefile: the
 # form, the marker and the include directory.
-$(OBJDIR)/winwrap_res.o: src/winwrap.rc src/winwrap_version.h
+$(OBJDIR)/winwrap_res.o: src/dll/winwrap.rc src/winwrap_version.h
 	@$(call MKDIR,$(OBJDIR))
-	$(WINDRES) $(FORMDEF) -DUSING_WINWRAP -Isrc -O coff -o $@ src/winwrap.rc
+	$(WINDRES) $(FORMDEF) -DUSING_WINWRAP -Isrc -O coff -o $@ src/dll/winwrap.rc
 
 # The generated files are checked in, so this build needs no Python. This
 # target only verifies they agree with their sources. One of them,
-# src/winwrap_gnu_x86.def, is this build's own input.
+# src/dll/winwrap_gnu_x86.def, is this build's own input.
 check-forwarders:
 	$(PYTHON) tools/gen_forwarders.py --check
 

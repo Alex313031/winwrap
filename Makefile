@@ -28,7 +28,7 @@
 # who wants to target XP or Vista, with no Chromium in sight and no reason to
 # install a second compiler.
 #
-# So it assembles src/forwarders_$(ARCH).asm instead -- the same table of
+# So it assembles src/asm/forwarders_$(ARCH).asm instead -- the same table of
 # __imp_<name> slots, written in MASM, which is the one assembler that can
 # name a symbol like __imp__GetTickCount64@0. That is not a legal C
 # identifier, which is why the C++ version needs an asm label and MSVC cannot
@@ -403,9 +403,9 @@ $(STATICLIB): $(OBJECTS)
 # redirecting its own calls the DLL would import from kernel32 the very
 # functions it exists to supply, and fail to load on XP before any of its own
 # code runs.
-$(SHAREDLIB): $(OBJECTS) $(OBJDIR)\winwrap_dll.obj $(OBJDIR)\winwrap.res src\winwrap.def
+$(SHAREDLIB): $(OBJECTS) $(OBJDIR)\winwrap_dll.obj $(OBJDIR)\winwrap.res src\dll\winwrap.def
 	@if not exist $(OUTDIR) mkdir $(OUTDIR)
-	link /nologo /DLL /OUT:$@ /DEF:src\winwrap.def \
+	link /nologo /DLL /OUT:$@ /DEF:src\dll\winwrap.def \
 		/IMPLIB:$(OUTDIR)\winwrap.lib /DEBUG /PDB:$(OUTDIR)\winwrap.pdb \
 		$(SUBSYS) $(LIBS) \
 		$(OBJECTS) $(OBJDIR)\winwrap_dll.obj $(OBJDIR)\winwrap.res
@@ -416,17 +416,23 @@ $(SHAREDLIB): $(OBJECTS) $(OBJDIR)\winwrap_dll.obj $(OBJDIR)\winwrap.res src\win
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	cl $(CXXFLAGS) $<
 
-$(OBJDIR)\forwarders.obj: src\forwarders_$(ARCH).asm
+# The same rule for src\dll, which holds winwrap_dll.cc. An inference rule
+# names one directory, so the subdirectory needs its own.
+{src\dll}.cc{$(OBJDIR)}.obj::
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
-	$(ASM) $(ASFLAGS) /Fo$@ src\forwarders_$(ARCH).asm
+	cl $(CXXFLAGS) $<
 
-$(OBJDIR)\plain_names.obj: src\plain_names_$(ARCH).asm
+$(OBJDIR)\forwarders.obj: src\asm\forwarders_$(ARCH).asm
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
-	$(ASM) $(ASFLAGS) /Fo$@ src\plain_names_$(ARCH).asm
+	$(ASM) $(ASFLAGS) /Fo$@ src\asm\forwarders_$(ARCH).asm
 
-$(OBJDIR)\winwrap.res: src\winwrap.rc src\winwrap_version.h
+$(OBJDIR)\plain_names.obj: src\asm\plain_names_$(ARCH).asm
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
-	rc /nologo $(FORMDEF) /DUSING_WINWRAP /fo$@ /I src src\winwrap.rc
+	$(ASM) $(ASFLAGS) /Fo$@ src\asm\plain_names_$(ARCH).asm
+
+$(OBJDIR)\winwrap.res: src\dll\winwrap.rc src\winwrap_version.h
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
+	rc /nologo $(FORMDEF) /DUSING_WINWRAP /fo$@ /I src src\dll\winwrap.rc
 
 # Every object depends on every header. The set is small and they include one
 # another freely, so tracking it per file would be precision without value.

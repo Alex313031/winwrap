@@ -19,8 +19,8 @@ the other, never both** — two definitions of a slot is a duplicate symbol:
 
 | source | needs | used by |
 |---|---|---|
-| `src/static_redirects.cc`, `src/plain_names.cc` | clang-cl or GCC | the GN build and the GNUmakefile |
-| `src/forwarders_x86.asm`, `src/forwarders_x64.asm`, `src/plain_names_x86.asm`, `src/plain_names_x64.asm` | MASM (`ml`/`ml64`) | the Makefile and the GYP build |
+| `src/static_redirects.cc`, `src/asm/plain_names.cc` | clang-cl or GCC | the GN build and the GNUmakefile |
+| `src/asm/forwarders_x86.asm`, `src/asm/forwarders_x64.asm`, `src/asm/plain_names_x86.asm`, `src/asm/plain_names_x64.asm` | MASM (`ml`/`ml64`) | the Makefile and the GYP build |
 
 Each form is two objects. The first of each pair defines the `__imp_<name>`
 slots and is forced into every link. The second, `plain_names`, defines the
@@ -110,10 +110,12 @@ existing one in `pylib/gyp/MSVSSettings.py`; sawbuck-ng carries it as
 #### Integrating into a custom .sln/vcxproj
 Nothing here needs a generator. For a hand-maintained project:
 
-1. **Add the sources** — everything in `src/` *except* `static_redirects.cc`
-   and `plain_names.cc`, which need clang. Add the four `.asm` files in their
-   place (`forwarders_*` and `plain_names_*`, both architectures), and
-   `winwrap_dll.cc` plus `winwrap.rc` only if you are building the DLL.
+1. **Add the sources** — every `.cc` directly in `src/` *except*
+   `static_redirects.cc`, which needs clang, and the four `.asm` files in
+   `src/asm/` in its place (`forwarders_*` and `plain_names_*`, both
+   architectures). Leave out `src/asm/plain_names.cc`, which is the clang form
+   of the latter. Add `src/dll/winwrap_dll.cc` and `src/dll/winwrap.rc`, and
+   link with `src/dll/winwrap.def`, only if you are building the DLL.
 2. **Enable MASM.** Right-click the project → Build Dependencies → Build
    Customizations → tick **masm**. Visual Studio then assembles `.asm` sources
    with `ml` or `ml64` according to the configuration's platform.
@@ -193,10 +195,10 @@ plus `-ladvapi32`.
 
 Two things differ from the MSVC build, both handled for you:
 
-- It compiles `src/static_redirects.cc` and `src/plain_names.cc` and never
+- It compiles `src/static_redirects.cc` and `src/asm/plain_names.cc` and never
   uses the generated `.asm`. GCC supports the asm labels and file-scope
   assembly those files need; MSVC does not.
-- The 32-bit DLL is linked from `src/winwrap_gnu_x86.def`, a generated copy of
+- The 32-bit DLL is linked from `src/dll/winwrap_gnu_x86.def`, a generated copy of
   `winwrap.def` with the `@bytes` suffixes GNU ld needs written out.
   `tools/gen_forwarders.py` produces it and `check-forwarders` verifies it.
 

@@ -4,7 +4,7 @@
 
 #define APSTUDIO_READONLY_SYMBOLS
 
-#include "winwrap_version.h"
+#include "../winwrap_version.h"
 
 // Version block only: no dialogs or controls, so no <commctrl.h> here.
 #define APSTUDIO_HIDDEN_SYMBOLS

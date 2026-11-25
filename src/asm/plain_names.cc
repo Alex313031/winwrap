@@ -13,8 +13,8 @@
 // anchor out, so the list of functions exists once.
 //
 // This is the Clang and GCC form. MSVC has no file-scope assembly, and its
-// builds assemble src/plain_names_<arch>.asm in place of this, as they
+// builds assemble plain_names_<arch>.asm, beside this file, in place of it, as they
 // assemble forwarders_<arch>.asm in place of static_redirects.cc.
 
 #define WINWRAP_PLAIN_NAMES_ONLY
-#include "static_redirects.cc"
+#include "../static_redirects.cc"

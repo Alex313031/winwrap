@@ -147,8 +147,8 @@ jobs:
           rem -m32/-m64 is what selects it.
           for %%b in (32 64) do (
             echo ---- -m%%b
-            for %%f in (src\*.cc) do if /i not "%%~nxf"=="winwrap_dll.cc" "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% %DEFS% -DWINWRAP_STATIC "%%f" || exit /b 1
-            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% %DEFS% -DWINWRAP_DLL src\winwrap_dll.cc || exit /b 1
+            for %%f in (src\*.cc src\asm\*.cc) do "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% %DEFS% -DWINWRAP_STATIC "%%f" || exit /b 1
+            "%CLANGCL%" /nologo /Zs -m%%b /std:c++17 /I src %LOW% %DEFS% -DWINWRAP_DLL src\dll\winwrap_dll.cc || exit /b 1
             rem Three include directories for the test and one for the sources,
             rem matching the Makefile and both .gn/.gyp forms. winwrap's own
             rem sources reach the public header as "public/winwrap_public.h",
