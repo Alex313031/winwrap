@@ -2429,6 +2429,102 @@ namespace {
 
   // --- Directories -----------------------------------------------------------
 
+  void TestFindFirstFileEx() {
+    std::wcout << L"  FindFirstFileExW (Windows 7 arguments)" << std::endl;
+
+    // A directory of its own with three files, so the count is known.
+    wchar_t temp[MAX_PATH] = {};
+    ::GetTempPathW(ARRAYSIZE(temp), temp);
+    wchar_t directory[MAX_PATH] = {};
+    ::wsprintfW(directory, L"%swinwrap-find-%lu", temp, ::GetCurrentProcessId());
+    CHECK(::CreateDirectoryW(directory, nullptr), L"could not create a scratch directory");
+    wchar_t path[MAX_PATH] = {};
+    for (int i = 0; i < 3; ++i) {
+      ::wsprintfW(path, L"%s\\a long file name %d.txt", directory, i);
+      HANDLE file = ::CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL, nullptr);
+      CHECK(file != INVALID_HANDLE_VALUE, L"could not create a scratch file");
+      if (file != INVALID_HANDLE_VALUE) {
+        ::CloseHandle(file);
+      }
+    }
+    wchar_t pattern[MAX_PATH] = {};
+    ::wsprintfW(pattern, L"%s\\*.txt", directory);
+
+    // The plain form, which every Windows accepts, as the reference.
+    const auto count = [&](FINDEX_INFO_LEVELS level, DWORD flags, bool* short_names) {
+      WIN32_FIND_DATAW data;
+      memset(&data, 0xCC, sizeof(data));
+      HANDLE find = ::FindFirstFileExW(pattern, level, &data, FindExSearchNameMatch, nullptr,
+                                       flags);
+      if (find == INVALID_HANDLE_VALUE) {
+        return -static_cast<int>(::GetLastError()) - 1;
+      }
+      // The first entry only: it is the one FindFirstFileExW itself fills in.
+      // The rest come from FindNextFileW, which winwrap does not stand in
+      // front of, so after a retry they carry short names as the standard
+      // level does.
+      if (short_names && data.cAlternateFileName[0] != L'\0') {
+        *short_names = true;
+      }
+      int found = 0;
+      do {
+        ++found;
+      } while (::FindNextFileW(find, &data));
+      ::FindClose(find);
+      return found;
+    };
+
+    CHECK(count(FindExInfoStandard, 0, nullptr) == 3,
+          L"the standard search found " << count(FindExInfoStandard, 0, nullptr) << L" of 3");
+
+    // FindExInfoBasic and FIND_FIRST_EX_LARGE_FETCH (0x2) are Windows 7's.
+    // On anything older the system refuses them and winwrap has to retry.
+    bool short_names = false;
+    int found        = count(FindExInfoBasic, 0, &short_names);
+    CHECK(found == 3, L"FindExInfoBasic gave " << found << L" (negative is -(error)-1)");
+    CHECK(!short_names, L"FindExInfoBasic returned a short name on the first entry");
+
+    found = count(FindExInfoBasic, 0x00000002, nullptr);
+    CHECK(found == 3, L"FindExInfoBasic with LARGE_FETCH gave " << found);
+    found = count(FindExInfoStandard, 0x00000002, nullptr);
+    CHECK(found == 3, L"FindExInfoStandard with LARGE_FETCH gave " << found);
+    // Once more, for the path taken once the refusal has been remembered.
+    found = count(FindExInfoBasic, 0x00000002, nullptr);
+    CHECK(found == 3, L"the second FindExInfoBasic search gave " << found);
+
+    // FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY (0x4) is Windows 10's, and is taken
+    // off separately from the other two: Windows 7 and 8 refuse it alone.
+    found = count(FindExInfoBasic, 0x00000004 | 0x00000002, nullptr);
+    CHECK(found == 3, L"FindExInfoBasic with ON_DISK_ENTRIES_ONLY gave " << found);
+    found = count(FindExInfoStandard, 0x00000004, nullptr);
+    CHECK(found == 3, L"FindExInfoStandard with ON_DISK_ENTRIES_ONLY gave " << found);
+    // And a search without it afterwards is none the worse for it.
+    short_names = false;
+    found       = count(FindExInfoBasic, 0x00000002, &short_names);
+    CHECK(found == 3, L"FindExInfoBasic after ON_DISK_ENTRIES_ONLY gave " << found);
+    CHECK(!short_names, L"FindExInfoBasic returned a short name after ON_DISK_ENTRIES_ONLY");
+
+    // A failure that has nothing to do with the new arguments must come back
+    // as itself, not be retried into something else.
+    ::wsprintfW(path, L"%s\\no-such-*.xyz", directory);
+    WIN32_FIND_DATAW data = {};
+    ::SetLastError(0);
+    HANDLE none = ::FindFirstFileExW(path, FindExInfoBasic, &data, FindExSearchNameMatch,
+                                     nullptr, 0x00000002);
+    CHECK(none == INVALID_HANDLE_VALUE && ::GetLastError() == ERROR_FILE_NOT_FOUND,
+          L"a search matching nothing gave error " << ::GetLastError());
+    if (none != INVALID_HANDLE_VALUE) {
+      ::FindClose(none);
+    }
+
+    for (int i = 0; i < 3; ++i) {
+      ::wsprintfW(path, L"%s\\a long file name %d.txt", directory, i);
+      ::DeleteFileW(path);
+    }
+    CHECK(::RemoveDirectoryW(directory), L"could not remove the scratch directory");
+  }
+
   void TestDirectories() {
     std::wcout << L"  CreateSymbolicLinkW, NeedCurrentDirectoryForExePathW" << std::endl;
 
@@ -3878,6 +3974,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestLogicalProcessorInformation();
   TestErrorModeAndRestart();
   TestDirectories();
+  TestFindFirstFileEx();
   TestFibers();
   TestMainThreadFiberSequence();
   TestCriticalSectionEx();

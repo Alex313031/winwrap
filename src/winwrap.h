@@ -80,6 +80,15 @@ BOOLEAN WINAPI ww_CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
                                       LPCWSTR lpTargetFileName,
                                       DWORD dwFlags);
 BOOL WINAPI ww_NeedCurrentDirectoryForExePathW(LPCWSTR ExeName);
+// FindFirstFileExW exists everywhere; what XP and Vista lack is two arguments
+// Windows 7 added, FindExInfoBasic and FIND_FIRST_EX_LARGE_FETCH. Retried
+// without them when the system refuses. See directories.cc.
+HANDLE WINAPI ww_FindFirstFileExW(LPCWSTR lpFileName,
+                                  FINDEX_INFO_LEVELS fInfoLevelId,
+                                  LPVOID lpFindFileData,
+                                  FINDEX_SEARCH_OPS fSearchOp,
+                                  LPVOID lpSearchFilter,
+                                  DWORD dwAdditionalFlags);
 
 // --- Named pipes -----------------------------------------------------------
 // Vista+. Answer only where the kernel can be made to say; see pipes.cc for

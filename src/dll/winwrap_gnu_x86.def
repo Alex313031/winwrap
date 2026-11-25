@@ -46,6 +46,7 @@ EXPORTS
     EventSetInformation@20 = ww_EventSetInformation@20
     EventUnregister@8 = ww_EventUnregister@8
     EventWriteTransfer@28 = ww_EventWriteTransfer@28
+    FindFirstFileExW@24 = ww_FindFirstFileExW@24
     FlsAlloc@4 = ww_FlsAlloc@4
     FlsFree@4 = ww_FlsFree@4
     FlsGetValue@4 = ww_FlsGetValue@4

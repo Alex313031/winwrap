@@ -19,6 +19,7 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | Function | DLL | Native since | Notes |
 |---|---|---|---|
 | `CreateSymbolicLinkW` | kernel32 | Vista | Always fails with `ERROR_NOT_SUPPORTED`; XP has no symbolic links to create |
+| `FindFirstFileExW` | kernel32 | Windows 7 (two arguments) | The function is in every Windows; `FindExInfoBasic` and `FIND_FIRST_EX_LARGE_FETCH` are not, and XP and Vista reject them. Retried without them, which costs nothing but speed. MSVC's `std::filesystem` directory iteration, and so Node's `fs.rmSync`, needs this |
 | `NeedCurrentDirectoryForExePathW` | kernel32 | Server 2003 | Implemented in full; the rule is `NoDefaultCurrentDirectoryInExePath` plus a backslash test |
 | `GetFileInformationByHandleEx` | kernel32 | Vista | `NtQueryInformationFile`, plus `NtQueryDirectoryFile` for the enumeration classes and a synthesised `FileIdInfo` |
 | `SetFileInformationByHandle` | kernel32 | Vista | `NtSetInformationFile`; the rename class translates its DOS path to an NT one |

@@ -197,6 +197,9 @@ WINWRAP_REDIRECT(ReOpenFile, 16);
 
 WINWRAP_REDIRECT(CreateSymbolicLinkW, 12);
 WINWRAP_REDIRECT(NeedCurrentDirectoryForExePathW, 4);
+// Unlike every other entry, exported by every Windows: redirected for the
+// sake of two arguments an older one rejects. See directories.cc.
+WINWRAP_REDIRECT(FindFirstFileExW, 24);
 
 WINWRAP_REDIRECT(GetNamedPipeClientProcessId, 8);
 WINWRAP_REDIRECT(GetNamedPipeServerProcessId, 8);
