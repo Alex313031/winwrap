@@ -181,9 +181,17 @@ CRTFLAG  = /MT
 
 CXXFLAGS = $(CXXFLAGS) $(OPTFLAGS) $(CRTFLAG)
 
-# Every source except static_redirects.cc, whose job forwarders_$(ARCH).asm
-# does here, and winwrap_dll.cc, which holds what only a DLL wants and would
-# be dead weight in the static library.
+# Every source except static_redirects.cc and plain_names.cc, whose jobs
+# forwarders_$(ARCH).asm and plain_names_$(ARCH).asm do here, and
+# winwrap_dll.cc, which holds what only a DLL wants and would be dead weight
+# in the static library.
+#
+# plain_names.obj is every redirected function under its own name rather than
+# its __imp_ slot, for a caller that takes a function's address in a C table
+# or declares it without dllimport -- static_redirects.cc has the account. It
+# is a separate object from forwarders.obj on purpose: that one is forced into
+# every link by the /INCLUDE: anchor, this one is extracted only when a name
+# is referenced.
 OBJECTS = \
 	$(OBJDIR)\cancel_io.obj \
 	$(OBJDIR)\condition_variable.obj \
@@ -214,7 +222,8 @@ OBJECTS = \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \
 	$(OBJDIR)\timezone.obj \
-	$(OBJDIR)\forwarders.obj
+	$(OBJDIR)\forwarders.obj \
+	$(OBJDIR)\plain_names.obj
 
 HEADERS = \
 	src\dispatch.h \
@@ -284,6 +293,14 @@ TESTFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /EHsc $(FORMDEF) \
 	$(OPTFLAGS) $(CRTFLAG) \
 	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_test.pdb
 
+# The test's one C file, plain_names_test.c, which has to be C: see its header.
+# TESTFLAGS without the three switches that only mean something to C++.
+TESTCFLAGS = /nologo /c /W4 $(FORMDEF) \
+	/DWINWRAP_TEST /DUSING_WINWRAP /DUNICODE /D_UNICODE \
+	/I src /I src\public /I test \
+	$(OPTFLAGS) $(CRTFLAG) \
+	/Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap_test.pdb
+
 # advapi32 for the registry test, user32 for wsprintfW, ole32 for
 # CoTaskMemFree in the AppUserModelID test, shell32 for the SHGetFolderPathW
 # that the known-folder test compares against. A Chromium-derived tree links
@@ -348,12 +365,19 @@ test: $(TESTEXE)
 	@echo  Built $(TESTEXE).
 	@echo  Run it from that directory; nothing needs installing.
 
-$(TESTEXE): $(OBJDIR)\winwrap_unittest.obj $(LIBTARGET)
+TESTOBJECTS = $(OBJDIR)\winwrap_unittest.obj $(OBJDIR)\plain_names_test.obj
+
+$(TESTEXE): $(TESTOBJECTS) $(LIBTARGET)
 	link /nologo /OUT:$@ /DEBUG /PDB:$(OUTDIR)\winwrap_test.pdb \
 		$(SUBSYSCON) $(FORCEREDIRECTS) \
-		$(OBJDIR)\winwrap_unittest.obj $(WINWRAPLIB) $(LIBS) $(TESTLIBS)
+		$(TESTOBJECTS) $(WINWRAPLIB) $(LIBS) $(TESTLIBS)
 
-$(OBJDIR)\winwrap_unittest.obj: test\winwrap_unittest.cc test\winwrap_unittest.h $(HEADERS)
+$(OBJDIR)\plain_names_test.obj: test\plain_names_test.c test\plain_names_test.h
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
+	cl $(TESTCFLAGS) test\plain_names_test.c
+
+$(OBJDIR)\winwrap_unittest.obj: test\winwrap_unittest.cc test\winwrap_unittest.h \
+		test\plain_names_test.h $(HEADERS)
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	cl $(TESTFLAGS) test\winwrap_unittest.cc
 
@@ -395,6 +419,10 @@ $(SHAREDLIB): $(OBJECTS) $(OBJDIR)\winwrap_dll.obj $(OBJDIR)\winwrap.res src\win
 $(OBJDIR)\forwarders.obj: src\forwarders_$(ARCH).asm
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
 	$(ASM) $(ASFLAGS) /Fo$@ src\forwarders_$(ARCH).asm
+
+$(OBJDIR)\plain_names.obj: src\plain_names_$(ARCH).asm
+	@if not exist $(OBJDIR) mkdir $(OBJDIR)
+	$(ASM) $(ASFLAGS) /Fo$@ src\plain_names_$(ARCH).asm
 
 $(OBJDIR)\winwrap.res: src\winwrap.rc src\winwrap_version.h
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)

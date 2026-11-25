@@ -208,7 +208,8 @@
       },
 
       # _winwrap_sources from src/BUILD.gn, with static_redirects.cc replaced by the
-      # two forwarders_*.asm -- see the note at the top of this file. They are
+      # two forwarders_*.asm and plain_names.cc by the two plain_names_*.asm --
+      # see the note at the top of this file. They are
       # what define the __imp_<name> slots the consumer's call sites load
       # through, so without them winwrap builds and does nothing.
       'sources': [
@@ -242,6 +243,11 @@
         'src/srwlock.cc',
         'src/forwarders_x86.asm',
         'src/forwarders_x64.asm',
+        # The same functions under their own names, for callers that do not go
+        # through the import slot; plain_names.cc in the GN build. Guarded on
+        # the architecture define exactly as the forwarders are.
+        'src/plain_names_x86.asm',
+        'src/plain_names_x64.asm',
         'src/sync_objects.cc',
         'src/system.cc',
         'src/thread_pool.cc',
@@ -421,6 +427,8 @@
         'src/public',
       ],
       'sources': [
+        'test/plain_names_test.c',
+        'test/plain_names_test.h',
         'test/winwrap_unittest.cc',
         'test/winwrap_unittest.h',
       ],

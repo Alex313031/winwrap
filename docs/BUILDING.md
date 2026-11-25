@@ -19,8 +19,15 @@ the other, never both** — two definitions of a slot is a duplicate symbol:
 
 | source | needs | used by |
 |---|---|---|
-| `src/static_redirects.cc` | clang-cl | the GN build |
-| `src/forwarders_x86.asm`, `src/forwarders_x64.asm` | MASM (`ml`/`ml64`) | the Makefile and the GYP build |
+| `src/static_redirects.cc`, `src/plain_names.cc` | clang-cl or GCC | the GN build and the GNUmakefile |
+| `src/forwarders_x86.asm`, `src/forwarders_x64.asm`, `src/plain_names_x86.asm`, `src/plain_names_x64.asm` | MASM (`ml`/`ml64`) | the Makefile and the GYP build |
+
+Each form is two objects. The first of each pair defines the `__imp_<name>`
+slots and is forced into every link. The second, `plain_names`, defines the
+same functions under their own names, for the callers that do not go through a
+slot — see [*Functions referenced by name*](#functions-referenced-by-name) —
+and is an ordinary archive member, extracted only when one of those names is
+referenced.
 
 The C++ version names its symbols with a Clang asm label, because
 `__imp__GetTickCount64@0` is not a legal C identifier and an asm label is the
@@ -28,7 +35,7 @@ only way to produce that name from source. MSVC has no asm labels, so `cl.exe`
 answers with C2059 and C2146 on every line of it. MASM can name anything, so
 the same table assembles instead.
 
-The `.asm` pair is generated from `static_redirects.cc` by
+The `.asm` files are generated from `static_redirects.cc` by
 `tools/gen_forwarders.py` and checked in, so no build system needs Python.
 Re-run it after adding or removing a `WINWRAP_REDIRECT`; `--check` verifies the
 two are in step and is what CI runs:
@@ -103,10 +110,10 @@ existing one in `pylib/gyp/MSVSSettings.py`; sawbuck-ng carries it as
 #### Integrating into a custom .sln/vcxproj
 Nothing here needs a generator. For a hand-maintained project:
 
-1. **Add the sources** — everything in `src/` *except* `static_redirects.cc`,
-   which needs clang. Add `forwarders_x86.asm` and `forwarders_x64.asm` in its
-   place, and `winwrap_dll.cc` plus `winwrap.rc` only if you are building the
-   DLL.
+1. **Add the sources** — everything in `src/` *except* `static_redirects.cc`
+   and `plain_names.cc`, which need clang. Add the four `.asm` files in their
+   place (`forwarders_*` and `plain_names_*`, both architectures), and
+   `winwrap_dll.cc` plus `winwrap.rc` only if you are building the DLL.
 2. **Enable MASM.** Right-click the project → Build Dependencies → Build
    Customizations → tick **masm**. Visual Studio then assembles `.asm` sources
    with `ml` or `ml64` according to the configuration's platform.
@@ -184,14 +191,11 @@ redirect object in, and set the subsystem floor — the same three things as
 
 plus `-ladvapi32`.
 
-Three things differ from the MSVC build, all handled for you:
+Two things differ from the MSVC build, both handled for you:
 
-- It compiles `src/static_redirects.cc` and never uses the generated `.asm`.
-  GCC supports the asm labels that file needs; MSVC does not.
-- Every redirected function is also defined under its plain name, not only as
-  an `__imp_` slot. MinGW's headers declare some of these without `dllimport`,
-  and a call to one of those would otherwise pull in the system import library
-  and collide with winwrap's slot.
+- It compiles `src/static_redirects.cc` and `src/plain_names.cc` and never
+  uses the generated `.asm`. GCC supports the asm labels and file-scope
+  assembly those files need; MSVC does not.
 - The 32-bit DLL is linked from `src/winwrap_gnu_x86.def`, a generated copy of
   `winwrap.def` with the `@bytes` suffixes GNU ld needs written out.
   `tools/gen_forwarders.py` produces it and `check-forwarders` verifies it.
@@ -276,3 +280,27 @@ Making a library that overrides the system or CRT's functions is a unique and st
   Each returns the error its callers already test for rather than a plausible
   success, because a silently wrong answer travels much further than a visible
   failure. See [INCOMPLETE_FUNCS.md](./INCOMPLETE_FUNCS.md).
+
+## Functions referenced by name
+An `__imp_<name>` slot captures a call made through `__declspec(dllimport)`,
+which is nearly all of them. Three kinds of reference bypass the slot and name
+the function itself — `_GetTickCount64@0` on x86, `GetTickCount64` on x64:
+
+- a declaration without `dllimport`. The SDK has a few
+  (`SHGetKnownFolderPath` is plain `STDAPI`) and MinGW's headers have many;
+- the address of a function in a C constant initializer, which cannot be
+  loaded from a slot at run time. SQLite keeps a table of them —
+  `{ "GetTickCount64", (SYSCALL)GetTickCount64, 0 }`;
+- a caller that declares the function itself to avoid a header.
+
+The system import library can satisfy such a reference, but the member that
+does also defines the slot, so the link fails with a duplicate
+`__imp_<name>` — reported by lld-link as *duplicate symbol:
+`__declspec(dllimport) _GetTickCount64@0`*, defined in winwrap and in
+KERNEL32.dll.
+
+So winwrap also defines every redirected function under its own name, as a
+jump to the shim, in the `plain_names` object. Nothing needs doing in a
+consumer beyond what is already required: winwrap ahead of the system import
+libraries on the link line. The unit test's `plain_names_test.c` is a C table
+of exactly that kind, and stops linking if the names ever go missing.

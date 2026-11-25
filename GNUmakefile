@@ -58,6 +58,7 @@
 
 CROSS   ?=
 CXX     := $(CROSS)g++
+CC      := $(CROSS)gcc
 AR      := $(CROSS)ar
 WINDRES := $(CROSS)windres
 DLLTOOL := $(CROSS)dlltool
@@ -145,6 +146,9 @@ CXXFLAGS := -std=c++17 -Wall -Wextra -fno-exceptions -fno-rtti \
 
 # Every source except winwrap_dll.cc, which holds what only a DLL wants.
 # static_redirects.cc is in the list, unlike the Makefile's: see the top.
+# plain_names.cc is its companion -- the same table as functions' own names
+# rather than their import slots -- and an ordinary archive member, extracted
+# when a name is referenced rather than forced in by the anchor.
 SOURCES := \
 	cancel_io \
 	condition_variable \
@@ -165,6 +169,7 @@ SOURCES := \
 	net \
 	parking_lot \
 	pipes \
+	plain_names \
 	process \
 	registry \
 	shell32 \
@@ -292,13 +297,22 @@ test: $(TESTEXE)
 	@echo  Built $(TESTEXE).
 	@echo  Run it from that directory. Nothing needs installing.
 
-$(TESTEXE): $(OBJDIR)/winwrap_unittest.o $(LIBTARGET)
-	$(CXX) -o $@ $(OBJDIR)/winwrap_unittest.o $(FORCEREDIRECTS) $(WINWRAPLIB) \
+TESTOBJECTS := $(OBJDIR)/winwrap_unittest.o $(OBJDIR)/plain_names_test.o
+
+$(TESTEXE): $(TESTOBJECTS) $(LIBTARGET)
+	$(CXX) -o $@ $(TESTOBJECTS) $(FORCEREDIRECTS) $(WINWRAPLIB) \
 		-municode -static $(SUBSYSCON) $(LIBS) $(TESTLIBS)
 
-$(OBJDIR)/winwrap_unittest.o: test/winwrap_unittest.cc test/winwrap_unittest.h $(HEADERS)
+$(OBJDIR)/winwrap_unittest.o: test/winwrap_unittest.cc test/winwrap_unittest.h \
+		test/plain_names_test.h $(HEADERS)
 	@$(call MKDIR,$(OBJDIR))
 	$(CXX) -c $(TESTCXXFLAGS) -o $@ test/winwrap_unittest.cc
+
+# The test's one C file, which has to be C: see its header. TESTCXXFLAGS
+# without the language standard, which gcc would reject for C.
+$(OBJDIR)/plain_names_test.o: test/plain_names_test.c test/plain_names_test.h
+	@$(call MKDIR,$(OBJDIR))
+	$(CC) -c $(filter-out -std=c++17,$(TESTCXXFLAGS)) -o $@ test/plain_names_test.c
 
 # Rebuilt from scratch each time, because `ar r` adds to an existing archive
 # and would leave a removed source's object behind in it.

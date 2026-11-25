@@ -90,6 +90,7 @@ _winwrap_sources = [
   "parking_lot.cc",
   "parking_lot.h",
   "pipes.cc",
+  "plain_names.cc",
   "process.cc",
   "public/winwrap_public.h",
   "registry.cc",

@@ -21,6 +21,9 @@
 
 #include "winwrap_unittest.h"
 
+// The two functions plain_names_test.c calls through a table of addresses.
+#include "plain_names_test.h"
+
 #ifdef WINWRAP_DLL
  // DLLVERSIONINFO, DLLVERSIONINFO2, MAKEDLLVERULL and DLLVER_PLATFORM_NT, for
  // the DllGetVersion coverage below. framework.h pulls this in under the same
@@ -3509,6 +3512,29 @@ namespace {
     }
   }
 
+  // --- Functions referenced by name rather than through the import slot -------
+
+  void TestPlainNames() {
+    std::wcout << L"  Plain names (address-of in a C table, as SQLite does)" << std::endl;
+
+    // That this links at all is most of the test: see plain_names_test.c.
+    // What is left is that the name leads where the slot does, so the same
+    // function is called both ways and the answers compared.
+    const ULONGLONG by_slot  = ::GetTickCount64();
+    const ULONGLONG by_name  = winwrap_test_table_tick_count();
+    const ULONGLONG distance = by_name >= by_slot ? by_name - by_slot : by_slot - by_name;
+    CHECK(by_name != 0 && distance < 1000,
+          L"GetTickCount64 through a table gave " << by_name << L", through its slot "
+                                                  << by_slot);
+
+    SYSTEM_INFO info = {};
+    ::GetSystemInfo(&info);
+    const DWORD processor = winwrap_test_table_processor_number();
+    CHECK(processor < info.dwNumberOfProcessors,
+          L"GetCurrentProcessorNumber through a table gave " << processor << L" of "
+                                                             << info.dwNumberOfProcessors);
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -3863,6 +3889,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestSymbolSearchPath();
   TestPreciseSystemTime();
   TestProcessImageName();
+  TestPlainNames();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();

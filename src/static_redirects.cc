@@ -82,60 +82,87 @@
 // count changes, regenerate with tools/gen_forwarders.py and build the MSVC
 // side; that is what turns a silent miss into an error.
 
-// The function under its own name as well as its import slot, for MinGW.
+// === The function under its own name, as well as its import slot ===
 //
-// An MSVC-style consumer reaches a system function through `__imp_<name>` and
-// nothing else, because the SDK declares every one of them
-// __declspec(dllimport); the slot above is all such a build needs. MinGW's
-// headers are not so uniform. Some functions are declared without dllimport --
-// the SRW lock family, for a start -- and a call to one of those references
-// the function itself, `_Name@bytes`, expecting the linker to find a body. The
-// import library has one, in the same member that defines the slot, so pulling
-// it in for the name brings a second definition of the slot with it and the
-// link fails with "multiple definition of `_imp__Name@bytes'".
+// The slot is what a call through `__declspec(dllimport)` loads from, and for
+// a long time it was all this file defined, on the reasoning that the SDK
+// declares every one of these functions dllimport. Three things reference the
+// function by name instead -- `_Name@bytes` on x86, `Name` on x64 -- and
+// expect the linker to find a body:
 //
-// So the MinGW build defines the name too, as a one-instruction jump to the
-// shim. Then whichever way a consumer spells the reference, it is settled
-// here and the import library's member is never extracted. This is the same
-// problem, and the same answer, as SHGetKnownFolderPath in shell32.cc -- there
-// it is the SDK's own declaration that lacks dllimport, so that file handles
-// it for the MSVC builds, and defers to this for MinGW.
+//   - a declaration that lacks dllimport. The SDK has a few
+//     (SHGetKnownFolderPath is plain STDAPI) and MinGW's headers have many,
+//     the SRW lock family among them;
+//   - the address of a dllimport function in a constant initializer, which C
+//     has no other way to compile. SQLite's Windows layer keeps a table of
+//     them -- { "GetTickCount64", (SYSCALL)GetTickCount64, 0 } -- and that one
+//     line is what stopped Node 24.22.3 linking;
+//   - a caller that declares the function itself, to avoid a header.
 //
-// Assembly rather than a C++ forwarding function, because it has to work for
-// every signature in the table without knowing any of them, and a jump does:
-// the arguments are already where the shim expects them.
-#if defined(__MINGW32__)
- #if defined(_M_IX86)
-  #define WINWRAP_PLAIN_SYMBOL(name, bytes) "_" #name "@" #bytes
-  #define WINWRAP_SHIM_SYMBOL(name, bytes) "_ww_" #name "@" #bytes
- #else
-  #define WINWRAP_PLAIN_SYMBOL(name, bytes) #name
-  #define WINWRAP_SHIM_SYMBOL(name, bytes) "ww_" #name
- #endif
- // .def/.scl/.type mark the symbol as an external function, which is what a
- // compiler would have emitted for one.
- #define WINWRAP_PLAIN_NAME(name, bytes)                                \
-   __asm__(".text\n"                                                    \
-           ".globl " WINWRAP_PLAIN_SYMBOL(name, bytes) "\n"             \
-           ".def " WINWRAP_PLAIN_SYMBOL(name, bytes)                    \
-           "; .scl 2; .type 32; .endef\n"                               \
-           WINWRAP_PLAIN_SYMBOL(name, bytes) ":\n"                      \
-           "\tjmp " WINWRAP_SHIM_SYMBOL(name, bytes) "\n")
+// The system import library has such a body, in the same member that defines
+// the slot. Pulling that member in for the name therefore brings a second
+// definition of the slot, and the link fails: "duplicate symbol:
+// __declspec(dllimport) _GetTickCount64@0", defined in winwrap and in
+// KERNEL32.dll.
+//
+// So every redirected function is also defined under its own name, as a
+// one-instruction jump to the shim. Assembly rather than a C++ forwarding
+// function, because it has to work for every signature in the table without
+// knowing any of them, and a jump does: the arguments are already where the
+// shim expects them.
+//
+// The names live in a different object from the slots: plain_names.cc, which
+// is this file included with WINWRAP_PLAIN_NAMES_ONLY defined, so that the
+// table is written once. The slots object is forced into every link by the
+// anchor below. The names object is not -- it is an ordinary archive member,
+// extracted only if something references one of the names. That matters to a
+// consumer that defines one of these functions itself, as Chromium's base
+// once did for EventRegister: its definition and a forced one here would
+// collide, where an unextracted member never meets it.
+//
+// The protection is only that far-reaching, and worth being exact about. The
+// names are one object, so the first reference to any of them brings all of
+// them in. A consumer that both references one of these names and defines a
+// different one itself would then get a duplicate symbol for the one it
+// defines -- a link error naming both definitions, never a wrong binary. The
+// cure, if it ever comes up, is an object per function, which is how an
+// import library avoids the same thing.
+//
+// The MSVC builds do the same in MASM, plain_names_<arch>.asm beside
+// forwarders_<arch>.asm, generated from this table by tools/gen_forwarders.py.
+#if defined(_M_IX86) || defined(__i386__)
+ #define WINWRAP_PLAIN_SYMBOL(name, bytes) "\"_" #name "@" #bytes "\""
+ #define WINWRAP_SHIM_SYMBOL(name, bytes) "\"_ww_" #name "@" #bytes "\""
 #else
- #define WINWRAP_PLAIN_NAME(name, bytes) static_assert(true, "")
+ #define WINWRAP_PLAIN_SYMBOL(name, bytes) #name
+ #define WINWRAP_SHIM_SYMBOL(name, bytes) "ww_" #name
 #endif
 
-//
+#if defined(WINWRAP_PLAIN_NAMES_ONLY)
+
+// Quoted on x86 because of the `@`, which an assembler otherwise reads as the
+// start of a relocation specifier. .def/.scl/.type mark the symbol as an
+// external function, which is what a compiler would have emitted for one.
+#define WINWRAP_REDIRECT(name, bytes)                            \
+  __asm__(".text\n"                                              \
+          ".globl " WINWRAP_PLAIN_SYMBOL(name, bytes) "\n"       \
+          ".def " WINWRAP_PLAIN_SYMBOL(name, bytes)              \
+          "; .scl 2; .type 32; .endef\n"                         \
+          WINWRAP_PLAIN_SYMBOL(name, bytes) ":\n"                \
+          "\tjmp " WINWRAP_SHIM_SYMBOL(name, bytes) "\n")
+
+#else // !defined(WINWRAP_PLAIN_NAMES_ONLY)
+
 // The braced form of extern "C", and not `extern "C" T x = v;`, which means
 // the same thing but which GCC warns about on every line -- "initialized and
-// declared extern" -- with no option to turn it off. WINWRAP_PLAIN_NAME
-// comes last so that it is what takes the semicolon the call site writes.
+// declared extern" -- with no option to turn it off. The static_assert is
+// there to take the semicolon the call site writes.
 #define WINWRAP_REDIRECT(name, bytes)                                                \
   extern "C" {                                                                       \
   decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = \
       &ww_##name;                                                                    \
   }                                                                                  \
-  WINWRAP_PLAIN_NAME(name, bytes)
+  static_assert(true, "")
 
 // The anchor a consumer names in /INCLUDE: to force this object into the link,
 // for the builds described in winwrap.gyp where something else would otherwise
@@ -154,6 +181,8 @@
 extern "C" {
 int winwrap_static_redirects = 0;
 }
+
+#endif // defined(WINWRAP_PLAIN_NAMES_ONLY)
 
 // --- Available on Vista and later, missing on XP ---------------------------
 WINWRAP_REDIRECT(GetTickCount64, 0);
