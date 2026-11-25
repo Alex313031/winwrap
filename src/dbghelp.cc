@@ -140,12 +140,17 @@ BOOL WINAPI ww_SymGetSearchPathW(HANDLE hProcess, PWSTR SearchPath, DWORD Search
   const int written = ::MultiByteToWideChar(CP_ACP, 0, ansi.As<char>(), -1, SearchPath,
                                             static_cast<int>(SearchPathLength));
   if (written == 0) {
-    // Too long for the caller's buffer, which is ERROR_INSUFFICIENT_BUFFER
-    // already. Left terminated, so a caller that reads it anyway finds a
-    // string -- a whole number of entries would be better than a cut one, but
-    // an empty path is at least not a wrong one.
+    // Too long for the caller's buffer. What dbghelp's own wide function does
+    // here is not what its documentation would lead anyone to expect, and
+    // was found by asking it: on Vista, 7 and 8 it returns TRUE, sets no
+    // error, and leaves the buffer holding an empty string. This does the
+    // same. A shim that failed instead would be the more defensible function
+    // and a different one -- and the difference would land on XP alone, where
+    // a caller that treats failure as "no symbols at all", as V8 does, would
+    // lose them over a short buffer that costs it nothing anywhere else.
     SearchPath[0] = L'\0';
-    return FALSE;
+    ::SetLastError(ERROR_SUCCESS);
+    return TRUE;
   }
   return TRUE;
 }

@@ -286,8 +286,10 @@ the ANSI ones and convert. A directory name with a character outside the
 machine's ANSI code page does not survive the trip: that entry of the path
 will not match anything, and the rest are unaffected.
 
-`SymGetSearchPathW` fails with `ERROR_INSUFFICIENT_BUFFER` and an empty string
-when the path does not fit, rather than returning part of an entry.
+When the path does not fit the buffer, `SymGetSearchPathW` returns `TRUE` and
+an empty string. That is odd, and it is what dbghelp's own wide function does
+on Vista, 7 and 8, where it was observed rather than assumed; the shim matches
+it so that a short buffer behaves the same on XP as everywhere else.
 
 They call into whichever `dbghelp.dll` is **already in the process**, asking
 for it by bare name, which loads one only if there is none. winwrap keeps a

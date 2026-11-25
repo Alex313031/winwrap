@@ -3339,9 +3339,10 @@ namespace {
               ::lstrcmpiW(path, kWanted) != 0,
           L"a null search path did not replace the one that was set");
 
-    // A buffer too small for the path. winwrap refuses it and leaves it
-    // empty; what a dbghelp with its own wide function does is printed rather
-    // than asserted, because that is how to find out whether the two agree.
+    // A buffer too small for the path. dbghelp's own wide function, on Vista,
+    // 7 and 8, reports success and leaves an empty string -- found by
+    // printing what it did, which this still does -- and winwrap's does the
+    // same over the ANSI one, so that is asserted where winwrap answers.
     CHECK(::SymSetSearchPathW(process, kWanted), L"SymSetSearchPathW failed the second time");
     wchar_t cramped[8] = {L'#', L'#', L'#', L'#', L'#', L'#', L'#', L'#'};
     ::SetLastError(0);
@@ -3349,9 +3350,9 @@ namespace {
     const DWORD cramped_error = ::GetLastError();
     CHECK(cramped[4] == L'#', L"a four-character buffer was written past its end");
     if (winwrap_answers) {
-      CHECK(!cramped_ok && cramped_error == ERROR_INSUFFICIENT_BUFFER,
-            L"a four-character buffer was reported as holding the search path");
-      CHECK(cramped[0] == L'\0', L"a refused buffer was left unterminated");
+      CHECK(cramped_ok && cramped[0] == L'\0',
+            L"a four-character buffer did not come back empty with success, as dbghelp's own "
+            L"does (returned " << cramped_ok << L", error " << cramped_error << L")");
       CHECK(!::SymGetSearchPathW(process, nullptr, 16),
             L"SymGetSearchPathW accepted a null buffer");
     } else {
@@ -3412,17 +3413,60 @@ namespace {
                << std::endl;
   }
 
+  // Whether two paths name the same file, which is not the same question as
+  // whether they are the same string. A program run from a mapped network
+  // drive is Z:\dir\x.exe to GetModuleFileNameW and \\server\share\dir\x.exe
+  // to the system's own QueryFullProcessImageNameW, on every Windows that has
+  // one: the kernel names the file by where it is rather than by the letter
+  // it was reached through. Both are right.
+  //
+  // By file identity where the file system has one -- volume serial number
+  // and file index -- and by size, timestamp and leaf name where it does not,
+  // which is the case for some network redirectors.
+  bool SameFile(const wchar_t* left, const wchar_t* right) {
+    if (::lstrcmpiW(left, right) == 0) {
+      return true;
+    }
+    const DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+    HANDLE a = ::CreateFileW(left, 0, share, nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE b = ::CreateFileW(right, 0, share, nullptr, OPEN_EXISTING, 0, nullptr);
+    bool same = false;
+    BY_HANDLE_FILE_INFORMATION ia = {}, ib = {};
+    if (a != INVALID_HANDLE_VALUE && b != INVALID_HANDLE_VALUE &&
+        ::GetFileInformationByHandle(a, &ia) && ::GetFileInformationByHandle(b, &ib)) {
+      const bool indexed = (ia.nFileIndexHigh | ia.nFileIndexLow) != 0 &&
+                           (ib.nFileIndexHigh | ib.nFileIndexLow) != 0;
+      if (indexed) {
+        same = ia.dwVolumeSerialNumber == ib.dwVolumeSerialNumber &&
+               ia.nFileIndexHigh == ib.nFileIndexHigh && ia.nFileIndexLow == ib.nFileIndexLow;
+      } else {
+        const wchar_t* leaf_a = wcsrchr(left, L'\\');
+        const wchar_t* leaf_b = wcsrchr(right, L'\\');
+        same = leaf_a && leaf_b && ::lstrcmpiW(leaf_a, leaf_b) == 0 &&
+               ia.nFileSizeHigh == ib.nFileSizeHigh && ia.nFileSizeLow == ib.nFileSizeLow &&
+               ::CompareFileTime(&ia.ftLastWriteTime, &ib.ftLastWriteTime) == 0;
+      }
+    }
+    if (a != INVALID_HANDLE_VALUE) {
+      ::CloseHandle(a);
+    }
+    if (b != INVALID_HANDLE_VALUE) {
+      ::CloseHandle(b);
+    }
+    return same;
+  }
+
   void TestProcessImageName() {
     std::wcout << L"  QueryFullProcessImageNameW" << std::endl;
 
     const bool winwrap_answers = !SystemHas(L"kernel32.dll", "QueryFullProcessImageNameW");
 
-    // This process, which is the one whose path is known another way. Both
-    // are run through GetLongPathNameW before comparing, because a program
-    // started by an 8.3 name may be remembered by either spelling.
+    // This process, which is the one whose path is known another way. The
+    // two are compared as files rather than as strings: started by an 8.3
+    // name, or from a mapped network drive, a program is remembered under one
+    // spelling by the loader and another by the kernel. See SameFile.
     wchar_t expected[MAX_PATH] = {};
     ::GetModuleFileNameW(nullptr, expected, ARRAYSIZE(expected));
-    ::GetLongPathNameW(expected, expected, ARRAYSIZE(expected));
 
     wchar_t name[1024] = {};
     DWORD size         = ARRAYSIZE(name);
@@ -3431,9 +3475,7 @@ namespace {
     CHECK(size == wcslen(name),
           L"the reported length is " << size << L" but the name is " << wcslen(name)
                                      << L" characters");
-    wchar_t long_name[1024] = {};
-    ::GetLongPathNameW(name, long_name, ARRAYSIZE(long_name));
-    CHECK(::lstrcmpiW(long_name, expected) == 0,
+    CHECK(SameFile(name, expected),
           L"this process is \"" << expected << L"\" but was named \"" << name << L"\"");
     std::wcout << L"    (" << name << L")" << std::endl;
 
