@@ -3372,6 +3372,136 @@ namespace {
     ::SymSetSearchPathW(process, L"C:\\winwrap-test-after-unload");
   }
 
+  // --- The precise clock, and a process's own name ---------------------------
+
+  ULONGLONG AsTicks(const FILETIME& time) {
+    return (static_cast<ULONGLONG>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+  }
+
+  void TestPreciseSystemTime() {
+    std::wcout << L"  GetSystemTimePreciseAsFileTime" << std::endl;
+
+    // Bracketed by the ordinary clock. The precise one reads the same clock
+    // at a finer grain, so it can run ahead of the reading before it by up to
+    // one tick, never behind it, and never ahead of a reading taken after by
+    // more than that. 50 ms is three ticks: room for a slow machine, far too
+    // little to hide a value in the wrong units or from the wrong epoch.
+    FILETIME before = {}, precise = {}, after = {};
+    ::GetSystemTimeAsFileTime(&before);
+    ::GetSystemTimePreciseAsFileTime(&precise);
+    ::GetSystemTimeAsFileTime(&after);
+
+    constexpr ULONGLONG kSlack = 50 * 10000; // 50 ms in 100 ns units.
+    CHECK(AsTicks(precise) + kSlack >= AsTicks(before),
+          L"the precise time is behind the system time read before it");
+    CHECK(AsTicks(precise) <= AsTicks(after) + kSlack,
+          L"the precise time is ahead of the system time read after it");
+
+    // A second reading a moment later is not far behind the first. Not
+    // "never behind": the real precise clock is steered while the system
+    // synchronises its time and can step back a little, which is the clock
+    // working rather than this failing.
+    FILETIME second = {};
+    ::GetSystemTimePreciseAsFileTime(&second);
+    CHECK(AsTicks(second) + kSlack >= AsTicks(precise),
+          L"the precise time went backwards by more than 50 ms");
+
+    std::wcout << (SystemHas(L"kernel32.dll", "GetSystemTimePreciseAsFileTime")
+                       ? L"    forwarded to the system's own precise clock"
+                       : L"    no interpolated clock here; winwrap answered at tick resolution")
+               << std::endl;
+  }
+
+  void TestProcessImageName() {
+    std::wcout << L"  QueryFullProcessImageNameW" << std::endl;
+
+    const bool winwrap_answers = !SystemHas(L"kernel32.dll", "QueryFullProcessImageNameW");
+
+    // This process, which is the one whose path is known another way. Both
+    // are run through GetLongPathNameW before comparing, because a program
+    // started by an 8.3 name may be remembered by either spelling.
+    wchar_t expected[MAX_PATH] = {};
+    ::GetModuleFileNameW(nullptr, expected, ARRAYSIZE(expected));
+    ::GetLongPathNameW(expected, expected, ARRAYSIZE(expected));
+
+    wchar_t name[1024] = {};
+    DWORD size         = ARRAYSIZE(name);
+    CHECK(::QueryFullProcessImageNameW(::GetCurrentProcess(), 0, name, &size),
+          L"QueryFullProcessImageNameW failed (" << ::GetLastError() << L")");
+    CHECK(size == wcslen(name),
+          L"the reported length is " << size << L" but the name is " << wcslen(name)
+                                     << L" characters");
+    wchar_t long_name[1024] = {};
+    ::GetLongPathNameW(name, long_name, ARRAYSIZE(long_name));
+    CHECK(::lstrcmpiW(long_name, expected) == 0,
+          L"this process is \"" << expected << L"\" but was named \"" << name << L"\"");
+    std::wcout << L"    (" << name << L")" << std::endl;
+
+    // Through a real handle, opened with the least XP will accept.
+    HANDLE self = ::OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, ::GetCurrentProcessId());
+    CHECK(self != nullptr, L"could not open this process for query");
+    if (self) {
+      wchar_t again[1024] = {};
+      size                = ARRAYSIZE(again);
+      ::SetLastError(0);
+      const BOOL named        = ::QueryFullProcessImageNameW(self, 0, again, &size);
+      const DWORD named_error = ::GetLastError();
+      if (!named && winwrap_answers) {
+        // winwrap's documented limit, and where it shows: run from a network
+        // share or a VM shared folder, the executable's device has no drive
+        // letter, the fallback reads the path from the process's memory, and
+        // this handle was opened without the right to. Not a failure of the
+        // shim, so reported and not counted.
+        std::wcout << L"    (a PROCESS_QUERY_INFORMATION handle was refused with " << named_error
+                   << L"; expected when this runs from a volume with no drive letter)"
+                   << std::endl;
+      } else {
+        CHECK(named && ::lstrcmpiW(again, name) == 0,
+              L"a PROCESS_QUERY_INFORMATION handle gave \"" << again << L"\" (" << named_error
+                                                            << L")");
+      }
+      ::CloseHandle(self);
+    }
+
+    // The native form: the same file as the kernel names it, by device.
+    wchar_t native[1024] = {};
+    size                 = ARRAYSIZE(native);
+    CHECK(::QueryFullProcessImageNameW(::GetCurrentProcess(), 1 /* PROCESS_NAME_NATIVE */,
+                                       native, &size) &&
+              native[0] == L'\\' && size == wcslen(native),
+          L"the native name came back as \"" << native << L"\" (" << ::GetLastError() << L")");
+    std::wcout << L"    (" << native << L")" << std::endl;
+
+    // A buffer that cannot hold it, and the size in characters that exactly
+    // can: the name and its terminator.
+    wchar_t cramped[8] = {};
+    size               = ARRAYSIZE(cramped);
+    ::SetLastError(0);
+    CHECK(!::QueryFullProcessImageNameW(::GetCurrentProcess(), 0, cramped, &size) &&
+              ::GetLastError() == ERROR_INSUFFICIENT_BUFFER,
+          L"an eight-character buffer was not refused with ERROR_INSUFFICIENT_BUFFER");
+    const DWORD exact_size = static_cast<DWORD>(wcslen(name)) + 1;
+    std::vector<wchar_t> exact(exact_size + 1, L'#');
+    size = exact_size;
+    CHECK(::QueryFullProcessImageNameW(::GetCurrentProcess(), 0, exact.data(), &size) &&
+              exact[exact_size] == L'#',
+          L"a buffer of exactly the right size was refused or overrun");
+    size = exact_size - 1;
+    CHECK(!::QueryFullProcessImageNameW(::GetCurrentProcess(), 0, exact.data(), &size),
+          L"a buffer one character short was accepted");
+
+    if (winwrap_answers) {
+      size = ARRAYSIZE(name);
+      ::SetLastError(0);
+      CHECK(!::QueryFullProcessImageNameW(::GetCurrentProcess(), 0x80, name, &size) &&
+                ::GetLastError() == ERROR_INVALID_PARAMETER,
+            L"an unknown flag was not refused with ERROR_INVALID_PARAMETER");
+      std::wcout << L"    winwrap answered, through psapi" << std::endl;
+    } else {
+      std::wcout << L"    forwarded to the system's own QueryFullProcessImageNameW" << std::endl;
+    }
+  }
+
   void TestIoCancellation() {
     std::wcout << L"  CancelIoEx, CancelSynchronousIo" << std::endl;
 
@@ -3724,6 +3854,8 @@ int wmain(int argc, WCHAR* argv[]) {
   TestKnownFolderPath();
   TestNetworkInterfaces();
   TestSymbolSearchPath();
+  TestPreciseSystemTime();
+  TestProcessImageName();
   TestThreadpoolTimer();
   TestThreadpoolWait();
   TestIoCancellation();

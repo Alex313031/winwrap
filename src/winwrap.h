@@ -34,6 +34,10 @@ extern "C" {
 // --- Tick count ------------------------------------------------------------
 // GetTickCount64: Vista+.
 ULONGLONG WINAPI ww_GetTickCount64(void);
+// GetSystemTimePreciseAsFileTime: Windows 8+, so absent from 7 too. Before 8
+// there is no interpolated clock, and this is GetSystemTimeAsFileTime: the
+// right time at tick resolution. See tick_count.cc.
+VOID WINAPI ww_GetSystemTimePreciseAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
 
 // --- Slim reader/writer locks ----------------------------------------------
 // The whole SRWLOCK family is Vista+, so XP needs all of it; Vista has
@@ -103,6 +107,13 @@ BOOL WINAPI ww_SetProcessDPIAware(void);
 // FlushProcessWriteBuffers: Vista+. The interprocessor interrupt is provoked
 // by revoking write access to a page; see process.cc.
 VOID WINAPI ww_FlushProcessWriteBuffers(void);
+// QueryFullProcessImageNameW: Vista+. psapi's GetProcessImageFileNameW, with
+// the device translated to a drive letter unless PROCESS_NAME_NATIVE asks
+// otherwise. The handle needs PROCESS_QUERY_INFORMATION. See process.cc.
+BOOL WINAPI ww_QueryFullProcessImageNameW(HANDLE hProcess,
+                                          DWORD dwFlags,
+                                          LPWSTR lpExeName,
+                                          PDWORD lpdwSize);
 
 // --- Time zones ------------------------------------------------------------
 // GetDynamicTimeZoneInformation: Vista+. GetTimeZoneInformation, with the

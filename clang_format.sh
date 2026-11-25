@@ -22,5 +22,6 @@ printf "${CYA} clang-format test/ ${c0}\n" &&
 clang-format --verbose -i --style=file:${CLANG_FORMAT_FILE} ${HERE}/test/{*.h,*.cc} &&
 printf "${CYA} clang-format src/ ${c0}\n" &&
 clang-format --verbose -i --style=file:${CLANG_FORMAT_FILE} ${HERE}/src/{*.h,*.cc} &&
+clang-format --verbose -i --style=file:${CLANG_FORMAT_FILE} ${HERE}/src/public/*.h &&
 
 exit 0

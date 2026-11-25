@@ -244,6 +244,8 @@ WINWRAP_REDIRECT(CreateWaitableTimerExW, 16);
 WINWRAP_REDIRECT(FlushProcessWriteBuffers, 0);
 WINWRAP_REDIRECT(QueryThreadCycleTime, 8);
 WINWRAP_REDIRECT(GetDynamicTimeZoneInformation, 4);
+// A handle, a DWORD and two pointers.
+WINWRAP_REDIRECT(QueryFullProcessImageNameW, 16);
 
 // The thread pool timer and wait objects. These are the entries whose handles
 // are winwrap's own allocations rather than OS objects, so a process with two
@@ -302,6 +304,11 @@ WINWRAP_REDIRECT(GetLogicalProcessorInformation, 8);
 // --- Missing on XP and Vista alike -----------------------------------------
 WINWRAP_REDIRECT(TryAcquireSRWLockExclusive, 4);
 WINWRAP_REDIRECT(TryAcquireSRWLockShared, 4);
+
+// Missing on 7 as well: Windows 8. Here rather than under a heading of its
+// own because the section is about slots that are live past XP, and this is
+// the one that is live furthest.
+WINWRAP_REDIRECT(GetSystemTimePreciseAsFileTime, 4);
 
 // shell32 rather than kernel32, and delay-imported rather than statically
 // imported, which changes when the failure appears but not how it is fixed:

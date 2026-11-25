@@ -67,6 +67,7 @@ EXPORTS
     GetNumberFormatEx@24 = ww_GetNumberFormatEx@24
     GetQueuedCompletionStatusEx@24 = ww_GetQueuedCompletionStatusEx@24
     GetRealNTVersion
+    GetSystemTimePreciseAsFileTime@4 = ww_GetSystemTimePreciseAsFileTime@4
     GetThreadId@4 = ww_GetThreadId@4
     GetTickCount64@0 = ww_GetTickCount64@0
     GetTimeFormatEx@24 = ww_GetTimeFormatEx@24
@@ -83,6 +84,7 @@ EXPORTS
     LCMapStringEx@36 = ww_LCMapStringEx@36
     LocaleNameToLCID@8 = ww_LocaleNameToLCID@8
     NeedCurrentDirectoryForExePathW@4 = ww_NeedCurrentDirectoryForExePathW@4
+    QueryFullProcessImageNameW@16 = ww_QueryFullProcessImageNameW@16
     QueryThreadCycleTime@8 = ww_QueryThreadCycleTime@8
     RegGetValueW@28 = ww_RegGetValueW@28
     RegisterApplicationRestart@8 = ww_RegisterApplicationRestart@8
