@@ -72,6 +72,8 @@ functions together, which therefore only defer from Windows 7 (Vista has no
 | `FlushProcessWriteBuffers` | kernel32 | Vista | Provokes the interprocessor interrupt by revoking write access to a page it has just written to. The MSVC Concurrency Runtime is the caller |
 | `QueryThreadCycleTime` | kernel32 | Vista | `GetThreadTimes`, kernel plus user, scaled to cycles at the processor's nominal rate. Clock-tick resolution -- see INCOMPLETE_FUNCS.md |
 | `GetDynamicTimeZoneInformation` | kernel32 | Vista | `GetTimeZoneInformation`, plus the zone's registry key name found by search and the automatic-DST setting read from where XP keeps it. ICU derives the default time zone from the key name |
+| `Shell_NotifyIconW` | shell32 | Vista (the structure size) | In every shell32, but XP's refuses the `NOTIFYICONDATAW` size Vista introduced, which is what a current SDK compiles in. Cut down to the size XP knows, with Vista's flags dropped. Without it no tray icon appears at all |
+| `Shell_NotifyIconGetRect` | shell32 | Windows 7 | The notification area's rectangle, not the icon's own -- see INCOMPLETE_FUNCS.md |
 | `SHGetKnownFolderPath` | shell32 | Vista | The 44 folder IDs that have a CSIDL (46 on x64), through `SHGetFolderPathW`. Folders Vista introduced fail with `ERROR_FILE_NOT_FOUND`. Loads shell32 and ole32 -- see INCOMPLETE_FUNCS.md |
 | `ConvertInterfaceIndexToLuid` | iphlpapi | Vista | `GetIfEntry` for the interface's type; the index stands in for the LUID's own number, XP having no LUIDs. Loads iphlpapi -- see INCOMPLETE_FUNCS.md |
 | `ConvertInterfaceLuidToNameW` | iphlpapi | Vista | Formats `<type>_<number>` the way Windows does, `iftype<N>_<number>` for a type without a name. With the one above, this is libuv's `uv_if_indextoname()` |

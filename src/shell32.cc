@@ -9,8 +9,10 @@
 //
 //   - The Application User Model pair. Windows 7.
 //   - SHGetKnownFolderPath. Vista.
+//   - Shell_NotifyIconW and Shell_NotifyIconGetRect, for tray icons.
 
 #include "dispatch.h"
+#include "public/winwrap_public.h" // GetRealNTVersion
 #include "winwrap.h"
 
 // ---------------------------------------------------------------------------
@@ -402,3 +404,157 @@ extern "C" HRESULT WINAPI ww_SHGetKnownFolderPath(const GUID& rfid,
 // member for the name brings a second definition of the slot with it. That
 // turned out not to be peculiar to this function, and every redirect now gets
 // the same treatment in one place -- see static_redirects.cc.
+
+// ---------------------------------------------------------------------------
+// Notification area icons
+// ---------------------------------------------------------------------------
+//
+// === Shell_NotifyIconW. shell32, and present on every Windows ===
+//
+// The wide form only, here as everywhere in winwrap: the consumers this is
+// for are Unicode programs, and an ANSI twin would be code nobody calls.
+//
+// Like FindFirstFileExW in directories.cc, this is a function the system has
+// and an argument it does not. NOTIFYICONDATAW has grown three times, and the
+// shell tells the versions apart by cbSize: XP's knows the three sizes that
+// existed when it shipped and returns FALSE for any other. Vista added one
+// more member, hBalloonIcon, so a program compiled against a current SDK
+// passes sizeof(NOTIFYICONDATAW), which XP has never heard of -- and every
+// call fails, for every icon, with nothing wrong in the request. Electron's
+// tray does exactly that, as does Chromium's status icon, and the symptom is
+// simply no icon and "Unable to create status tray icon" in the log.
+//
+// So on a pre-Vista shell the structure is cut down to the size it does know,
+// the one that ends where hBalloonIcon begins, and what cannot be expressed in
+// it is dropped:
+//
+//   NIF_REALTIME, NIF_SHOWTIP        Vista's; unknown flags make XP refuse.
+//   NIF_GUID                         The icon is identified by hWnd and uID,
+//                                    as it always could be. XP reserved the
+//                                    guidItem member and never read it. Two
+//                                    icons on one window that differ only in
+//                                    their GUID, both with uID 0, are
+//                                    therefore one icon here.
+//   NIIF_LARGE_ICON,                 Vista's and 7's refinements to a balloon,
+//   NIIF_RESPECT_QUIET_TIME          which is shown without them.
+//   NOTIFYICON_VERSION_4             Asked for with NIM_SETVERSION, becomes
+//                                    version 3, the newest XP has.
+//
+// That last one is the only substitution a caller could notice: version 4
+// changes what the callback message's wParam and lParam carry, and a program
+// that requested 4 and decodes 4 will misread 3. It is still the better
+// answer than refusing, since the icon and its balloons work either way, and
+// a caller that never calls NIM_SETVERSION -- Electron does not -- is on the
+// original layout on every Windows and unaffected.
+//
+// The Windows version decides, rather than trying the call and retrying on
+// failure as FindFirstFileExW does. A refusal here cannot be told from any
+// other FALSE, and on a current Windows a retry without NIF_GUID could turn a
+// legitimately refused request into a different one that succeeds.
+//
+// === Shell_NotifyIconGetRect. shell32, Windows 7 ===
+//
+// Where on screen an icon is. Neither XP nor Vista exports it, and the shell
+// there offers no supported way to ask: the icons are buttons on a toolbar
+// inside Explorer, and finding one means reading that toolbar's memory from
+// another process, which is what YY-Thunks does and warns may not work.
+//
+// What can be had honestly is the notification area itself, a window anyone
+// may look up. So the answer here is that rectangle: the right part of the
+// screen, and usually within a few icons' width of the right spot, which is
+// what callers want it for -- deciding where to put a menu or a window so it
+// appears by the tray. It is not the icon's own bounds, and a hit test
+// against it is true for the whole area. INCOMPLETE_FUNCS.md has the entry.
+
+#include <shellapi.h>
+
+namespace {
+
+  // NOTIFYICONDATAW as XP knows it: everything up to and including guidItem.
+  // Written from the members rather than as sizeof(), so that it is the same
+  // number whatever _WIN32_WINNT this file happens to be compiled with. And
+  // offsetof, not the SDK's FIELD_OFFSET: that macro is __builtin_offsetof
+  // only where the compiler advertises the builtin, and otherwise a cast of
+  // a null pointer, which is not something a constant expression may contain.
+  constexpr DWORD kNotifyIconDataV3Size =
+      static_cast<DWORD>(offsetof(NOTIFYICONDATAW, guidItem) + sizeof(GUID));
+
+  constexpr DWORD kNifGuid               = 0x00000020;
+  constexpr DWORD kNifRealtime           = 0x00000040;
+  constexpr DWORD kNifShowTip            = 0x00000080;
+  constexpr DWORD kNiifLargeIcon         = 0x00000020;
+  constexpr DWORD kNiifRespectQuietTime  = 0x00000080;
+  constexpr DWORD kNimSetVersion         = 0x00000004;
+  constexpr UINT kNotifyIconVersion3     = 3;
+  constexpr uint32_t kWindowsVista       = 0x0600;
+
+  std::atomic<void*> g_notify_icon{nullptr};
+  std::atomic<void*> g_notify_icon_get_rect{nullptr};
+
+  using FindWindowWFn    = HWND(WINAPI*)(LPCWSTR, LPCWSTR);
+  using FindWindowExWFn  = HWND(WINAPI*)(HWND, HWND, LPCWSTR, LPCWSTR);
+  using GetWindowRectFn  = BOOL(WINAPI*)(HWND, LPRECT);
+
+} // namespace
+
+extern "C" BOOL WINAPI ww_Shell_NotifyIconW(DWORD dwMessage, NOTIFYICONDATAW* lpData) {
+  const auto system_fn = reinterpret_cast<decltype(&ww_Shell_NotifyIconW)>(
+      ::winwrap::ResolveFrom(g_notify_icon, Shell32(), "Shell_NotifyIconW"));
+  if (!system_fn) {
+    ::SetLastError(ERROR_PROC_NOT_FOUND);
+    return FALSE;
+  }
+  if (!lpData || lpData->cbSize <= kNotifyIconDataV3Size ||
+      GetRealNTVersion() >= kWindowsVista) {
+    return system_fn(dwMessage, lpData);
+  }
+
+  // A copy, so the caller's structure is left as it was: it is theirs, and
+  // they will pass it again.
+  union {
+    NOTIFYICONDATAW data;
+    BYTE bytes[kNotifyIconDataV3Size];
+  } older;
+  memcpy(older.bytes, lpData, kNotifyIconDataV3Size);
+  older.data.cbSize = kNotifyIconDataV3Size;
+  older.data.uFlags &= ~(kNifGuid | kNifRealtime | kNifShowTip);
+  older.data.dwInfoFlags &= ~(kNiifLargeIcon | kNiifRespectQuietTime);
+  if (dwMessage == kNimSetVersion && older.data.uVersion > kNotifyIconVersion3) {
+    older.data.uVersion = kNotifyIconVersion3;
+  }
+  return system_fn(dwMessage, &older.data);
+}
+
+extern "C" HRESULT WINAPI ww_Shell_NotifyIconGetRect(const struct _NOTIFYICONIDENTIFIER* identifier,
+                                                     RECT* iconLocation) {
+  if (const auto system_fn = reinterpret_cast<decltype(&ww_Shell_NotifyIconGetRect)>(
+          ::winwrap::ResolveFrom(g_notify_icon_get_rect, Shell32(), "Shell_NotifyIconGetRect"))) {
+    return system_fn(identifier, iconLocation);
+  }
+  if (!identifier || !iconLocation) {
+    return E_INVALIDARG;
+  }
+
+  // user32 is certain to be loaded in a process that owns a tray icon, so the
+  // ordinary no-load lookup is the right one for it.
+  const auto find_window =
+      WW_TRYFUNC_AS(FindWindowWFn, ::winwrap::Module::hUser32, "FindWindowW");
+  const auto find_window_ex =
+      WW_TRYFUNC_AS(FindWindowExWFn, ::winwrap::Module::hUser32, "FindWindowExW");
+  const auto get_window_rect =
+      WW_TRYFUNC_AS(GetWindowRectFn, ::winwrap::Module::hUser32, "GetWindowRect");
+  if (!find_window || !find_window_ex || !get_window_rect) {
+    return E_FAIL;
+  }
+
+  // The taskbar, then the notification area inside it. These class names
+  // have been the same since Windows 95.
+  const HWND taskbar = find_window(L"Shell_TrayWnd", nullptr);
+  const HWND area    = taskbar ? find_window_ex(taskbar, nullptr, L"TrayNotifyWnd", nullptr)
+                               : nullptr;
+  if (!area || !get_window_rect(area, iconLocation)) {
+    return E_FAIL;
+  }
+  return S_OK;
+}
+

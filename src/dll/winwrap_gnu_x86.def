@@ -99,6 +99,8 @@ EXPORTS
     SetProcessDPIAware@0 = ww_SetProcessDPIAware@0
     SetThreadpoolTimer@16 = ww_SetThreadpoolTimer@16
     SetThreadpoolWait@12 = ww_SetThreadpoolWait@12
+    Shell_NotifyIconGetRect@8 = ww_Shell_NotifyIconGetRect@8
+    Shell_NotifyIconW@8 = ww_Shell_NotifyIconW@8
     SHGetKnownFolderPath@16 = ww_SHGetKnownFolderPath@16
     SleepConditionVariableCS@12 = ww_SleepConditionVariableCS@12
     SleepConditionVariableSRW@16 = ww_SleepConditionVariableSRW@16

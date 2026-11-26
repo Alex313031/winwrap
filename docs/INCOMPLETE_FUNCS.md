@@ -352,6 +352,29 @@ psapi's own error, `ERROR_ACCESS_DENIED` for a handle without that right.
 
 psapi.dll is loaded from the system directory on first use.
 
+### `Shell_NotifyIconGetRect`: the notification area, not the icon
+
+XP and Vista have no supported way to ask where a tray icon is. The shim
+returns the rectangle of the notification area as a whole (the `TrayNotifyWnd`
+window inside the taskbar), which is the right corner of the screen and
+usually within a few icon widths of the icon itself. That is enough to place a
+menu or a popup beside the tray. It is not the icon's bounds: a hit test
+against it is true anywhere in the area, and two icons get the same answer.
+
+### `Shell_NotifyIconW` before Vista: no version 4, no GUID identity
+
+On XP the structure is reduced to the size its shell accepts, and what does
+not fit is dropped: `NIF_GUID` (the icon is identified by window and ID),
+`NIF_REALTIME`, `NIF_SHOWTIP`, `NIIF_LARGE_ICON` and `NIIF_RESPECT_QUIET_TIME`.
+`NIM_SETVERSION` asking for `NOTIFYICON_VERSION_4` gets version 3. A caller
+that requested 4 and decodes its callback messages as 4 will misread them
+there; one that never sets a version is unaffected.
+
+With `NIF_GUID` gone an icon is known by its window and ID alone. A program
+that puts two icons on one window, tells them apart only by GUID and leaves
+`uID` at zero for both will find it has one icon on XP. Giving each its own
+`uID` as well, which is harmless everywhere, avoids it.
+
 ### `GetCurrentProcessorNumber`: a hint
 
 Derived from the CPUID initial APIC ID. It can be stale the moment it is
