@@ -11,7 +11,8 @@
 #  nmake static            only out\<arch>\static\winwrap.lib
 #  nmake dll               only out\<arch>\dll\winwrap.dll
 #  nmake test              only the unit tests for this flavour
-#  nmake DEBUG=1 all       unoptimised, /MTd, with full debug info
+#  nmake DEBUG=1 all       unoptimised, /MTd, with full debug info, built
+#                          under out\<arch>\debug beside the release build
 #  nmake check-forwarders  verify the generated .asm is current
 #  nmake clean             remove build artifacts
 #
@@ -125,7 +126,30 @@ FORM    = static
 FORMDEF = /DWINWRAP_STATIC
 !ENDIF
 
-OUTDIR = out\$(ARCH)\$(FORM)
+# Tested by value, not with !IFDEF, so the recursive invocations below can
+# forward it unconditionally. `DEBUG=` on a command line *defines* the macro as
+# empty, which !IFDEF reads as true -- so forwarding an unset DEBUG would turn
+# every release build into a debug one.
+DEBUG = 0
+
+# A debug build gets a directory of its own, out\$(ARCH)\debug\$(FORM), for
+# the reason the two forms do: it produces files with the same names as the
+# release build, and they are not interchangeable. A /MTd winwrap.lib linked
+# into a /MT program is two CRTs in one image. Sharing a directory also meant
+# a debug build after a release one found the release objects up to date and
+# relinked those, so what came out was neither.
+#
+# The release build stays where it has always been, out\$(ARCH)\$(FORM), so
+# nothing that already consumes it has to move. Debug sits beside the forms
+# rather than under them so that packaging out\$(ARCH)\static whole does not
+# sweep a debug build in with it.
+!IF "$(DEBUG)" != "0"
+OUTROOT = out\$(ARCH)\debug
+!ELSE
+OUTROOT = out\$(ARCH)
+!ENDIF
+
+OUTDIR = $(OUTROOT)\$(FORM)
 OBJDIR = $(OUTDIR)\obj
 
 # The only import library winwrap needs, and worth stating as a fact about the
@@ -161,12 +185,8 @@ CXXFLAGS = /nologo /c /W4 /std:c++17 /Zc:__cplusplus /GR- /EHs-c- \
 	$(FORMDEF) /DUSING_WINWRAP /DUNICODE /D_UNICODE \
 	$(TARGETDEFS) /I src /Fo$(OBJDIR)\ /Fd$(OBJDIR)\winwrap.pdb
 
-# Tested by value, not with !IFDEF, so the recursive invocations below can
-# forward it unconditionally. `DEBUG=` on a command line *defines* the macro as
-# empty, which !IFDEF reads as true -- so forwarding an unset DEBUG would turn
-# every release build into a debug one.
-DEBUG = 0
-
+# DEBUG is defined above, beside the output directory it also selects.
+#
 # Split out so the test below compiles with the same optimisation level and,
 # more to the point, the same CRT. A /MT library linked into a /MTd executable
 # is two CRTs in one image, which the linker reports as a pile of duplicate
@@ -315,7 +335,8 @@ help:
 	@echo  nmake static              only out\$(ARCH)\static\winwrap.lib
 	@echo  nmake dll                 only out\$(ARCH)\dll\winwrap.dll
 	@echo  nmake test                only the unit tests for this flavour
-	@echo  nmake DEBUG=1 all         unoptimised, /MTd, full debug info
+	@echo  nmake DEBUG=1 all         unoptimised, /MTd, full debug info,
+	@echo                            under out\$(ARCH)\debug
 	@echo  nmake check-forwarders    verify the generated .asm is current
 	@echo  nmake clean
 	@echo.
@@ -333,9 +354,9 @@ all:
 	@$(MAKE) /nologo DEBUG=$(DEBUG) SHARED=1 test
 	@echo.
 	@echo  Built both flavours for $(ARCH):
-	@echo    out\$(ARCH)\static\winwrap.lib   the archive
-	@echo    out\$(ARCH)\dll\winwrap.dll      the shared library
-	@echo    out\$(ARCH)\dll\winwrap.lib      its import library
+	@echo    $(OUTROOT)\static\winwrap.lib   the archive
+	@echo    $(OUTROOT)\dll\winwrap.dll      the shared library
+	@echo    $(OUTROOT)\dll\winwrap.lib      its import library
 	@echo  and winwrap_test.exe in each, linked against that flavour.
 	@echo.
 	@echo  Separate directories on purpose: both flavours produce a
