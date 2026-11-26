@@ -60,7 +60,7 @@ nmake all                 :: both flavours, and the unit tests for each
 nmake static              :: only out\<arch>\static\winwrap.lib
 nmake dll                 :: only out\<arch>\dll\winwrap.dll
 nmake test                :: only the unit tests for this flavour
-nmake DEBUG=1 all         :: unoptimised, /MTd, full debug info
+nmake DEBUG=1 all         :: unoptimised, /MTd, full debug info, in out\<arch>\debug\
 nmake check-forwarders    :: verify the generated .asm is current
 nmake clean
 ```

@@ -1,8 +1,9 @@
 # Builds winwrap.lib and winwrap.dll with MSVC 2022 using the Makefile,
-# for both architectures, then checks and runs the unit tests.
+# for both architectures, release and debug, then checks and runs the unit
+# tests.
 #
 # Manual only. There is no push or pull_request trigger on purpose: this builds
-# four flavours and runs four test binaries, and nothing here changes often
+# eight flavours and runs eight test binaries, and nothing here changes often
 # enough to want that on every commit.
 #
 # What it proves, in order, because each step is only meaningful if the one
@@ -24,9 +25,11 @@
 #      shim for. That limit barely bites here, where the test binaries call
 #      little beyond the covered set, but it is the same tool a consumer runs
 #      over a whole application -- see the note in sawbuck-ng's workflow.
-#   4. The tests pass. Four of them: two architectures by two flavours, since
-#      the static form and the shared form reach winwrap by different
-#      mechanisms and only running both tests either.
+#   4. The tests pass. Two architectures by two flavours, since the static
+#      form and the shared form reach winwrap by different mechanisms and only
+#      running both tests either -- and each of those as a release and as a
+#      debug build, which link different CRTs (/MT and /MTd) and so make
+#      different calls of their own through winwrap.
 
 name: Build Winwrap
 
@@ -179,6 +182,12 @@ jobs:
       #
       # `nmake all` builds both flavours and both test binaries for one
       # architecture, so two invocations cover all four.
+      #
+      # Then the same again with DEBUG=1: unoptimised, /MTd, and written to
+      # out\<arch>\debug\<form> so that it sits beside the release build
+      # instead of on top of it. A consumer building its own program /MTd needs
+      # a winwrap built the same way, since a library and a program that
+      # disagree about the CRT do not link.
       - name: Build x86
         shell: cmd
         run: |
@@ -197,6 +206,7 @@ jobs:
           echo SDK in use: %WindowsSDKVersion%  (%WindowsSdkDir%)
           echo %WindowsSDKVersion% | findstr /c:"%WINDOWS_SDK%" >nul || (echo ERROR: resolved SDK is not %WINDOWS_SDK% & exit /b 1)
           nmake all || exit /b 1
+          nmake DEBUG=1 all || exit /b 1
 
       - name: Build x64
         shell: cmd
@@ -206,6 +216,7 @@ jobs:
           echo SDK in use: %WindowsSDKVersion%  (%WindowsSdkDir%)
           echo %WindowsSDKVersion% | findstr /c:"%WINDOWS_SDK%" >nul || (echo ERROR: resolved SDK is not %WINDOWS_SDK% & exit /b 1)
           nmake all || exit /b 1
+          nmake DEBUG=1 all || exit /b 1
 
       - name: Show what was built
         shell: cmd
@@ -219,23 +230,33 @@ jobs:
         run: |
           python tools/check_imports.py --min-os 5.01 `
             out/x86/static/winwrap_test.exe `
-            out/x86/dll/winwrap_test.exe
+            out/x86/dll/winwrap_test.exe `
+            out/x86/debug/static/winwrap_test.exe `
+            out/x86/debug/dll/winwrap_test.exe
 
       - name: Check imports, x64
         run: |
           python tools/check_imports.py --min-os 5.02 `
             out/x64/static/winwrap_test.exe `
-            out/x64/dll/winwrap_test.exe
+            out/x64/dll/winwrap_test.exe `
+            out/x64/debug/static/winwrap_test.exe `
+            out/x64/debug/dll/winwrap_test.exe
 
       # Run each from its own directory, because the shared-flavour binaries
       # need the winwrap.dll that sits beside them. The harness returns the
       # number of failures, so a non-zero exit is a real failure rather than
       # noise, and `exit /b 1` on each keeps one passing flavour from hiding
       # another that did not.
+      #
+      # The step has a timeout of its own because of the debug builds. A debug
+      # CRT reports a failed assertion in a message box by default, and on a
+      # runner nobody is there to dismiss it: the test would sit until the
+      # job's 60 minutes ran out. Ten is many times what all eight need.
       - name: Run the unit tests
         shell: cmd
+        timeout-minutes: 10
         run: |
-          for %%A in (x86 x64) do for %%F in (static dll) do (
+          for %%A in (x86 x64) do for %%F in (static dll debug\static debug\dll) do (
             echo.
             echo ==== %%A %%F ====================================
             pushd out\%%A\%%F || exit /b 1
@@ -252,7 +273,7 @@ jobs:
       # Three exclusions, all of them build state that happens to land beside
       # the output rather than under obj\:
       #
-      #   obj\    the intermediate objects for four flavours, which dwarf
+      #   obj\    the intermediate objects for eight flavours, which dwarf
       #           everything anyone would want out of this.
       #   *.ilk   link.exe's incremental-link database, written because the
       #           test and DLL links pass /DEBUG. It is only meaningful to a
@@ -279,13 +300,13 @@ jobs:
   # Roll the fixed "ci-build" prerelease to this commit so it always tracks the
   # latest build under a stable tag, the same arrangement nano-win uses: a
   # consumer or script fetches the newest library from a constant URL
-  # (.../releases/download/ci-build/winwrap_x86_static.zip and the other three)
-  # without having to know a commit hash.
+  # (.../releases/download/ci-build/winwrap_x86_static.zip and the other
+  # seven) without having to know a commit hash.
   #
   # A separate job rather than more steps on the build, for two reasons. The
   # build keeps contents: read -- only this job needs write, and it runs no
   # compiler. And `needs` plus the default success() gate means a release is
-  # only ever rolled from a build whose four flavours all passed their unit
+  # only ever rolled from a build whose eight flavours all passed their unit
   # tests, since those run before the upload.
   #
   # Restricted to main. This workflow is dispatch-only, so github.ref is
@@ -318,17 +339,33 @@ jobs:
       # uploaded -- unlike artifacts, GitHub does not re-zip them -- so unlike
       # the artifact step above, zipping here is what makes the download a
       # single file instead of four loose ones per flavour.
+      #
+      # Release builds keep the names they have always had,
+      # winwrap_<arch>_<form>.zip, so nothing that fetches one has to change.
+      # Debug builds are winwrap_<arch>_debug_<form>.zip, from
+      # out/<arch>/debug/<form>. That directory is a sibling of the release
+      # forms and not inside them, so zipping out/<arch>/static whole does not
+      # take a debug build with it.
       - name: Package each flavour
         run: |
           mkdir -p dist
           for arch in x86 x64; do
             for form in static dll; do
-              if [ -d "out/$arch/$form" ]; then
-                (cd "out/$arch/$form" && zip -q -r "$GITHUB_WORKSPACE/dist/winwrap_${arch}_${form}.zip" .)
-              else
-                echo "ERROR: out/$arch/$form is missing from the artifact"
-                exit 1
-              fi
+              for config in release debug; do
+                if [ "$config" = debug ]; then
+                  dir="out/$arch/debug/$form"
+                  zip="winwrap_${arch}_debug_${form}.zip"
+                else
+                  dir="out/$arch/$form"
+                  zip="winwrap_${arch}_${form}.zip"
+                fi
+                if [ -d "$dir" ]; then
+                  (cd "$dir" && zip -q -r "$GITHUB_WORKSPACE/dist/$zip" .)
+                else
+                  echo "ERROR: $dir is missing from the artifact"
+                  exit 1
+                fi
+              done
             done
           done
           ls -la dist

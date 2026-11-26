@@ -3827,6 +3827,76 @@ namespace {
     }
   }
 
+  // --- Tray icons -------------------------------------------------------------
+
+  void TestNotifyIcon() {
+    std::wcout << L"  Shell_NotifyIconW, Shell_NotifyIconGetRect" << std::endl;
+
+    // A tray icon needs a window to own it. Message-only will do; nothing is
+    // ever dispatched to it here.
+    HWND window = ::CreateWindowExW(0, L"STATIC", L"winwrap tray test", 0, 0, 0, 0, 0,
+                                    HWND_MESSAGE, nullptr, nullptr, nullptr);
+    CHECK(window != nullptr, L"could not create a window to own the icon");
+    if (!window) {
+      return;
+    }
+
+    // The structure exactly as a program built against a current SDK passes
+    // it: full size, which is the size XP's shell has never heard of.
+    NOTIFYICONDATAW data  = {};
+    data.cbSize           = sizeof(data);
+    data.hWnd             = window;
+    data.uID              = 1;
+    data.uFlags           = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP;
+    data.uCallbackMessage = WM_APP + 1;
+    data.hIcon            = ::LoadIconW(nullptr, MAKEINTRESOURCEW(32512)); // IDI_APPLICATION
+    ::lstrcpyW(data.szTip, L"winwrap test");
+
+    // No Explorer, no tray: a service session, some CI runners. That is the
+    // one legitimate way for this to fail, and it is not winwrap's.
+    if (!::FindWindowW(L"Shell_TrayWnd", nullptr)) {
+      std::wcout << L"    (no taskbar in this session, not exercised)" << std::endl;
+      ::DestroyWindow(window);
+      return;
+    }
+
+    const BOOL added = ::Shell_NotifyIconW(NIM_ADD, &data);
+    CHECK(added, L"NIM_ADD with a full-size NOTIFYICONDATAW failed (" << ::GetLastError()
+                                                                     << L")");
+    CHECK(data.cbSize == sizeof(data), L"the caller's structure was modified");
+    if (added) {
+      ::lstrcpyW(data.szTip, L"winwrap test, modified");
+      CHECK(::Shell_NotifyIconW(NIM_MODIFY, &data), L"NIM_MODIFY failed");
+
+      // Version 4 is Vista's. Asking for it has to succeed everywhere, by
+      // being granted or by being answered with 3.
+      data.uVersion = NOTIFYICON_VERSION_4;
+      CHECK(::Shell_NotifyIconW(NIM_SETVERSION, &data), L"NIM_SETVERSION failed");
+
+      NOTIFYICONIDENTIFIER id = {};
+      id.cbSize               = sizeof(id);
+      id.hWnd                 = window;
+      id.uID                  = 1;
+      RECT rect               = {};
+      const HRESULT located   = ::Shell_NotifyIconGetRect(&id, &rect);
+      CHECK(SUCCEEDED(located), L"Shell_NotifyIconGetRect failed with 0x" << std::hex << located
+                                                                         << std::dec);
+      if (SUCCEEDED(located)) {
+        CHECK(rect.right > rect.left && rect.bottom > rect.top,
+              L"Shell_NotifyIconGetRect returned an empty rectangle");
+        std::wcout << L"    (icon at " << rect.left << L"," << rect.top << L" - " << rect.right
+                   << L"," << rect.bottom
+                   << (SystemHas(L"shell32.dll", "Shell_NotifyIconGetRect")
+                           ? L", from the system)"
+                           : L", the notification area as a whole)")
+                   << std::endl;
+      }
+
+      CHECK(::Shell_NotifyIconW(NIM_DELETE, &data), L"NIM_DELETE failed");
+    }
+    ::DestroyWindow(window);
+  }
+
   // --- AppUserModelID --------------------------------------------------------
 
   void TestAppUserModelId() {
@@ -3991,6 +4061,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestThreadpoolWait();
   TestIoCancellation();
   TestCompletionPort();
+  TestNotifyIcon();
   TestAppUserModelId();
   TestRegGetValue();
 

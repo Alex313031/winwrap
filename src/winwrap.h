@@ -472,6 +472,20 @@ DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
                                             PWSTR InterfaceName,
                                             SIZE_T Length);
 
+// --- Notification area icons -----------------------------------------------
+// Shell_NotifyIconW exists everywhere; XP's rejects the NOTIFYICONDATAW size
+// Vista introduced, which is the size a current SDK gives every caller.
+// Shell_NotifyIconGetRect is Windows 7's and answers with the notification
+// area's rectangle where the system cannot say. See shell32.cc.
+//
+// Both structures by tag: shellapi.h is not included here, and the second is
+// not declared at all below _WIN32_WINNT 0x0601.
+struct _NOTIFYICONDATAW;
+struct _NOTIFYICONIDENTIFIER;
+BOOL WINAPI ww_Shell_NotifyIconW(DWORD dwMessage, struct _NOTIFYICONDATAW* lpData);
+HRESULT WINAPI ww_Shell_NotifyIconGetRect(const struct _NOTIFYICONIDENTIFIER* identifier,
+                                          RECT* iconLocation);
+
 #ifdef WINWRAP_DLL
 HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi);
 #endif // WINWRAP_DLL

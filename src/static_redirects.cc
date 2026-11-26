@@ -306,11 +306,17 @@ WINWRAP_REDIRECT(FlsFree, 4);
 //
 // The slot is half of it. The SDK does not declare this function dllimport,
 // so most callers never touch the slot and reference the function by name
-// instead; shell32.cc defines that name as well, and says why at length.
+// instead. That name comes from the plain-names object, like every other
+// function's here; this was the function that showed one was needed.
 WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
+// The first is in every shell32 and redirected for the sake of one argument,
+// as FindFirstFileExW is; the second is Windows 7's. Both 8: a DWORD and a
+// pointer, or two pointers.
+WINWRAP_REDIRECT(Shell_NotifyIconW, 8);
+WINWRAP_REDIRECT(Shell_NotifyIconGetRect, 8);
 
 // iphlpapi, delay-imported by node as shell32 is. 8 and 12: an index and a
-// pointer, then two pointers and a SIZE_T. net.cc defines the plain names too.
+// pointer, then two pointers and a SIZE_T.
 WINWRAP_REDIRECT(ConvertInterfaceIndexToLuid, 8);
 WINWRAP_REDIRECT(ConvertInterfaceLuidToNameW, 12);
 

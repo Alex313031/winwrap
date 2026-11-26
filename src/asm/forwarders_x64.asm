@@ -103,6 +103,8 @@ EXTERN ww_FlsGetValue : PROC
 EXTERN ww_FlsSetValue : PROC
 EXTERN ww_FlsFree : PROC
 EXTERN ww_SHGetKnownFolderPath : PROC
+EXTERN ww_Shell_NotifyIconW : PROC
+EXTERN ww_Shell_NotifyIconGetRect : PROC
 EXTERN ww_ConvertInterfaceIndexToLuid : PROC
 EXTERN ww_ConvertInterfaceLuidToNameW : PROC
 EXTERN ww_SymGetSearchPathW : PROC
@@ -264,6 +266,10 @@ PUBLIC __imp_FlsFree
 __imp_FlsFree dq ww_FlsFree
 PUBLIC __imp_SHGetKnownFolderPath
 __imp_SHGetKnownFolderPath dq ww_SHGetKnownFolderPath
+PUBLIC __imp_Shell_NotifyIconW
+__imp_Shell_NotifyIconW dq ww_Shell_NotifyIconW
+PUBLIC __imp_Shell_NotifyIconGetRect
+__imp_Shell_NotifyIconGetRect dq ww_Shell_NotifyIconGetRect
 PUBLIC __imp_ConvertInterfaceIndexToLuid
 __imp_ConvertInterfaceIndexToLuid dq ww_ConvertInterfaceIndexToLuid
 PUBLIC __imp_ConvertInterfaceLuidToNameW
