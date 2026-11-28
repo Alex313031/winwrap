@@ -238,6 +238,7 @@ OBJECTS = \
 	$(OBJDIR)\srwlock.obj \
 	$(OBJDIR)\sync_objects.obj \
 	$(OBJDIR)\system.obj \
+	$(OBJDIR)\task_dialog.obj \
 	$(OBJDIR)\thread_pool.obj \
 	$(OBJDIR)\threads.obj \
 	$(OBJDIR)\tick_count.obj \

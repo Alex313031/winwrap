@@ -177,6 +177,7 @@ SOURCES := \
 	static_redirects \
 	sync_objects \
 	system \
+	task_dialog \
 	thread_pool \
 	threads \
 	tick_count \

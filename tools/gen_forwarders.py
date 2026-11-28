@@ -269,6 +269,7 @@ OWN_EXPORTS = {
     'GetWinWrapVersion': None,
     'IsRunningOnWine': None,
     'winwrap_RegGetValueFallbackW': 28,
+    'winwrap_TaskDialogIndirectFallback': 16,
 }
 
 DEF_SOURCE = os.path.join(ROOT, 'src', 'dll', 'winwrap.def')

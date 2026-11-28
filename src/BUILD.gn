@@ -99,6 +99,7 @@ _winwrap_sources = [
   "static_redirects.cc",
   "sync_objects.cc",
   "system.cc",
+  "task_dialog.cc",
   "thread_pool.cc",
   "threads.cc",
   "tick_count.cc",

@@ -60,7 +60,16 @@ REDIRECTS = os.path.join(ROOT, 'src', 'static_redirects.cc')
 # from winwrap.dll is the shared form working correctly.
 SYSTEM_DLLS = frozenset(
     ['kernel32.dll', 'advapi32.dll', 'user32.dll', 'shell32.dll', 'ntdll.dll',
-     'iphlpapi.dll', 'dbghelp.dll'])
+     'iphlpapi.dll', 'dbghelp.dll', 'comctl32.dll'])
+
+# Covered functions that import libraries bind by ordinal rather than by name.
+# An ordinal import carries no name, so without this table a consumer still
+# taking one of these from the system would pass unnoticed: comctl32.lib
+# exports its whole version 6 surface NONAME, and TaskDialogIndirect arrives
+# as comctl32.dll ordinal 345 and nothing else.
+ORDINAL_NAMES = {
+    'comctl32.dll': {345: 'TaskDialogIndirect'},
+}
 
 
 def covered_functions(path=REDIRECTS):
@@ -141,8 +150,10 @@ class PE:
         end = self.data.find(b'\0', at)
         return self.data[at:end].decode('ascii', 'replace') if end > at else None
 
-    def _thunk_names(self, rva):
-        """Names in a thunk array. Imports by ordinal have no name to give."""
+    def _thunk_names(self, rva, dll):
+        """Names in a thunk array. An import by ordinal has no name to give,
+        and gets one only if ORDINAL_NAMES knows that ordinal of `dll`."""
+        by_ordinal = ORDINAL_NAMES.get(dll, {})
         names = []
         at = self.offset(rva)
         if at is None:
@@ -159,6 +170,8 @@ class PE:
                 name = self.string(value + 2)
                 if name:
                     names.append(name)
+            elif (value & 0xFFFF) in by_ordinal:
+                names.append(by_ordinal[value & 0xFFFF])
             at += step
         return names
 
@@ -186,7 +199,7 @@ class PE:
                 break
             name_rva, thunk_rva = pick(values)
             dll = (self.string(name_rva) or '?').lower()
-            result.setdefault(dll, set()).update(self._thunk_names(thunk_rva))
+            result.setdefault(dll, set()).update(self._thunk_names(thunk_rva, dll))
             at += stride
         return result
 
