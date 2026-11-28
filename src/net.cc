@@ -208,7 +208,7 @@ DWORD WINAPI ww_ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
     return ERROR_INVALID_PARAMETER;
   }
 
-  const DWORD type        = static_cast<DWORD>(InterfaceLuid->Info.IfType);
+  const DWORD type         = static_cast<DWORD>(InterfaceLuid->Info.IfType);
   const wchar_t* type_name = nullptr;
   for (const TypeName& entry : kTypeNames) {
     if (entry.type == type) {

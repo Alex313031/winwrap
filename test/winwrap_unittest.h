@@ -58,11 +58,12 @@
 // clang-format on
 
 // C Std Libs
-#include <cstdint>
-#include <cwchar>
 #include <fcntl.h>
 #include <io.h>
 #include <stdlib.h>
+
+#include <cstdint>
+#include <cwchar>
 // memcmp, for comparing the two RegGetValueW results byte for byte.
 #include <string.h>
 

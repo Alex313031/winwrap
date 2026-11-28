@@ -36,7 +36,7 @@
 
 namespace {
 
-  constexpr wchar_t kZonesKey[] = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones";
+  constexpr wchar_t kZonesKey[]   = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones";
   constexpr wchar_t kCurrentKey[] = L"SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation";
 
   // The "TZI" value of a zone's key, as documented for TIME_ZONE_INFORMATION.
@@ -94,8 +94,8 @@ namespace {
     for (DWORD index = 0; !found; ++index) {
       wchar_t name[128] = {};
       DWORD name_length = ARRAYSIZE(name);
-      const LONG status = ::RegEnumKeyExW(zones, index, name, &name_length, nullptr, nullptr,
-                                          nullptr, nullptr);
+      const LONG status =
+          ::RegEnumKeyExW(zones, index, name, &name_length, nullptr, nullptr, nullptr, nullptr);
       if (status == ERROR_MORE_DATA) {
         continue; // A name too long to be a TimeZoneKeyName; not a candidate.
       }
@@ -107,8 +107,7 @@ namespace {
       }
 
       HKEY entry = nullptr;
-      if (::RegOpenKeyExW(zones, name, 0, KEY_QUERY_VALUE | kNativeView, &entry) !=
-          ERROR_SUCCESS) {
+      if (::RegOpenKeyExW(zones, name, 0, KEY_QUERY_VALUE | kNativeView, &entry) != ERROR_SUCCESS) {
         continue;
       }
 
@@ -149,10 +148,10 @@ namespace {
     DWORD disabled = 0;
     DWORD size     = sizeof(disabled);
     DWORD type     = 0;
-    const bool set = ::RegQueryValueExW(current, L"DisableAutoDaylightTimeSet", nullptr, &type,
-                                        reinterpret_cast<LPBYTE>(&disabled), &size) ==
-                         ERROR_SUCCESS &&
-                     type == REG_DWORD && disabled != 0;
+    const bool set =
+        ::RegQueryValueExW(current, L"DisableAutoDaylightTimeSet", nullptr, &type,
+                           reinterpret_cast<LPBYTE>(&disabled), &size) == ERROR_SUCCESS &&
+        type == REG_DWORD && disabled != 0;
     ::RegCloseKey(current);
     return set;
   }
@@ -178,9 +177,9 @@ ww_GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInforma
   }
 
   // The new structure begins with the old one, field for field.
-  static_assert(offsetof(DYNAMIC_TIME_ZONE_INFORMATION, TimeZoneKeyName) ==
-                    sizeof(TIME_ZONE_INFORMATION),
-                "DYNAMIC_TIME_ZONE_INFORMATION no longer extends TIME_ZONE_INFORMATION");
+  static_assert(
+      offsetof(DYNAMIC_TIME_ZONE_INFORMATION, TimeZoneKeyName) == sizeof(TIME_ZONE_INFORMATION),
+      "DYNAMIC_TIME_ZONE_INFORMATION no longer extends TIME_ZONE_INFORMATION");
   memset(pTimeZoneInformation, 0, sizeof(*pTimeZoneInformation));
   memcpy(pTimeZoneInformation, &zone, sizeof(zone));
 

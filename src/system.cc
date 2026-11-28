@@ -9,17 +9,18 @@
 
 namespace {
 
-// Number of set bits in an affinity mask.
-//
-// Kernighan's loop rather than a popcount intrinsic: POPCNT is SSE4.2, and a
-// machine old enough to need this shim will meet it as an invalid opcode
-// rather than a slow path.
-DWORD CountSetBits(DWORD_PTR mask) {
-  DWORD count = 0;
-  for (; mask != 0; mask &= mask - 1)
-    ++count;
-  return count;
-}
+  // Number of set bits in an affinity mask.
+  //
+  // Kernighan's loop rather than a popcount intrinsic: POPCNT is SSE4.2, and a
+  // machine old enough to need this shim will meet it as an invalid opcode
+  // rather than a slow path.
+  DWORD CountSetBits(DWORD_PTR mask) {
+    DWORD count = 0;
+    for (; mask != 0; mask &= mask - 1) {
+      ++count;
+    }
+    return count;
+  }
 
 } // namespace
 
@@ -54,12 +55,11 @@ extern "C" {
 // Note this only ever runs on 32-bit. The oldest x64 Windows is XP x64, which
 // is Server 2003 SP1 underneath and has this natively -- so on x64 the lookup
 // below always succeeds and none of the rest executes.
-BOOL WINAPI ww_GetLogicalProcessorInformation(
-    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
-    PDWORD ReturnedLength) {
+BOOL WINAPI ww_GetLogicalProcessorInformation(PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
+                                              PDWORD ReturnedLength) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32,
-                                        GetLogicalProcessorInformation)) {
+  if (const auto system_fn =
+          WW_TRYFUNC(::winwrap::Module::hKernel32, GetLogicalProcessorInformation)) {
     return system_fn(Buffer, ReturnedLength);
   }
 
@@ -72,22 +72,21 @@ BOOL WINAPI ww_GetLogicalProcessorInformation(
   ::GetSystemInfo(&info);
 
   DWORD_PTR active_mask = info.dwActiveProcessorMask;
-  DWORD processors = CountSetBits(active_mask);
+  DWORD processors      = CountSetBits(active_mask);
   if (processors == 0) {
     // An empty mask, which should not happen on a system that is running
     // code. Report one processor rather than an empty buffer, so the required
     // length is never zero -- a caller measuring with the two-step call would
     // otherwise read zero as "nothing to return".
     active_mask = 1;
-    processors = 1;
+    processors  = 1;
   }
 
   // One entry per processor, plus one NUMA node and one package covering all
   // of them. Anything old enough to lack this function is a single socket with
   // no NUMA, so both of those describe the whole machine in one entry.
-  const DWORD entries = processors + 2;
-  const DWORD required = entries *
-      static_cast<DWORD>(sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+  const DWORD entries  = processors + 2;
+  const DWORD required = entries * static_cast<DWORD>(sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
 
   if (*ReturnedLength < required) {
     // The documented two-step protocol: report how much is needed and fail.
@@ -109,11 +108,12 @@ BOOL WINAPI ww_GetLogicalProcessorInformation(
   DWORD written = 0;
   for (DWORD bit = 0; bit != sizeof(DWORD_PTR) * 8; ++bit) {
     const DWORD_PTR this_bit = static_cast<DWORD_PTR>(1) << bit;
-    if ((active_mask & this_bit) == 0)
+    if ((active_mask & this_bit) == 0) {
       continue;
+    }
 
     Buffer[written].ProcessorMask = this_bit;
-    Buffer[written].Relationship = RelationProcessorCore;
+    Buffer[written].Relationship  = RelationProcessorCore;
     // Flags is 1 when a core has more than one logical processor. Zero is the
     // approximation: without CPUID there is no way to know, and claiming no
     // SMT understates how many logical processors share a core rather than
@@ -122,13 +122,13 @@ BOOL WINAPI ww_GetLogicalProcessorInformation(
     ++written;
   }
 
-  Buffer[written].ProcessorMask = active_mask;
-  Buffer[written].Relationship = RelationNumaNode;
+  Buffer[written].ProcessorMask       = active_mask;
+  Buffer[written].Relationship        = RelationNumaNode;
   Buffer[written].NumaNode.NodeNumber = 0;
   ++written;
 
   Buffer[written].ProcessorMask = active_mask;
-  Buffer[written].Relationship = RelationProcessorPackage;
+  Buffer[written].Relationship  = RelationProcessorPackage;
   ++written;
 
   // No RelationCache entries, deliberately. Cache sizes and sharing cannot be

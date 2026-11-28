@@ -15,7 +15,7 @@ extern "C" {
 #endif
 
 ULONGLONG winwrap_test_table_tick_count(void);
-DWORD     winwrap_test_table_processor_number(void);
+DWORD winwrap_test_table_processor_number(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

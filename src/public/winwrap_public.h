@@ -67,8 +67,7 @@ bool IsRunningOnWine(const char** outWineVer = nullptr);
 // semver's patch number under an older name; the fourth field DllGetVersion
 // hands to MAKEDLLVERULL is a hard zero there precisely because winwrap has no
 // fourth component for it to carry.
-const wchar_t* GetWinWrapVersion(unsigned int* major, unsigned int* minor,
-                                 unsigned int* build);
+const wchar_t* GetWinWrapVersion(unsigned int* major, unsigned int* minor, unsigned int* build);
 
 } // extern "C"
 

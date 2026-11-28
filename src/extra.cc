@@ -9,12 +9,11 @@
 // are declared in is the one shipped to the consumer, and this file includes
 // that rather than a private copy of the same signatures.
 
-#include "public/winwrap_public.h"
-
 #include <atomic>
 
 #include "dispatch.h"
 #include "framework.h"
+#include "public/winwrap_public.h"
 #include "winwrap_version.h"
 
 namespace {
@@ -118,8 +117,7 @@ bool IsRunningOnWine(const char** outWineVer) {
   return true;
 }
 
-const wchar_t* GetWinWrapVersion(unsigned int* major, unsigned int* minor,
-                                 unsigned int* build) {
+const wchar_t* GetWinWrapVersion(unsigned int* major, unsigned int* minor, unsigned int* build) {
   // Every one optional, so a caller wanting only the string passes three
   // nullptrs and a caller wanting only the numbers ignores the return.
   if (major != nullptr) {

@@ -219,9 +219,8 @@ VOID WINAPI ww_FreeLibraryWhenCallbackReturns(PTP_CALLBACK_INSTANCE pci, HMODULE
 // what stops an otherwise-fine binary loading on XP SP2, and the CRT imports
 // it whether or not anything ever calls it. See system.cc for what the fallback
 // can and cannot know.
-BOOL WINAPI ww_GetLogicalProcessorInformation(
-    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
-    PDWORD ReturnedLength);
+BOOL WINAPI ww_GetLogicalProcessorInformation(PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
+                                              PDWORD ReturnedLength);
 
 // --- Locale and string -----------------------------------------------------
 // All Vista+ except where noted.

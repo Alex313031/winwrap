@@ -65,8 +65,7 @@ extern "C" HRESULT WINAPI winwrap_TaskDialogIndirectFallback(const TASKDIALOGCON
 // <windows.h> has already brought in Winsock 1. Declared without dllimport,
 // which is the harder of the two cases for winwrap to satisfy -- the call
 // references the function itself rather than its import slot. See net.cc.
-extern "C" DWORD WINAPI ConvertInterfaceIndexToLuid(ULONG InterfaceIndex,
-                                                    NET_LUID* InterfaceLuid);
+extern "C" DWORD WINAPI ConvertInterfaceIndexToLuid(ULONG InterfaceIndex, NET_LUID* InterfaceLuid);
 extern "C" DWORD WINAPI ConvertInterfaceLuidToNameW(const NET_LUID* InterfaceLuid,
                                                     PWSTR InterfaceName,
                                                     SIZE_T Length);
@@ -456,8 +455,8 @@ namespace {
     PVOID context = nullptr;
     if (!::InitOnceBeginInitialize(&g_begin_once, 0, &pending, &context)) {
       ++g_failures;
-      std::wcout << L"    FAIL InitOnceBeginInitialize failed in a thread with "
-                 << ::GetLastError() << std::endl;
+      std::wcout << L"    FAIL InitOnceBeginInitialize failed in a thread with " << ::GetLastError()
+                 << std::endl;
       return 0;
     }
     if (pending) {
@@ -477,8 +476,8 @@ namespace {
 
     // Error codes are only pinned down where winwrap is the one answering;
     // against the system the test settles for "it failed".
-    const bool winwrap_answers = !::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"),
-                                                   "InitOnceBeginInitialize");
+    const bool winwrap_answers =
+        !::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "InitOnceBeginInitialize");
 
     // --- InitOnceExecuteOnce carries a context ---
     {
@@ -765,7 +764,7 @@ namespace {
     // is Vista and ResolveLocaleName is Windows 7, so on Vista exactly the
     // third one is winwrap's. Keeping them apart is what stops the summary at
     // the end claiming the system answered all three when it answered two.
-    const bool winwrap_answers = !SystemHas(L"kernel32.dll", "LocaleNameToLCID");
+    const bool winwrap_answers  = !SystemHas(L"kernel32.dll", "LocaleNameToLCID");
     const bool winwrap_resolves = !SystemHas(L"kernel32.dll", "ResolveLocaleName");
 
     // en-US both ways. Asserted against the spelled-out LCID rather than
@@ -789,20 +788,19 @@ namespace {
     const LCID from_user_name   = ::LocaleNameToLCID(LOCALE_NAME_USER_DEFAULT, 0);
     const LCID from_system_name = ::LocaleNameToLCID(LOCALE_NAME_SYSTEM_DEFAULT, 0);
     std::wcout << L"    user default -> " << Hex(from_user_name) << L" (GetUserDefaultLCID "
-               << Hex(::GetUserDefaultLCID()) << L"), system default -> "
-               << Hex(from_system_name) << L" (GetSystemDefaultLCID "
-               << Hex(::GetSystemDefaultLCID()) << L")" << std::endl;
+               << Hex(::GetUserDefaultLCID()) << L"), system default -> " << Hex(from_system_name)
+               << L" (GetSystemDefaultLCID " << Hex(::GetSystemDefaultLCID()) << L")" << std::endl;
     if (winwrap_answers) {
-      CHECK(from_user_name == ::GetUserDefaultLCID(),
-            L"the user default name gave " << Hex(from_user_name) << L" rather than "
-                                           << Hex(::GetUserDefaultLCID()));
+      CHECK(from_user_name == ::GetUserDefaultLCID(), L"the user default name gave "
+                                                          << Hex(from_user_name) << L" rather than "
+                                                          << Hex(::GetUserDefaultLCID()));
       CHECK(from_system_name == ::GetSystemDefaultLCID(),
             L"the system default name gave " << Hex(from_system_name) << L" rather than "
                                              << Hex(::GetSystemDefaultLCID()));
     }
 
     wchar_t name[LOCALE_NAME_MAX_LENGTH] = {};
-    int written = ::LCIDToLocaleName(kEnUs, name, ARRAYSIZE(name), 0);
+    int written                          = ::LCIDToLocaleName(kEnUs, name, ARRAYSIZE(name), 0);
     std::wcout << L"    " << Hex(kEnUs) << L" -> " << Printable(name) << L" (" << written
                << L" chars)" << std::endl;
     CHECK(written > 0, L"LCIDToLocaleName failed with " << Hex(::GetLastError()));
@@ -817,8 +815,8 @@ namespace {
 
     // A zero count measures, and must not touch the buffer; a short one fails.
     const int needed = ::LCIDToLocaleName(kEnUs, nullptr, 0, 0);
-    CHECK(needed == written, L"the measuring call wanted " << needed << L" but the real one wrote "
-                                                           << written);
+    CHECK(needed == written,
+          L"the measuring call wanted " << needed << L" but the real one wrote " << written);
     // Three characters declared out of a four character buffer, so the fourth
     // is a canary for a write past the count. The declared three are fair game
     // and are not asserted: cchName is what the parameter is annotated to
@@ -852,13 +850,12 @@ namespace {
     // which predates the flag and turns it away; winwrap retries without it,
     // so the caller gets the name it would have had for the asking. For a
     // specific locale that is the same name the unflagged call gives.
-    CHECK(neutral_len > 0,
-          L"LOCALE_ALLOW_NEUTRAL_NAMES was rejected with " << Hex(neutral_error));
+    CHECK(neutral_len > 0, L"LOCALE_ALLOW_NEUTRAL_NAMES was rejected with " << Hex(neutral_error));
     wchar_t unflagged[LOCALE_NAME_MAX_LENGTH] = {};
     if (neutral_len > 0 && ::LCIDToLocaleName(kEnUs, unflagged, ARRAYSIZE(unflagged), 0) > 0) {
-      CHECK(wcscmp(neutral, unflagged) == 0,
-            L"with LOCALE_ALLOW_NEUTRAL_NAMES en-US is " << Printable(neutral) << L", without "
-                                                         << Printable(unflagged));
+      CHECK(wcscmp(neutral, unflagged) == 0, L"with LOCALE_ALLOW_NEUTRAL_NAMES en-US is "
+                                                 << Printable(neutral) << L", without "
+                                                 << Printable(unflagged));
     }
 
     // The same flag in the other direction, which Vista refuses the same way.
@@ -871,8 +868,8 @@ namespace {
     // The invariant locale's name is the empty string, which is the inverse of
     // the mapping the name-to-LCID direction applies to it.
     wchar_t invariant[LOCALE_NAME_MAX_LENGTH] = {L'!'};
-    const int invariant_len = ::LCIDToLocaleName(LOCALE_INVARIANT, invariant,
-                                                 ARRAYSIZE(invariant), 0);
+    const int invariant_len =
+        ::LCIDToLocaleName(LOCALE_INVARIANT, invariant, ARRAYSIZE(invariant), 0);
     CHECK(invariant_len == 1 && invariant[0] == L'\0',
           L"LOCALE_INVARIANT named itself " << Printable(invariant) << L" (" << invariant_len
                                             << L" chars) rather than the empty string");
@@ -937,8 +934,8 @@ namespace {
     wchar_t ex[128]  = {};
     wchar_t old[128] = {};
 
-    const int date_ex = ::GetDateFormatEx(L"en-US", 0, &when, L"yyyy'-'MM'-'dd", ex,
-                                          ARRAYSIZE(ex), nullptr);
+    const int date_ex =
+        ::GetDateFormatEx(L"en-US", 0, &when, L"yyyy'-'MM'-'dd", ex, ARRAYSIZE(ex), nullptr);
     const int date_old = ::GetDateFormatW(kEnUs, 0, &when, L"yyyy'-'MM'-'dd", old, ARRAYSIZE(old));
     std::wcout << L"    date " << Printable(ex) << L" / " << Printable(old) << std::endl;
     CHECK(date_ex > 0, L"GetDateFormatEx failed with " << Hex(::GetLastError()));
@@ -950,8 +947,7 @@ namespace {
     CHECK(::CompareStringOrdinal(ex, -1, L"2026-11-21", -1, FALSE) == CSTR_EQUAL,
           L"the fixed date formatted as " << Printable(ex) << L" rather than 2026-11-21");
 
-    const int time_ex =
-        ::GetTimeFormatEx(L"en-US", 0, &when, L"HH':'mm':'ss", ex, ARRAYSIZE(ex));
+    const int time_ex  = ::GetTimeFormatEx(L"en-US", 0, &when, L"HH':'mm':'ss", ex, ARRAYSIZE(ex));
     const int time_old = ::GetTimeFormatW(kEnUs, 0, &when, L"HH':'mm':'ss", old, ARRAYSIZE(old));
     std::wcout << L"    time " << Printable(ex) << L" / " << Printable(old) << std::endl;
     CHECK(time_ex > 0, L"GetTimeFormatEx failed with " << Hex(::GetLastError()));
@@ -964,28 +960,27 @@ namespace {
     // Numbers and currency with a null format, which means the locale's own
     // conventions -- so these are compared against the LCID call rather than
     // against a literal, since the expected text depends on the machine.
-    const int num_ex = ::GetNumberFormatEx(L"en-US", 0, L"-1234567.891", nullptr, ex,
-                                           ARRAYSIZE(ex));
-    const int num_old = ::GetNumberFormatW(kEnUs, 0, L"-1234567.891", nullptr, old,
-                                           ARRAYSIZE(old));
+    const int num_ex =
+        ::GetNumberFormatEx(L"en-US", 0, L"-1234567.891", nullptr, ex, ARRAYSIZE(ex));
+    const int num_old = ::GetNumberFormatW(kEnUs, 0, L"-1234567.891", nullptr, old, ARRAYSIZE(old));
     std::wcout << L"    number " << Printable(ex) << L" / " << Printable(old) << std::endl;
     CHECK(num_ex > 0, L"GetNumberFormatEx failed with " << Hex(::GetLastError()));
     CHECK(num_ex == num_old && ::CompareStringOrdinal(ex, -1, old, -1, FALSE) == CSTR_EQUAL,
           L"GetNumberFormatEx gave " << Printable(ex) << L" where GetNumberFormatW gave "
                                      << Printable(old));
 
-    const int cur_ex = ::GetCurrencyFormatEx(L"en-US", 0, L"1234.5", nullptr, ex, ARRAYSIZE(ex));
+    const int cur_ex  = ::GetCurrencyFormatEx(L"en-US", 0, L"1234.5", nullptr, ex, ARRAYSIZE(ex));
     const int cur_old = ::GetCurrencyFormatW(kEnUs, 0, L"1234.5", nullptr, old, ARRAYSIZE(old));
     std::wcout << L"    currency " << Printable(ex) << L" / " << Printable(old) << std::endl;
     CHECK(cur_ex > 0, L"GetCurrencyFormatEx failed with " << Hex(::GetLastError()));
     CHECK(cur_ex == cur_old && ::CompareStringOrdinal(ex, -1, old, -1, FALSE) == CSTR_EQUAL,
           L"GetCurrencyFormatEx gave " << Printable(ex) << L" where GetCurrencyFormatW gave "
-                                        << Printable(old));
+                                       << Printable(old));
 
     // The measuring convention carries over from the older calls untouched,
     // so a zero count has to report the length rather than format anything.
-    const int measured = ::GetDateFormatEx(L"en-US", 0, &when, L"yyyy'-'MM'-'dd", nullptr, 0,
-                                           nullptr);
+    const int measured =
+        ::GetDateFormatEx(L"en-US", 0, &when, L"yyyy'-'MM'-'dd", nullptr, 0, nullptr);
     CHECK(measured == date_ex,
           L"the measuring call wanted " << measured << L" but the real one wrote " << date_ex);
 
@@ -1228,9 +1223,8 @@ namespace {
         LSTATUS(APIENTRY*)(HKEY, LPCWSTR, LPCWSTR, DWORD, LPDWORD, PVOID, LPDWORD);
     RegGetValueFunction system_version = nullptr;
     if (HMODULE advapi32 = ::GetModuleHandleW(L"advapi32.dll")) {
-      system_version =
-          reinterpret_cast<RegGetValueFunction>(
-              reinterpret_cast<void*>(::GetProcAddress(advapi32, "RegGetValueW")));
+      system_version = reinterpret_cast<RegGetValueFunction>(
+          reinterpret_cast<void*>(::GetProcAddress(advapi32, "RegGetValueW")));
     }
     if (system_version) {
       struct Probe {
@@ -1748,8 +1742,7 @@ namespace {
   }
 
   void TestThreadpoolTimer() {
-    std::wcout << L"  CreateThreadpoolTimer, SetThreadpoolTimer, CloseThreadpoolTimer"
-               << std::endl;
+    std::wcout << L"  CreateThreadpoolTimer, SetThreadpoolTimer, CloseThreadpoolTimer" << std::endl;
 
     const bool winwrap_answers = !SystemHas(L"kernel32.dll", "CreateThreadpoolTimer");
 
@@ -1773,8 +1766,7 @@ namespace {
     FILETIME due = RelativeDueTime(50);
     ::SetThreadpoolTimer(t, &due, 0, 0);
     const DWORD fired = ::WaitForSingleObject(g_timer.done, 10000);
-    CHECK(fired == WAIT_OBJECT_0,
-          L"the one-shot timer did not fire; wait returned " << Hex(fired));
+    CHECK(fired == WAIT_OBJECT_0, L"the one-shot timer did not fire; wait returned " << Hex(fired));
 
     if (fired == WAIT_OBJECT_0) {
       CHECK(g_timer.calls == 1, L"fired " << g_timer.calls << L" times, expected once");
@@ -1851,13 +1843,12 @@ namespace {
       ::SetThreadpoolTimer(o, nullptr, 0, 0);
       ::WaitForThreadpoolTimerCallbacks(o, TRUE);
 
-      CHECK(g_overlap.inside == 0, L"the drain returned with " << g_overlap.inside
-                                                               << L" callback(s) still running");
+      CHECK(g_overlap.inside == 0,
+            L"the drain returned with " << g_overlap.inside << L" callback(s) still running");
       const LONG drained = g_overlap.calls;
       ::Sleep(200);
-      CHECK(g_overlap.calls == drained,
-            L"a drained periodic timer fired again (" << drained << L" -> " << g_overlap.calls
-                                                      << L")");
+      CHECK(g_overlap.calls == drained, L"a drained periodic timer fired again ("
+                                            << drained << L" -> " << g_overlap.calls << L")");
       std::wcout << L"    overlapping callbacks: " << g_overlap.calls << L" call(s), peak "
                  << g_overlap.peak << L" at once" << std::endl;
       if (g_overlap.peak < 2) {
@@ -1950,8 +1941,8 @@ namespace {
     // only thing that makes the object safe to re-arm or close. Returning at
     // all is most of the assertion -- the failure mode is a hang.
     ::WaitForThreadpoolWaitCallbacks(w, FALSE);
-    CHECK(g_wait.calls == 1, L"after draining, the callback had run " << g_wait.calls
-                                                                     << L" time(s)");
+    CHECK(g_wait.calls == 1,
+          L"after draining, the callback had run " << g_wait.calls << L" time(s)");
 
     // A TP_WAIT is one-shot, so re-arming is the caller's job. This is also the
     // timeout path, which has to report WAIT_TIMEOUT rather than stay silent.
@@ -2008,8 +1999,8 @@ namespace {
       // Zeroed and comfortably larger than the header the shim reads, so the
       // probe itself cannot run off the end of the buffer.
       ULONG_PTR not_an_instance[16] = {};
-      ::FreeLibraryWhenCallbackReturns(
-          reinterpret_cast<PTP_CALLBACK_INSTANCE>(not_an_instance), self);
+      ::FreeLibraryWhenCallbackReturns(reinterpret_cast<PTP_CALLBACK_INSTANCE>(not_an_instance),
+                                       self);
       std::wcout << L"    survived a null and a foreign callback instance" << std::endl;
     } else {
       std::wcout << L"    forwarding to the system; a foreign instance is not safe to pass it"
@@ -2106,9 +2097,8 @@ namespace {
   void TestDllGetVersion(HMODULE dll) {
     std::wcout << L"  DllGetVersion" << std::endl;
 
-    const auto get_version =
-        reinterpret_cast<DLLGETVERSIONPROC>(
-            reinterpret_cast<void*>(::GetProcAddress(dll, "DllGetVersion")));
+    const auto get_version = reinterpret_cast<DLLGETVERSIONPROC>(
+        reinterpret_cast<void*>(::GetProcAddress(dll, "DllGetVersion")));
     CHECK(get_version != nullptr, L"winwrap.dll does not export DllGetVersion");
     if (get_version == nullptr) {
       return;
@@ -2127,19 +2117,19 @@ namespace {
     info2.info1.cbSize    = sizeof(info2);
     const HRESULT hr2     = get_version(&info2.info1);
 
-    std::wcout << L"    DLLVERSIONINFO2 -> " << Hex(hr2) << L" ullVersion "
-               << Hex(info2.ullVersion) << L" dwFlags " << Hex(info2.dwFlags) << std::endl;
+    std::wcout << L"    DLLVERSIONINFO2 -> " << Hex(hr2) << L" ullVersion " << Hex(info2.ullVersion)
+               << L" dwFlags " << Hex(info2.dwFlags) << std::endl;
     std::wcout << L"    version " << info2.info1.dwMajorVersion << L"."
-               << info2.info1.dwMinorVersion << L"." << info2.info1.dwBuildNumber
-               << L" platform " << Hex(info2.info1.dwPlatformID) << std::endl;
+               << info2.info1.dwMinorVersion << L"." << info2.info1.dwBuildNumber << L" platform "
+               << Hex(info2.info1.dwPlatformID) << std::endl;
 
     CHECK(hr2 == S_OK, L"the DLLVERSIONINFO2 call returned " << Hex(hr2));
     if (hr2 == S_OK) {
       // MAKEDLLVERULL packs major, minor, build and a fourth field winwrap has
       // no component for, which is why the last argument is a literal zero
       // here as it is in winwrap_dll.cc.
-      const ULONGLONG expect = MAKEDLLVERULL(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION,
-                                             WINWRAP_BUILD_VERSION, 0);
+      const ULONGLONG expect =
+          MAKEDLLVERULL(WINWRAP_MAJOR_VERSION, WINWRAP_MINOR_VERSION, WINWRAP_BUILD_VERSION, 0);
       CHECK(info2.ullVersion == expect, L"ullVersion is " << Hex(info2.ullVersion)
                                                           << L" but this test's headers pack "
                                                           << Hex(expect));
@@ -2168,8 +2158,8 @@ namespace {
 
     // Neither size. The switch has no case for it, so this is the only path
     // that reaches the function's default.
-    DLLVERSIONINFO odd = {};
-    odd.cbSize         = sizeof(odd) + 1;
+    DLLVERSIONINFO odd   = {};
+    odd.cbSize           = sizeof(odd) + 1;
     const HRESULT odd_hr = get_version(&odd);
     CHECK(odd_hr == E_INVALIDARG,
           L"an unrecognised cbSize returned " << Hex(odd_hr) << L" rather than E_INVALIDARG");
@@ -2243,8 +2233,9 @@ namespace {
   // entries claim to cover.
   DWORD CountBits(DWORD_PTR mask) {
     DWORD n = 0;
-    for (; mask != 0; mask &= mask - 1)
+    for (; mask != 0; mask &= mask - 1) {
       ++n;
+    }
     return n;
   }
 
@@ -2267,9 +2258,9 @@ namespace {
     CHECK(err == ERROR_INSUFFICIENT_BUFFER,
           L"probe reported " << err << L" rather than ERROR_INSUFFICIENT_BUFFER");
     CHECK(length > 0, L"probe asked for a zero-byte buffer");
-    CHECK(length % sizeof(Entry) == 0,
-          L"required length " << length << L" is not a multiple of the entry size "
-                              << sizeof(Entry));
+    CHECK(length % sizeof(Entry) == 0, L"required length "
+                                           << length << L" is not a multiple of the entry size "
+                                           << sizeof(Entry));
 
     if (length == 0 || length % sizeof(Entry) != 0) {
       return; // Nothing trustworthy to allocate from.
@@ -2285,8 +2276,7 @@ namespace {
     if (!ok) {
       return;
     }
-    CHECK(filled <= length,
-          L"filled " << filled << L" bytes into a " << length << L" byte buffer");
+    CHECK(filled <= length, L"filled " << filled << L" bytes into a " << length << L" byte buffer");
     CHECK(filled % sizeof(Entry) == 0,
           L"returned length " << filled << L" is not a whole number of entries");
 
@@ -2322,8 +2312,8 @@ namespace {
       }
       CHECK((e.ProcessorMask & ~info.dwActiveProcessorMask) == 0,
             L"an entry names processors outside the active mask: entry 0x"
-                << std::hex << e.ProcessorMask << L" active 0x"
-                << info.dwActiveProcessorMask << std::dec);
+                << std::hex << e.ProcessorMask << L" active 0x" << info.dwActiveProcessorMask
+                << std::dec);
     }
 
     CHECK(cores > 0, L"no RelationProcessorCore entries at all");
@@ -2346,8 +2336,7 @@ namespace {
     if (is_system_impl) {
       std::wcout << L"    answered by kernel32" << std::endl;
     } else {
-      std::wcout << L"    answered by winwrap: counts exact, topology approximated"
-                 << std::endl;
+      std::wcout << L"    answered by winwrap: counts exact, topology approximated" << std::endl;
       CHECK(caches == 0,
             L"the fallback reported " << caches << L" cache entries, which it cannot know");
       CHECK(cores == CountBits(info.dwActiveProcessorMask),
@@ -2395,9 +2384,8 @@ namespace {
     using GetErrorModeFunction          = UINT(WINAPI*)();
     GetErrorModeFunction system_version = nullptr;
     if (HMODULE kernel32 = ::GetModuleHandleW(L"kernel32.dll")) {
-      system_version =
-          reinterpret_cast<GetErrorModeFunction>(
-              reinterpret_cast<void*>(::GetProcAddress(kernel32, "GetErrorMode")));
+      system_version = reinterpret_cast<GetErrorModeFunction>(
+          reinterpret_cast<void*>(::GetProcAddress(kernel32, "GetErrorMode")));
     }
     if (system_version) {
       const UINT probes[] = {0, SEM_FAILCRITICALERRORS,
@@ -2463,8 +2451,8 @@ namespace {
     const auto count = [&](FINDEX_INFO_LEVELS level, DWORD flags, bool* short_names) {
       WIN32_FIND_DATAW data;
       memset(&data, 0xCC, sizeof(data));
-      HANDLE find = ::FindFirstFileExW(pattern, level, &data, FindExSearchNameMatch, nullptr,
-                                       flags);
+      HANDLE find =
+          ::FindFirstFileExW(pattern, level, &data, FindExSearchNameMatch, nullptr, flags);
       if (find == INVALID_HANDLE_VALUE) {
         return -static_cast<int>(::GetLastError()) - 1;
       }
@@ -2518,8 +2506,8 @@ namespace {
     ::wsprintfW(path, L"%s\\no-such-*.xyz", directory);
     WIN32_FIND_DATAW data = {};
     ::SetLastError(0);
-    HANDLE none = ::FindFirstFileExW(path, FindExInfoBasic, &data, FindExSearchNameMatch,
-                                     nullptr, 0x00000002);
+    HANDLE none = ::FindFirstFileExW(path, FindExInfoBasic, &data, FindExSearchNameMatch, nullptr,
+                                     0x00000002);
     CHECK(none == INVALID_HANDLE_VALUE && ::GetLastError() == ERROR_FILE_NOT_FOUND,
           L"a search matching nothing gave error " << ::GetLastError());
     if (none != INVALID_HANDLE_VALUE) {
@@ -2716,8 +2704,7 @@ namespace {
       ::CloseHandle(event);
     }
 
-    event = ::CreateEventExW(nullptr, nullptr,
-                             CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
+    event = ::CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
                              EVENT_ALL_ACCESS);
     CHECK(event != nullptr, L"CreateEventExW(MANUAL_RESET | INITIAL_SET) failed");
     if (event) {
@@ -2747,8 +2734,8 @@ namespace {
     ::SetLastError(0);
     HANDLE second = ::CreateEventExW(nullptr, name, 0, EVENT_ALL_ACCESS);
     CHECK(second != nullptr && ::GetLastError() == ERROR_ALREADY_EXISTS,
-          L"re-creating a named event did not report ERROR_ALREADY_EXISTS ("
-              << ::GetLastError() << L")");
+          L"re-creating a named event did not report ERROR_ALREADY_EXISTS (" << ::GetLastError()
+                                                                             << L")");
     if (first && second) {
       ::SetEvent(first);
       CHECK(Signalled(second), L"the two handles to one named event were different objects");
@@ -2770,11 +2757,11 @@ namespace {
             L"D:(A;;0x00100000;;;WD)", SDDL_REVISION_1, &descriptor, nullptr)) {
       SECURITY_ATTRIBUTES attributes = {sizeof(attributes), descriptor, FALSE};
       ::wsprintfW(name, L"winwrap-test-waitonly-%lu", ::GetCurrentProcessId());
-      HANDLE guarded = ::CreateEventExW(&attributes, name,
-                                        CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
-                                        EVENT_ALL_ACCESS);
-      CHECK(guarded != nullptr, L"creating the wait-only event failed (" << ::GetLastError()
-                                                                         << L")");
+      HANDLE guarded =
+          ::CreateEventExW(&attributes, name, CREATE_EVENT_MANUAL_RESET | CREATE_EVENT_INITIAL_SET,
+                           EVENT_ALL_ACCESS);
+      CHECK(guarded != nullptr,
+            L"creating the wait-only event failed (" << ::GetLastError() << L")");
       if (guarded) {
         ::SetLastError(0);
         HANDLE waiter = ::CreateEventExW(nullptr, name, 0, SYNCHRONIZE);
@@ -2850,8 +2837,8 @@ namespace {
       CHECK(timer == nullptr && ::GetLastError() == ERROR_INVALID_PARAMETER,
             L"the high-resolution timer flag was not refused with ERROR_INVALID_PARAMETER");
     } else {
-      std::wcout << L"    (high-resolution timers: "
-                 << (timer ? L"supported" : L"not supported") << L" by this system)" << std::endl;
+      std::wcout << L"    (high-resolution timers: " << (timer ? L"supported" : L"not supported")
+                 << L" by this system)" << std::endl;
     }
     if (timer) {
       ::CloseHandle(timer);
@@ -2881,8 +2868,8 @@ namespace {
     }
 
     event = ::CreateEventExW(nullptr, nullptr, 0, MAXIMUM_ALLOWED);
-    CHECK(event != nullptr, L"CreateEventExW(MAXIMUM_ALLOWED) failed (" << ::GetLastError()
-                                                                        << L")");
+    CHECK(event != nullptr,
+          L"CreateEventExW(MAXIMUM_ALLOWED) failed (" << ::GetLastError() << L")");
     if (event) {
       CHECK(::SetEvent(event) && Signalled(event),
             L"a MAXIMUM_ALLOWED event handle could not be set and waited on");
@@ -3068,7 +3055,7 @@ namespace {
       wchar_t path[256] = {};
       ::wsprintfW(path, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Time Zones\\%s",
                   dynamic.TimeZoneKeyName);
-      HKEY key          = nullptr;
+      HKEY key = nullptr;
       // KEY_WOW64_64KEY, as the shim's search uses: the system's own list,
       // not a 32-bit process's private view of it.
       const LONG status =
@@ -3117,17 +3104,16 @@ namespace {
     for (const auto& folder : folders) {
       PWSTR path           = nullptr;
       const HRESULT result = ::SHGetKnownFolderPath(*folder.id, 0, nullptr, &path);
-      CHECK(result == S_OK && path != nullptr, L"SHGetKnownFolderPath(" << folder.label
-                                                                        << L") failed with 0x"
-                                                                        << std::hex << result
-                                                                        << std::dec);
+      CHECK(result == S_OK && path != nullptr, L"SHGetKnownFolderPath("
+                                                   << folder.label << L") failed with 0x"
+                                                   << std::hex << result << std::dec);
       if (result == S_OK && path) {
         wchar_t expected[MAX_PATH] = {};
-        if (SUCCEEDED(::SHGetFolderPathW(nullptr, folder.csidl, nullptr, SHGFP_TYPE_CURRENT,
-                                         expected))) {
-          CHECK(::lstrcmpiW(path, expected) == 0,
-                folder.label << L" is \"" << path << L"\" but its CSIDL says \"" << expected
-                             << L"\"");
+        if (SUCCEEDED(
+                ::SHGetFolderPathW(nullptr, folder.csidl, nullptr, SHGFP_TYPE_CURRENT, expected))) {
+          CHECK(::lstrcmpiW(path, expected) == 0, folder.label << L" is \"" << path
+                                                               << L"\" but its CSIDL says \""
+                                                               << expected << L"\"");
         }
         if (folder.id == &kLocalAppData) {
           std::wcout << L"    (LocalAppData: " << path << L")" << std::endl;
@@ -3161,8 +3147,7 @@ namespace {
     PWSTR system_x86 = nullptr;
     x86_result       = ::SHGetKnownFolderPath(kSystemX86, 0, nullptr, &system_x86);
     CHECK(x86_result == S_OK && system_x86 && system_x86[0] != L'\0',
-          L"SHGetKnownFolderPath(SystemX86) failed with 0x" << std::hex << x86_result
-                                                            << std::dec);
+          L"SHGetKnownFolderPath(SystemX86) failed with 0x" << std::hex << x86_result << std::dec);
     ::CoTaskMemFree(system_x86);
 
     // An ID no system has. The out parameter must come back null, because
@@ -3235,10 +3220,9 @@ namespace {
     }
     const bool winwrap_answers = !::GetProcAddress(iphlpapi, "ConvertInterfaceIndexToLuid");
 
-    using GetIfTableFn = DWORD(WINAPI*)(InterfaceTable*, PULONG, BOOL);
-    const auto get_if_table =
-        reinterpret_cast<GetIfTableFn>(
-            reinterpret_cast<void*>(::GetProcAddress(iphlpapi, "GetIfTable")));
+    using GetIfTableFn      = DWORD(WINAPI*)(InterfaceTable*, PULONG, BOOL);
+    const auto get_if_table = reinterpret_cast<GetIfTableFn>(
+        reinterpret_cast<void*>(::GetProcAddress(iphlpapi, "GetIfTable")));
     CHECK(get_if_table != nullptr, L"iphlpapi.dll has no GetIfTable");
     if (!get_if_table) {
       return;
@@ -3264,25 +3248,25 @@ namespace {
       NET_LUID luid;
       luid.Value         = ~0ULL;
       const DWORD result = ::ConvertInterfaceIndexToLuid(row.dwIndex, &luid);
-      CHECK(result == NO_ERROR, L"ConvertInterfaceIndexToLuid(" << row.dwIndex
-                                                                << L") failed with " << result);
+      CHECK(result == NO_ERROR,
+            L"ConvertInterfaceIndexToLuid(" << row.dwIndex << L") failed with " << result);
       if (result != NO_ERROR) {
         continue;
       }
-      CHECK(luid.Info.IfType == row.dwType,
-            L"interface " << row.dwIndex << L" has type " << row.dwType
-                          << L" but its LUID says " << static_cast<DWORD>(luid.Info.IfType));
+      CHECK(luid.Info.IfType == row.dwType, L"interface " << row.dwIndex << L" has type "
+                                                          << row.dwType << L" but its LUID says "
+                                                          << static_cast<DWORD>(luid.Info.IfType));
 
       wchar_t name[64]        = {};
       const DWORD name_result = ::ConvertInterfaceLuidToNameW(&luid, name, ARRAYSIZE(name));
-      CHECK(name_result == NO_ERROR && name[0] != L'\0',
-            L"ConvertInterfaceLuidToNameW failed with " << name_result << L" for interface "
-                                                        << row.dwIndex);
+      CHECK(name_result == NO_ERROR && name[0] != L'\0', L"ConvertInterfaceLuidToNameW failed with "
+                                                             << name_result << L" for interface "
+                                                             << row.dwIndex);
       if (name_result != NO_ERROR) {
         continue;
       }
-      std::wcout << L"    (interface " << row.dwIndex << L", type " << row.dwType << L": "
-                 << name << L")" << std::endl;
+      std::wcout << L"    (interface " << row.dwIndex << L", type " << row.dwType << L": " << name
+                 << L")" << std::endl;
 
       // "<type>_<number>" on every Windows, with the well-known types named.
       const wchar_t* separator = wcschr(name, L'_');
@@ -3400,14 +3384,12 @@ namespace {
     path[0] = L'\0';
     CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)),
           L"SymGetSearchPathW failed after a set (" << ::GetLastError() << L")");
-    CHECK(::lstrcmpiW(path, kWanted) == 0,
-          L"the search path read back as \"" << path << L"\"");
+    CHECK(::lstrcmpiW(path, kWanted) == 0, L"the search path read back as \"" << path << L"\"");
 
     // Null puts the default back, and is not an error.
     CHECK(::SymSetSearchPathW(process, nullptr), L"SymSetSearchPathW(null) failed");
     path[0] = L'#';
-    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)) &&
-              ::lstrcmpiW(path, kWanted) != 0,
+    CHECK(::SymGetSearchPathW(process, path, ARRAYSIZE(path)) && ::lstrcmpiW(path, kWanted) != 0,
           L"a null search path did not replace the one that was set");
 
     // A buffer too small for the path. dbghelp's own wide function, on Vista,
@@ -3423,7 +3405,8 @@ namespace {
     if (winwrap_answers) {
       CHECK(cramped_ok && cramped[0] == L'\0',
             L"a four-character buffer did not come back empty with success, as dbghelp's own "
-            L"does (returned " << cramped_ok << L", error " << cramped_error << L")");
+            L"does (returned "
+                << cramped_ok << L", error " << cramped_error << L")");
       CHECK(!::SymGetSearchPathW(process, nullptr, 16),
             L"SymGetSearchPathW accepted a null buffer");
     } else {
@@ -3499,9 +3482,9 @@ namespace {
       return true;
     }
     const DWORD share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-    HANDLE a = ::CreateFileW(left, 0, share, nullptr, OPEN_EXISTING, 0, nullptr);
-    HANDLE b = ::CreateFileW(right, 0, share, nullptr, OPEN_EXISTING, 0, nullptr);
-    bool same = false;
+    HANDLE a          = ::CreateFileW(left, 0, share, nullptr, OPEN_EXISTING, 0, nullptr);
+    HANDLE b          = ::CreateFileW(right, 0, share, nullptr, OPEN_EXISTING, 0, nullptr);
+    bool same         = false;
     BY_HANDLE_FILE_INFORMATION ia = {}, ib = {};
     if (a != INVALID_HANDLE_VALUE && b != INVALID_HANDLE_VALUE &&
         ::GetFileInformationByHandle(a, &ia) && ::GetFileInformationByHandle(b, &ib)) {
@@ -3543,9 +3526,8 @@ namespace {
     DWORD size         = ARRAYSIZE(name);
     CHECK(::QueryFullProcessImageNameW(::GetCurrentProcess(), 0, name, &size),
           L"QueryFullProcessImageNameW failed (" << ::GetLastError() << L")");
-    CHECK(size == wcslen(name),
-          L"the reported length is " << size << L" but the name is " << wcslen(name)
-                                     << L" characters");
+    CHECK(size == wcslen(name), L"the reported length is " << size << L" but the name is "
+                                                           << wcslen(name) << L" characters");
     CHECK(SameFile(name, expected),
           L"this process is \"" << expected << L"\" but was named \"" << name << L"\"");
     std::wcout << L"    (" << name << L")" << std::endl;
@@ -3567,12 +3549,11 @@ namespace {
         // opened without the right to. Not a failure of the shim, so reported
         // and not counted.
         std::wcout << L"    (a PROCESS_QUERY_INFORMATION handle was refused with " << named_error
-                   << L"; expected when no drive mapping accounts for this volume)"
-                   << std::endl;
+                   << L"; expected when no drive mapping accounts for this volume)" << std::endl;
       } else {
-        CHECK(named && ::lstrcmpiW(again, name) == 0,
-              L"a PROCESS_QUERY_INFORMATION handle gave \"" << again << L"\" (" << named_error
-                                                            << L")");
+        CHECK(named && ::lstrcmpiW(again, name) == 0, L"a PROCESS_QUERY_INFORMATION handle gave \""
+                                                          << again << L"\" (" << named_error
+                                                          << L")");
       }
       ::CloseHandle(self);
     }
@@ -3580,8 +3561,8 @@ namespace {
     // The native form: the same file as the kernel names it, by device.
     wchar_t native[1024] = {};
     size                 = ARRAYSIZE(native);
-    CHECK(::QueryFullProcessImageNameW(::GetCurrentProcess(), 1 /* PROCESS_NAME_NATIVE */,
-                                       native, &size) &&
+    CHECK(::QueryFullProcessImageNameW(::GetCurrentProcess(), 1 /* PROCESS_NAME_NATIVE */, native,
+                                       &size) &&
               native[0] == L'\\' && size == wcslen(native),
           L"the native name came back as \"" << native << L"\" (" << ::GetLastError() << L")");
     std::wcout << L"    (" << native << L")" << std::endl;
@@ -3628,15 +3609,14 @@ namespace {
     const ULONGLONG by_name  = winwrap_test_table_tick_count();
     const ULONGLONG distance = by_name >= by_slot ? by_name - by_slot : by_slot - by_name;
     CHECK(by_name != 0 && distance < 1000,
-          L"GetTickCount64 through a table gave " << by_name << L", through its slot "
-                                                  << by_slot);
+          L"GetTickCount64 through a table gave " << by_name << L", through its slot " << by_slot);
 
     SYSTEM_INFO info = {};
     ::GetSystemInfo(&info);
     const DWORD processor = winwrap_test_table_processor_number();
-    CHECK(processor < info.dwNumberOfProcessors,
-          L"GetCurrentProcessorNumber through a table gave " << processor << L" of "
-                                                             << info.dwNumberOfProcessors);
+    CHECK(processor < info.dwNumberOfProcessors, L"GetCurrentProcessorNumber through a table gave "
+                                                     << processor << L" of "
+                                                     << info.dwNumberOfProcessors);
   }
 
   void TestIoCancellation() {
@@ -3842,8 +3822,8 @@ namespace {
 
     // A tray icon needs a window to own it. Message-only will do; nothing is
     // ever dispatched to it here.
-    HWND window = ::CreateWindowExW(0, L"STATIC", L"winwrap tray test", 0, 0, 0, 0, 0,
-                                    HWND_MESSAGE, nullptr, nullptr, nullptr);
+    HWND window = ::CreateWindowExW(0, L"STATIC", L"winwrap tray test", 0, 0, 0, 0, 0, HWND_MESSAGE,
+                                    nullptr, nullptr, nullptr);
     CHECK(window != nullptr, L"could not create a window to own the icon");
     if (!window) {
       return;
@@ -3869,8 +3849,7 @@ namespace {
     }
 
     const BOOL added = ::Shell_NotifyIconW(NIM_ADD, &data);
-    CHECK(added, L"NIM_ADD with a full-size NOTIFYICONDATAW failed (" << ::GetLastError()
-                                                                     << L")");
+    CHECK(added, L"NIM_ADD with a full-size NOTIFYICONDATAW failed (" << ::GetLastError() << L")");
     CHECK(data.cbSize == sizeof(data), L"the caller's structure was modified");
     if (added) {
       ::lstrcpyW(data.szTip, L"winwrap test, modified");
@@ -3887,8 +3866,8 @@ namespace {
       id.uID                  = 1;
       RECT rect               = {};
       const HRESULT located   = ::Shell_NotifyIconGetRect(&id, &rect);
-      CHECK(SUCCEEDED(located), L"Shell_NotifyIconGetRect failed with 0x" << std::hex << located
-                                                                         << std::dec);
+      CHECK(SUCCEEDED(located),
+            L"Shell_NotifyIconGetRect failed with 0x" << std::hex << located << std::dec);
       if (SUCCEEDED(located)) {
         CHECK(rect.right > rect.left && rect.bottom > rect.top,
               L"Shell_NotifyIconGetRect returned an empty rectangle");
@@ -3921,8 +3900,8 @@ namespace {
     bool timed_out;
   };
 
-  HRESULT CALLBACK TaskDialogTestCallback(HWND window, UINT notification, WPARAM w_param, LPARAM,
-                                          LONG_PTR data) {
+  HRESULT CALLBACK
+  TaskDialogTestCallback(HWND window, UINT notification, WPARAM w_param, LPARAM, LONG_PTR data) {
     auto* script = reinterpret_cast<TaskDialogScript*>(data);
     switch (notification) {
       case TDN_CREATED:
@@ -3965,7 +3944,7 @@ namespace {
 
   // The three dialogs, shown by whichever implementation is passed in.
   void RunTaskDialogScripts(TaskDialogFn show) {
-    int button = -1;
+    int button                   = -1;
     const TASKDIALOG_FLAGS flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_CALLBACK_TIMER;
 
     // Custom buttons beside a common one, a checkbox that starts ticked, and
@@ -3977,15 +3956,16 @@ namespace {
       script.second_click               = 101;
       script.refused                    = 100;
 
-      TASKDIALOGCONFIG config    = {};
-      config.cbSize              = sizeof(config);
-      config.dwFlags             = flags | TDF_VERIFICATION_FLAG_CHECKED;
-      config.dwCommonButtons     = TDCBF_CANCEL_BUTTON;
-      config.pszWindowTitle      = L"winwrap test";
-      config.pszMainIcon         = TD_INFORMATION_ICON;
-      config.pszMainInstruction  = L"A heading";
-      config.pszContent          = L"Some text under it, long enough that it has to be measured "
-                                   L"and wrapped rather than fitting on a line of its own.";
+      TASKDIALOGCONFIG config   = {};
+      config.cbSize             = sizeof(config);
+      config.dwFlags            = flags | TDF_VERIFICATION_FLAG_CHECKED;
+      config.dwCommonButtons    = TDCBF_CANCEL_BUTTON;
+      config.pszWindowTitle     = L"winwrap test";
+      config.pszMainIcon        = TD_INFORMATION_ICON;
+      config.pszMainInstruction = L"A heading";
+      config.pszContent =
+          L"Some text under it, long enough that it has to be measured "
+          L"and wrapped rather than fitting on a line of its own.";
       config.pButtons            = buttons;
       config.cButtons            = 2;
       config.nDefaultButton      = 101;
@@ -3994,7 +3974,7 @@ namespace {
       config.lpCallbackData      = reinterpret_cast<LONG_PTR>(&script);
 
       BOOL checked     = FALSE;
-      button = -1;
+      button           = -1;
       const HRESULT hr = show(&config, &button, nullptr, &checked);
       CHECK(hr == S_OK, L"the dialog failed with " << Hex(hr));
       CHECK(script.created, L"TDN_CREATED was never sent");
@@ -4020,7 +4000,7 @@ namespace {
       config.lpCallbackData   = reinterpret_cast<LONG_PTR>(&script);
 
       BOOL checked     = TRUE;
-      button = -1;
+      button           = -1;
       const HRESULT hr = show(&config, &button, nullptr, &checked);
       CHECK(hr == S_OK, L"the dialog failed with " << Hex(hr));
       CHECK(!script.timed_out, L"the dialog had to be closed by the timer");
@@ -4051,7 +4031,7 @@ namespace {
       config.lpCallbackData      = reinterpret_cast<LONG_PTR>(&script);
 
       int radio        = -1;
-      button = -1;
+      button           = -1;
       const HRESULT hr = show(&config, &button, &radio, nullptr);
       CHECK(hr == S_OK, L"the dialog failed with " << Hex(hr));
       CHECK(!script.timed_out, L"the dialog had to be closed by the timer");

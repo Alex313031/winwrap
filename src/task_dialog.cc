@@ -156,13 +156,13 @@ namespace {
   constexpr UINT kNotifyVerificationClicked = 8;
 
   // TASKDIALOG_MESSAGES, the ones answered.
-  constexpr UINT kMessageClickButton        = WM_USER + 102;
-  constexpr UINT kMessageSetElementText     = WM_USER + 108;
-  constexpr UINT kMessageClickRadioButton   = WM_USER + 110;
-  constexpr UINT kMessageEnableButton       = WM_USER + 111;
-  constexpr UINT kMessageEnableRadioButton  = WM_USER + 112;
-  constexpr UINT kMessageClickVerification  = WM_USER + 113;
-  constexpr UINT kMessageUpdateElementText  = WM_USER + 114;
+  constexpr UINT kMessageClickButton       = WM_USER + 102;
+  constexpr UINT kMessageSetElementText    = WM_USER + 108;
+  constexpr UINT kMessageClickRadioButton  = WM_USER + 110;
+  constexpr UINT kMessageEnableButton      = WM_USER + 111;
+  constexpr UINT kMessageEnableRadioButton = WM_USER + 112;
+  constexpr UINT kMessageClickVerification = WM_USER + 113;
+  constexpr UINT kMessageUpdateElementText = WM_USER + 114;
 
   // TASKDIALOG_ELEMENTS, which is also the order the texts are stacked in,
   // except that the footer goes under the buttons.
@@ -178,9 +178,9 @@ namespace {
     const wchar_t* fallback;
   };
   const CommonButton kCommonButtons[] = {
-    {0x01, IDOK, 0, L"OK"},        {0x02, IDYES, 5, L"&Yes"},
-    {0x04, IDNO, 6, L"&No"},       {0x10, IDRETRY, 3, L"&Retry"},
-    {0x08, IDCANCEL, 1, L"Cancel"}, {0x20, 8 /* IDCLOSE */, 7, L"&Close"},
+      {0x01, IDOK, 0, L"OK"},         {0x02, IDYES, 5, L"&Yes"},
+      {0x04, IDNO, 6, L"&No"},        {0x10, IDRETRY, 3, L"&Retry"},
+      {0x08, IDCANCEL, 1, L"Cancel"}, {0x20, 8 /* IDCLOSE */, 7, L"&Close"},
   };
 
   // Control identifiers. The caller's button IDs cannot be used for these: a
@@ -198,14 +198,15 @@ namespace {
 
   // --- user32 and gdi32 -----------------------------------------------------
 
-#define WW_UI_USER32(X)                                                                  \
-  X(AdjustWindowRectEx) X(BeginPaint) X(CheckDlgButton) X(CreateWindowExW)               \
-  X(DialogBoxIndirectParamW) X(DrawIconEx) X(DrawTextW) X(EnableWindow) X(EndDialog)     \
-  X(EndPaint) X(GetDC) X(GetDlgItem) X(GetMonitorInfoW) X(GetSystemMetrics)              \
-  X(GetWindowLongPtrW) X(GetWindowRect) X(IsDlgButtonChecked) X(IsWindowEnabled)         \
-  X(KillTimer) X(LoadIconW) X(LoadStringW) X(MonitorFromWindow) X(ReleaseDC)             \
-  X(SendMessageW) X(SetFocus) X(SetTimer) X(SetWindowLongPtrW) X(SetWindowPos)           \
-  X(SetWindowTextW) X(SystemParametersInfoW)
+#define WW_UI_USER32(X)                                                                         \
+  X(AdjustWindowRectEx)                                                                         \
+  X(BeginPaint) X(CheckDlgButton) X(CreateWindowExW) X(DialogBoxIndirectParamW) X(DrawIconEx)   \
+      X(DrawTextW) X(EnableWindow) X(EndDialog) X(EndPaint) X(GetDC) X(GetDlgItem)              \
+          X(GetMonitorInfoW) X(GetSystemMetrics) X(GetWindowLongPtrW) X(GetWindowRect)          \
+              X(IsDlgButtonChecked) X(IsWindowEnabled) X(KillTimer) X(LoadIconW) X(LoadStringW) \
+                  X(MonitorFromWindow) X(ReleaseDC) X(SendMessageW) X(SetFocus) X(SetTimer)     \
+                      X(SetWindowLongPtrW) X(SetWindowPos) X(SetWindowTextW)                    \
+                          X(SystemParametersInfoW)
 
 #define WW_UI_GDI32(X) X(CreateFontIndirectW) X(DeleteObject) X(GetStockObject) X(SelectObject)
 
@@ -214,8 +215,8 @@ namespace {
   // called GetWindowLongW, and asking user32 for the former by name there
   // finds nothing.
 #define WW_UI_STRING_(name) #name
-#define WW_UI_STRING(name) WW_UI_STRING_(name)
-#define WW_UI_MEMBER(name) decltype(&::name) name;
+#define WW_UI_STRING(name)  WW_UI_STRING_(name)
+#define WW_UI_MEMBER(name)  decltype(&::name) name;
 
   using MbGetStringFn = LPCWSTR(WINAPI*)(UINT);
 
@@ -245,12 +246,12 @@ namespace {
       return nullptr;
     }
     bool complete = true;
-#define WW_UI_LOAD(module, name)                                                         \
-  ui->name = reinterpret_cast<decltype(ui->name)>(                                       \
-      reinterpret_cast<void*>(::GetProcAddress(module, WW_UI_STRING(name))));            \
+#define WW_UI_LOAD(module, name)                                              \
+  ui->name = reinterpret_cast<decltype(ui->name)>(                            \
+      reinterpret_cast<void*>(::GetProcAddress(module, WW_UI_STRING(name)))); \
   complete = complete && ui->name != nullptr;
 #define WW_UI_LOAD_USER32(name) WW_UI_LOAD(user32, name)
-#define WW_UI_LOAD_GDI32(name) WW_UI_LOAD(gdi32, name)
+#define WW_UI_LOAD_GDI32(name)  WW_UI_LOAD(gdi32, name)
     WW_UI_USER32(WW_UI_LOAD_USER32)
     WW_UI_GDI32(WW_UI_LOAD_GDI32)
 #undef WW_UI_LOAD_GDI32
@@ -343,14 +344,14 @@ namespace {
       return text;
     }
     const wchar_t* resource = nullptr;
-    const int length        = d.ui->LoadStringW(d.config->hInstance,
-                                                LOWORD(reinterpret_cast<ULONG_PTR>(text)),
-                                                reinterpret_cast<LPWSTR>(&resource), 0);
+    const int length =
+        d.ui->LoadStringW(d.config->hInstance, LOWORD(reinterpret_cast<ULONG_PTR>(text)),
+                          reinterpret_cast<LPWSTR>(&resource), 0);
     if (length <= 0 || !resource) {
       return nullptr;
     }
-    wchar_t* copy = static_cast<wchar_t*>(::HeapAlloc(
-        ::GetProcessHeap(), 0, (static_cast<size_t>(length) + 1) * sizeof(wchar_t)));
+    wchar_t* copy = static_cast<wchar_t*>(
+        ::HeapAlloc(::GetProcessHeap(), 0, (static_cast<size_t>(length) + 1) * sizeof(wchar_t)));
     if (!copy) {
       return nullptr;
     }
@@ -391,8 +392,16 @@ namespace {
     return size;
   }
 
-  HWND CreateControl(const Dialog& d, const wchar_t* window_class, const wchar_t* text,
-                     DWORD style, int id, HFONT font, int x, int y, int width, int height) {
+  HWND CreateControl(const Dialog& d,
+                     const wchar_t* window_class,
+                     const wchar_t* text,
+                     DWORD style,
+                     int id,
+                     HFONT font,
+                     int x,
+                     int y,
+                     int width,
+                     int height) {
     const HWND control = d.ui->CreateWindowExW(
         0, window_class, text, WS_CHILD | WS_VISIBLE | style, x, y, width, height, d.window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), ::GetModuleHandleW(nullptr), nullptr);
@@ -410,9 +419,9 @@ namespace {
     metrics.cbSize =
         static_cast<UINT>(offsetof(NONCLIENTMETRICSW, lfMessageFont) + sizeof(LOGFONTW));
     if (d.ui->SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, metrics.cbSize, &metrics, 0)) {
-      d.font = d.ui->CreateFontIndirectW(&metrics.lfMessageFont);
+      d.font                         = d.ui->CreateFontIndirectW(&metrics.lfMessageFont);
       metrics.lfMessageFont.lfWeight = FW_BOLD;
-      d.bold = d.ui->CreateFontIndirectW(&metrics.lfMessageFont);
+      d.bold                         = d.ui->CreateFontIndirectW(&metrics.lfMessageFont);
     }
     d.own_font = d.font != nullptr;
     if (!d.font) {
@@ -467,8 +476,8 @@ namespace {
   // in the system's.
   bool CollectButtons(Dialog& d) {
     const TaskConfig& config = *d.config;
-    const size_t capacity    = static_cast<size_t>(config.cButtons) +
-                               sizeof(kCommonButtons) / sizeof(kCommonButtons[0]);
+    const size_t capacity =
+        static_cast<size_t>(config.cButtons) + sizeof(kCommonButtons) / sizeof(kCommonButtons[0]);
     d.buttons = static_cast<Button*>(
         ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, capacity * sizeof(Button)));
     if (!d.buttons) {
@@ -520,8 +529,8 @@ namespace {
       return false;
     }
     if (config.cRadioButtons) {
-      d.radios = static_cast<HWND*>(::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY,
-                                                config.cRadioButtons * sizeof(HWND)));
+      d.radios = static_cast<HWND*>(
+          ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, config.cRadioButtons * sizeof(HWND)));
       if (!d.radios) {
         return false;
       }
@@ -559,9 +568,9 @@ namespace {
 
     // Everything is in units of the font's line height, so the dialog scales
     // with the user's font and DPI settings without being told about either.
-    const int em = (Measure(d, dc, d.font, L"Mg", 0, false).cy > 0)
-                       ? Measure(d, dc, d.font, L"Mg", 0, false).cy
-                       : 13;
+    const int em            = (Measure(d, dc, d.font, L"Mg", 0, false).cy > 0)
+                                  ? Measure(d, dc, d.font, L"Mg", 0, false).cy
+                                  : 13;
     const int margin        = em;
     const int gap           = em * 2 / 3;
     const int button_height = em * 7 / 4;
@@ -610,11 +619,11 @@ namespace {
       natural          = width > natural ? width : natural;
     }
     for (UINT i = 0; i < config.cRadioButtons; ++i) {
-      wchar_t* owned     = nullptr;
-      const int width    = Measure(d, dc, d.font,
-                                   ResolveText(d, config.pRadioButtons[i].text, &owned), 0, true)
-                               .cx + em * 2;
-      natural            = width > natural ? width : natural;
+      wchar_t* owned = nullptr;
+      const int width =
+          Measure(d, dc, d.font, ResolveText(d, config.pRadioButtons[i].text, &owned), 0, true).cx +
+          em * 2;
+      natural = width > natural ? width : natural;
       if (owned) {
         ::HeapFree(::GetProcessHeap(), 0, owned);
       }
@@ -638,8 +647,7 @@ namespace {
       // In dialog units, a quarter of the font's average character width,
       // found the way the dialog manager finds it.
       const int alphabet =
-          Measure(d, dc, d.font, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 0,
-                  false)
+          Measure(d, dc, d.font, L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", 0, false)
               .cx;
       const int average = (alphabet / 26 + 1) / 2;
       client_width      = static_cast<int>(config.cxWidth) * average / 4;
@@ -651,13 +659,13 @@ namespace {
     // cxWidth beside an icon would otherwise ask for.
     const int narrowest = text_x + em * 8 + margin;
     client_width        = client_width < narrowest ? narrowest : client_width;
-    client_width = client_width > work_width ? work_width : client_width;
-    text_width   = client_width - text_x - margin;
+    client_width        = client_width > work_width ? work_width : client_width;
+    text_width          = client_width - text_x - margin;
 
     // --- Heights, creating each control where it lands ---
 
-    bool created = true;
-    int y        = margin;
+    bool created           = true;
+    int y                  = margin;
     const Element column[] = {kMainInstruction, kContent, kExpandedInformation};
 
     // A line or two of text beside an icon is centred on it, as a message
@@ -696,11 +704,10 @@ namespace {
     for (UINT i = 0; i < config.cRadioButtons; ++i) {
       wchar_t* owned      = nullptr;
       const wchar_t* text = ResolveText(d, config.pRadioButtons[i].text, &owned);
-      d.radios[i] =
-          CreateControl(d, L"BUTTON", text ? text : L"",
-                        BS_AUTORADIOBUTTON | (group_start ? WS_GROUP | WS_TABSTOP : 0),
-                        kFirstRadioControl + static_cast<int>(i), d.font, text_x, y, text_width,
-                        row_height);
+      d.radios[i] = CreateControl(d, L"BUTTON", text ? text : L"",
+                                  BS_AUTORADIOBUTTON | (group_start ? WS_GROUP | WS_TABSTOP : 0),
+                                  kFirstRadioControl + static_cast<int>(i), d.font, text_x, y,
+                                  text_width, row_height);
       created     = created && d.radios[i];
       group_start = false;
       y += row_height;
@@ -751,19 +758,18 @@ namespace {
         if (button.link) {
           continue;
         }
-        button.window = CreateControl(
-            d, L"BUTTON", button.text ? button.text : L"",
-            BS_PUSHBUTTON | WS_TABSTOP | (group_start ? WS_GROUP : 0),
-            kFirstButtonControl + static_cast<int>(i), d.font, x, y, button.width, button_height);
-        created     = created && button.window;
-        group_start = false;
+        button.window = CreateControl(d, L"BUTTON", button.text ? button.text : L"",
+                                      BS_PUSHBUTTON | WS_TABSTOP | (group_start ? WS_GROUP : 0),
+                                      kFirstButtonControl + static_cast<int>(i), d.font, x, y,
+                                      button.width, button_height);
+        created       = created && button.window;
+        group_start   = false;
         x += button.width + button_gap;
       }
       if (verification_width) {
-        d.verification =
-            CreateControl(d, L"BUTTON", verification, BS_AUTOCHECKBOX | WS_TABSTOP | WS_GROUP,
-                          kVerificationControl, d.font, margin, y, verification_width,
-                          button_height);
+        d.verification = CreateControl(
+            d, L"BUTTON", verification, BS_AUTOCHECKBOX | WS_TABSTOP | WS_GROUP,
+            kVerificationControl, d.font, margin, y, verification_width, button_height);
         created = created && d.verification;
         if (d.verification && (config.dwFlags & kVerificationChecked)) {
           ui.CheckDlgButton(d.window, kVerificationControl, BST_CHECKED);
@@ -793,8 +799,7 @@ namespace {
 
     RECT frame = {0, 0, client_width, client_height};
     ui.AdjustWindowRectEx(&frame, static_cast<DWORD>(ui.GetWindowLongPtrW(d.window, GWL_STYLE)),
-                          FALSE,
-                          static_cast<DWORD>(ui.GetWindowLongPtrW(d.window, GWL_EXSTYLE)));
+                          FALSE, static_cast<DWORD>(ui.GetWindowLongPtrW(d.window, GWL_EXSTYLE)));
     int width  = frame.right - frame.left;
     int height = frame.bottom - frame.top;
     // Text too long for the screen is cut off at the bottom rather than
@@ -928,8 +933,7 @@ namespace {
         return true;
       case kMessageClickVerification:
         if (d.verification) {
-          ui.CheckDlgButton(d.window, kVerificationControl,
-                            w_param ? BST_CHECKED : BST_UNCHECKED);
+          ui.CheckDlgButton(d.window, kVerificationControl, w_param ? BST_CHECKED : BST_UNCHECKED);
           if (l_param) {
             ui.SetFocus(d.verification);
           }
@@ -1056,8 +1060,7 @@ HRESULT WINAPI winwrap_TaskDialogIndirectFallback(const struct _TASKDIALOGCONFIG
                                                   int* pnRadioButton,
                                                   BOOL* pfVerificationFlagChecked) {
   const TaskConfig* config = reinterpret_cast<const TaskConfig*>(pTaskConfig);
-  if (!config || config->cbSize != sizeof(TaskConfig) ||
-      (config->cButtons && !config->pButtons) ||
+  if (!config || config->cbSize != sizeof(TaskConfig) || (config->cButtons && !config->pButtons) ||
       (config->cRadioButtons && !config->pRadioButtons)) {
     return E_INVALIDARG;
   }
@@ -1094,9 +1097,9 @@ HRESULT WINAPI winwrap_TaskDialogIndirectFallback(const struct _TASKDIALOGCONFIG
     dialog_template->dwExtendedStyle |= WS_EX_LAYOUTRTL;
   }
 
-  const INT_PTR ended = ui->DialogBoxIndirectParamW(::GetModuleHandleW(nullptr), dialog_template,
-                                                    config->hwndParent, DialogProc,
-                                                    reinterpret_cast<LPARAM>(&d));
+  const INT_PTR ended =
+      ui->DialogBoxIndirectParamW(::GetModuleHandleW(nullptr), dialog_template, config->hwndParent,
+                                  DialogProc, reinterpret_cast<LPARAM>(&d));
   const bool failed = d.failed;
   Release(d);
   if (ended != kEndedNormally) {

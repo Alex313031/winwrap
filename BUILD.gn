@@ -4,7 +4,8 @@
 
 import("//third_party/winwrap/winwrap.gni")
 
-assert(is_win || target_os == "win", "winwrap is only valid for Windows targets")
+assert(is_win || target_os == "win",
+       "winwrap is only valid for Windows targets")
 
 config("winwrap_public_config") {
   # src/public and not src, so a consumer sees winwrap_public.h and nothing

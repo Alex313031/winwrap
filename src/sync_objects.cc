@@ -106,8 +106,7 @@ HANDLE WINAPI ww_CreateEventExW(LPSECURITY_ATTRIBUTES lpEventAttributes,
   }
   HANDLE event = ::CreateEventW(lpEventAttributes, (dwFlags & CREATE_EVENT_MANUAL_RESET) != 0,
                                 (dwFlags & CREATE_EVENT_INITIAL_SET) != 0, lpName);
-  return Finish(event, ::OpenEventW, lpEventAttributes, lpName, dwDesiredAccess,
-                EVENT_ALL_ACCESS);
+  return Finish(event, ::OpenEventW, lpEventAttributes, lpName, dwDesiredAccess, EVENT_ALL_ACCESS);
 }
 
 HANDLE WINAPI ww_CreateSemaphoreExW(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes,

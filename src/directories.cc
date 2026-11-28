@@ -51,8 +51,8 @@
 // For ww_FindFirstFileExW, at the end of this file.
 namespace {
 
-  constexpr int kFindExInfoBasic               = 1; // FINDEX_INFO_LEVELS
-  constexpr DWORD kFindFirstExLargeFetch       = 0x00000002;
+  constexpr int kFindExInfoBasic                = 1; // FINDEX_INFO_LEVELS
+  constexpr DWORD kFindFirstExLargeFetch        = 0x00000002;
   constexpr DWORD kFindFirstExOnDiskEntriesOnly = 0x00000004; // Windows 10
 
   // Set once the system has refused the Windows 7 arguments, and once it has
@@ -177,9 +177,8 @@ HANDLE WINAPI ww_FindFirstFileExW(LPCWSTR lpFileName,
     return INVALID_HANDLE_VALUE;
   }
 
-  const bool wants_basic = static_cast<int>(fInfoLevelId) == kFindExInfoBasic;
-  const bool has_win7_args =
-      wants_basic || (dwAdditionalFlags & kFindFirstExLargeFetch) != 0;
+  const bool wants_basic    = static_cast<int>(fInfoLevelId) == kFindExInfoBasic;
+  const bool has_win7_args  = wants_basic || (dwAdditionalFlags & kFindFirstExLargeFetch) != 0;
   const bool has_win10_flag = (dwAdditionalFlags & kFindFirstExOnDiskEntriesOnly) != 0;
 
   // What is already known to be refused comes off before the first attempt.
@@ -199,9 +198,9 @@ HANDLE WINAPI ww_FindFirstFileExW(LPCWSTR lpFileName,
     if (drop_win7_args) {
       flags &= ~kFindFirstExLargeFetch;
     }
-    found = system_fn(lpFileName,
-                      (drop_win7_args && wants_basic) ? FindExInfoStandard : fInfoLevelId,
-                      lpFindFileData, fSearchOp, lpSearchFilter, flags);
+    found =
+        system_fn(lpFileName, (drop_win7_args && wants_basic) ? FindExInfoStandard : fInfoLevelId,
+                  lpFindFileData, fSearchOp, lpSearchFilter, flags);
     if (found != INVALID_HANDLE_VALUE) {
       break;
     }

@@ -39,8 +39,8 @@ namespace {
   class WideBuffer {
    public:
     explicit WideBuffer(DWORD characters)
-        : text_(static_cast<wchar_t*>(::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY,
-                                                  characters * sizeof(wchar_t)))) {}
+        : text_(static_cast<wchar_t*>(
+              ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, characters * sizeof(wchar_t)))) {}
     ~WideBuffer() {
       if (text_) {
         ::HeapFree(::GetProcessHeap(), 0, text_);
@@ -102,8 +102,8 @@ namespace {
 
     // The device name has to be the whole of the first components, not a
     // prefix of them: HarddiskVolume1 is not HarddiskVolume10.
-    if (device_length == 0 || device_length >= native_length ||
-        native[device_length] != L'\\' || !StartsWithNoCase(native, device, device_length)) {
+    if (device_length == 0 || device_length >= native_length || native[device_length] != L'\\' ||
+        !StartsWithNoCase(native, device, device_length)) {
       return Translation::kNoMatch;
     }
     const wchar_t* rest      = native + device_length; // Begins with a backslash.
@@ -316,8 +316,7 @@ BOOL WINAPI ww_QueryFullProcessImageNameW(HANDLE hProcess,
                                           LPWSTR lpExeName,
                                           PDWORD lpdwSize) {
   // Hand straight over where Windows has this itself.
-  if (const auto system_fn =
-          WW_TRYFUNC(::winwrap::Module::hKernel32, QueryFullProcessImageNameW)) {
+  if (const auto system_fn = WW_TRYFUNC(::winwrap::Module::hKernel32, QueryFullProcessImageNameW)) {
     return system_fn(hProcess, dwFlags, lpExeName, lpdwSize);
   }
   if (!lpExeName || !lpdwSize || (dwFlags & ~kProcessNameNative) != 0) {

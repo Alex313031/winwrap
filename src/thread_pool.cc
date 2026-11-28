@@ -239,8 +239,8 @@ namespace {
     // have, so the translation is exact.
     const TP_WAIT_RESULT result = timer_or_wait_fired ? WAIT_TIMEOUT : WAIT_OBJECT_0;
     RunCallback(wait, [wait, result] {
-      wait->callback(reinterpret_cast<PTP_CALLBACK_INSTANCE>(&wait->common),
-                     wait->common.context, reinterpret_cast<PTP_WAIT>(wait), result);
+      wait->callback(reinterpret_cast<PTP_CALLBACK_INSTANCE>(&wait->common), wait->common.context,
+                     reinterpret_cast<PTP_WAIT>(wait), result);
     });
   }
 
@@ -453,8 +453,7 @@ namespace {
   // False if the work item could not be queued, which leaves the caller to do
   // the best it can rather than losing the object.
   bool Reap(void* object, HANDLE handle, bool is_timer) {
-    auto* reaper = static_cast<Reaper*>(
-        ::HeapAlloc(::GetProcessHeap(), 0, sizeof(Reaper)));
+    auto* reaper = static_cast<Reaper*>(::HeapAlloc(::GetProcessHeap(), 0, sizeof(Reaper)));
     if (reaper == nullptr) {
       return false;
     }
@@ -551,8 +550,7 @@ VOID WINAPI ww_SetThreadpoolTimer(PTP_TIMER pti,
     // callback currently running untouched and needs no teardown at all. Not
     // for a one-shot that has fired, though -- the legacy call leaves an
     // expired one-shot exactly as it was, so the re-arm would be lost.
-    if (!timer->spent &&
-        ::ChangeTimerQueueTimer(nullptr, timer->queue_timer, due_ms, msPeriod)) {
+    if (!timer->spent && ::ChangeTimerQueueTimer(nullptr, timer->queue_timer, due_ms, msPeriod)) {
       timer->period = msPeriod;
       ::LeaveCriticalSection(&timer->common.lock);
       return;

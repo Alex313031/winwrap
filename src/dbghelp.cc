@@ -173,8 +173,7 @@ BOOL WINAPI ww_SymSetSearchPathW(HANDLE hProcess, PCWSTR SearchPath) {
     return set_ansi(hProcess, nullptr);
   }
 
-  const int bytes =
-      ::WideCharToMultiByte(CP_ACP, 0, SearchPath, -1, nullptr, 0, nullptr, nullptr);
+  const int bytes = ::WideCharToMultiByte(CP_ACP, 0, SearchPath, -1, nullptr, 0, nullptr, nullptr);
   if (bytes <= 0) {
     return FALSE; // With WideCharToMultiByte's error.
   }
@@ -183,8 +182,8 @@ BOOL WINAPI ww_SymSetSearchPathW(HANDLE hProcess, PCWSTR SearchPath) {
     ::SetLastError(ERROR_NOT_ENOUGH_MEMORY);
     return FALSE;
   }
-  if (::WideCharToMultiByte(CP_ACP, 0, SearchPath, -1, ansi.As<char>(), bytes, nullptr,
-                            nullptr) == 0) {
+  if (::WideCharToMultiByte(CP_ACP, 0, SearchPath, -1, ansi.As<char>(), bytes, nullptr, nullptr) ==
+      0) {
     return FALSE;
   }
   return set_ansi(hProcess, ansi.As<char>());

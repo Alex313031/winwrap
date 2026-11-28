@@ -132,19 +132,19 @@
 // forwarders_<arch>.asm, generated from this table by tools/gen_forwarders.py.
 #if defined(_M_IX86) || defined(__i386__)
  #define WINWRAP_PLAIN_SYMBOL(name, bytes) "\"_" #name "@" #bytes "\""
- #define WINWRAP_SHIM_SYMBOL(name, bytes) "\"_ww_" #name "@" #bytes "\""
+ #define WINWRAP_SHIM_SYMBOL(name, bytes)  "\"_ww_" #name "@" #bytes "\""
 #else
  #define WINWRAP_PLAIN_SYMBOL(name, bytes) #name
- #define WINWRAP_SHIM_SYMBOL(name, bytes) "ww_" #name
+ #define WINWRAP_SHIM_SYMBOL(name, bytes)  "ww_" #name
 #endif
 
 #if defined(WINWRAP_PLAIN_NAMES_ONLY)
 
-// Quoted on x86 because of the `@`, which an assembler otherwise reads as the
-// start of a relocation specifier. .def/.scl/.type mark the symbol as an
-// external function, which is what a compiler would have emitted for one.
-#define WINWRAP_REDIRECT(name, bytes)                            \
-  __asm__(".text\n"                                              \
+ // Quoted on x86 because of the `@`, which an assembler otherwise reads as the
+ // start of a relocation specifier. .def/.scl/.type mark the symbol as an
+ // external function, which is what a compiler would have emitted for one.
+ #define WINWRAP_REDIRECT(name, bytes) \
+   __asm__(".text\n"                                              \
           ".globl " WINWRAP_PLAIN_SYMBOL(name, bytes) "\n"       \
           ".def " WINWRAP_PLAIN_SYMBOL(name, bytes)              \
           "; .scl 2; .type 32; .endef\n"                         \
@@ -153,16 +153,15 @@
 
 #else // !defined(WINWRAP_PLAIN_NAMES_ONLY)
 
-// The braced form of extern "C", and not `extern "C" T x = v;`, which means
-// the same thing but which GCC warns about on every line -- "initialized and
-// declared extern" -- with no option to turn it off. The static_assert is
-// there to take the semicolon the call site writes.
-#define WINWRAP_REDIRECT(name, bytes)                                                \
-  extern "C" {                                                                       \
-  decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = \
-      &ww_##name;                                                                    \
-  }                                                                                  \
-  static_assert(true, "")
+ // The braced form of extern "C", and not `extern "C" T x = v;`, which means
+ // the same thing but which GCC warns about on every line -- "initialized and
+ // declared extern" -- with no option to turn it off. The static_assert is
+ // there to take the semicolon the call site writes.
+ #define WINWRAP_REDIRECT(name, bytes)                                                            \
+   extern "C" {                                                                                   \
+   decltype(&ww_##name) winwrap_imp_##name __asm__(WINWRAP_IMP_SYMBOL(name, bytes)) = &ww_##name; \
+   }                                                                                              \
+   static_assert(true, "")
 
 // The anchor a consumer names in /INCLUDE: to force this object into the link,
 // for the builds described in winwrap.gyp where something else would otherwise

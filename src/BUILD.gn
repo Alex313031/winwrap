@@ -17,6 +17,7 @@ config("winwrap_private_config") {
   cflags = [
     # Must undef first to avoid redefinition errors.
     "-U_WIN32_WINNT",
+
     # XP (5.1), for winwrap's own sources only.
     "-D_WIN32_WINNT=0x0501",
 
@@ -49,6 +50,7 @@ config("winwrap_private_config") {
   # depend on whichever standard Chromium has moved to.
   cflags_cc = [
     "/std:c++17",
+
     # Make MSVC emit the real C++ standard, not 199711L
     "/Zc:__cplusplus",
   ]
@@ -116,9 +118,9 @@ shared_library("winwrap_shared") {
   # winwrap_dll.cc contains functions only a DLL would want.
   # .rc is for embedded version info.
   sources = _winwrap_sources + [
-    "dll/winwrap.rc",
-    "dll/winwrap_dll.cc",
-  ]
+              "dll/winwrap.rc",
+              "dll/winwrap_dll.cc",
+            ]
 
   # //build/config:common_deps depends on winwrap_lib, and every
   # shared_library picks common_deps up by default -- which would make

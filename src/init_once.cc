@@ -61,8 +61,7 @@ namespace {
   }
 
   inline ULONG_PTR Load(PVOID* slot) {
-    return reinterpret_cast<ULONG_PTR>(
-        ::InterlockedCompareExchangePointer(slot, nullptr, nullptr));
+    return reinterpret_cast<ULONG_PTR>(::InterlockedCompareExchangePointer(slot, nullptr, nullptr));
   }
 
   // Swaps `expected` for `desired` and says whether it took.

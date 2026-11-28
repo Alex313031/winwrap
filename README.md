@@ -1,6 +1,6 @@
 # winwrap lib
 
-Win32 Legacy support library, designed for XP/Vista.
+Win32 Legacy support library, designed for Windows XP/Vista.
 
 This is similar to [Supermium's](https://www.supermium.net/) [`progwrp.dll`](https://github.com/win32ss/supermium/blob/bf7e71c95f9a5a9a3ae5206ef8274633255de50b/.github/README.md#this-supermium-component-receives-enhancements-and-improvements-from-time-to-time-primarily-for-operating-systems-prior-to-windows-vista).
 

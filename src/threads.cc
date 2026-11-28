@@ -24,9 +24,8 @@ namespace {
       return megahertz;
     }
     HKEY processor = nullptr;
-    if (::RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                        L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0,
-                        KEY_QUERY_VALUE, &processor) == ERROR_SUCCESS) {
+    if (::RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                        0, KEY_QUERY_VALUE, &processor) == ERROR_SUCCESS) {
       DWORD size = sizeof(megahertz);
       DWORD type = 0;
       if (::RegQueryValueExW(processor, L"~MHz", nullptr, &type,
@@ -172,8 +171,8 @@ DWORD WINAPI ww_GetThreadId(HANDLE Thread) {
   if (status < 0) {
     // Zero is the failure value and never a real thread ID. The error is the
     // kernel's own, translated the way kernel32 would have.
-    const auto to_dos_error = WW_TRYFUNC_AS(RtlNtStatusToDosErrorFn, ::winwrap::Module::hNtDll,
-                                            "RtlNtStatusToDosError");
+    const auto to_dos_error =
+        WW_TRYFUNC_AS(RtlNtStatusToDosErrorFn, ::winwrap::Module::hNtDll, "RtlNtStatusToDosError");
     ::SetLastError(to_dos_error ? to_dos_error(status) : ERROR_INVALID_HANDLE);
     return 0;
   }
