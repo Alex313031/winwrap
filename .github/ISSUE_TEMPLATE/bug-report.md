@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help me improve winwrap
+about: Create a report to help me improve Winwrap
 title: ''
 labels: ''
 assignees: ''
@@ -8,8 +8,8 @@ assignees: ''
 ---
 
 **System Details**
- - OS: [e.g. Windows 7, 8.1, 10]
- - winwrap Version [e.g. 0.3.1]
+ - OS: [e.g. Windows XP, Vista, 7, 8.0, 8.1]
+ - winwrap Version [e.g. 0.5.1]
 
 **Problem**
 A clear and concise description of what the bug is.
