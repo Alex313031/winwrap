@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright 2026 Alex313031. All rights reserved.
+  Use of this source code is governed by a BSD-style license that can be
+  found in the LICENSE file.
+
+  Everything the four Visual Studio projects share: where the output goes, and
+  the compiler, assembler and linker settings. It is the Makefile's flags
+  restated as MSBuild settings, and the comments there are the account of why
+  each one is what it is; this file says only where a setting came from and
+  where MSBuild's own default had to be turned off to match.
+
+  There are four configurations, because a project builds both flavours:
+
+    Debug, Release          the static form, winwrap.lib
+    DebugDLL, ReleaseDLL    the shared form, winwrap.dll
+
+  A project sets two properties before importing this. The first comes from
+  the configuration's name, and is set in the project rather than here because
+  the project needs it early, to choose between a static library and a DLL:
+
+    WinwrapForm   static | dll      which flavour, and so which output directory
+    WinwrapKind   library | test    winwrap itself, or the unit tests
+
+  Output matches the Makefile's layout exactly, so the two builds are
+  interchangeable and BUILDING.md describes both:
+
+    out\<arch>\<form>\             Release
+    out\<arch>\debug\<form>\       Debug
+
+  Objects go under obj\<project>\ in the same directory, so each flavour has
+  its own, as it does in the Makefile. The Makefile uses
+  obj\ itself, so neither build can pick up the other's objects.
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup Label="WinwrapLayout">
+    <WinwrapRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\'))</WinwrapRoot>
+    <!-- ARCH in the Makefile. Visual Studio calls 32-bit "Win32". -->
+    <WinwrapArch Condition="'$(Platform)' == 'x64'">x64</WinwrapArch>
+    <WinwrapArch Condition="'$(Platform)' != 'x64'">x86</WinwrapArch>
+    <!-- OUTROOT: a debug build sits beside the release forms, not on top. -->
+    <!-- DEBUG in the Makefile: Debug and DebugDLL. -->
+    <WinwrapDebug>false</WinwrapDebug>
+    <WinwrapDebug Condition="$(Configuration.StartsWith('Debug'))">true</WinwrapDebug>
+    <WinwrapOutRoot Condition="'$(WinwrapDebug)' == 'true'">$(WinwrapRoot)out\$(WinwrapArch)\debug\</WinwrapOutRoot>
+    <WinwrapOutRoot Condition="'$(WinwrapDebug)' != 'true'">$(WinwrapRoot)out\$(WinwrapArch)\</WinwrapOutRoot>
+    <OutDir>$(WinwrapOutRoot)$(WinwrapForm)\</OutDir>
+    <IntDir>$(OutDir)obj\$(ProjectName)\</IntDir>
+
+    <!-- ANCHOR: the symbol that forces the redirect object into a static
+         link. Decorated on x86, as every C symbol is there. -->
+    <WinwrapAnchor Condition="'$(WinwrapArch)' == 'x64'">winwrap_static_redirects</WinwrapAnchor>
+    <WinwrapAnchor Condition="'$(WinwrapArch)' != 'x64'">_winwrap_static_redirects</WinwrapAnchor>
+    <!-- SUBSYS / SUBSYSCON: 5.01 is XP on x86; 64-bit Windows begins at 5.02
+         and the linker accepts nothing lower for that machine. -->
+    <WinwrapMinOS Condition="'$(WinwrapArch)' == 'x64'">5.02</WinwrapMinOS>
+    <WinwrapMinOS Condition="'$(WinwrapArch)' != 'x64'">5.01</WinwrapMinOS>
+    <!-- FORMDEF. -->
+    <WinwrapFormDefine Condition="'$(WinwrapForm)' == 'dll'">WINWRAP_DLL</WinwrapFormDefine>
+    <WinwrapFormDefine Condition="'$(WinwrapForm)' != 'dll'">WINWRAP_STATIC</WinwrapFormDefine>
+  </PropertyGroup>
+
+  <!-- Every project, both kinds. UNICODE and _UNICODE are not listed: the
+       projects set CharacterSet to Unicode, which is how MSBuild passes them. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <PreprocessorDefinitions>$(WinwrapFormDefine);USING_WINWRAP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Off, because MSBuild turns each of these on for some or all
+           configurations and the Makefile's command line has none of them:
+           /permissive-, /sdl, /JMC and /RTC1. /JMC matters most. It plants a
+           call to a CRT helper in every function, which a static library
+           then demands of whoever links it. -->
+      <ConformanceMode>false</ConformanceMode>
+      <SDLCheck>false</SDLCheck>
+      <SupportJustMyCode>false</SupportJustMyCode>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <!-- No /GL. A library compiled that way holds compiler-internal code
+           rather than machine code, and only links with the same compiler
+           version that produced it. -->
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <!-- OPTFLAGS and CRTFLAG. The library and the test take the same pair: a
+       /MT library in a /MTd program is two CRTs in one image. -->
+  <ItemDefinitionGroup Condition="'$(WinwrapDebug)' == 'true'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(WinwrapDebug)' != 'true'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <!-- CXXFLAGS: winwrap's own sources. No RTTI and no exceptions, and the
+       SDK surface lowered to XP as a guardrail: TARGETDEFS. -->
+  <ItemDefinitionGroup Condition="'$(WinwrapKind)' == 'library'">
+    <ClCompile>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <ExceptionHandling>false</ExceptionHandling>
+      <PreprocessorDefinitions>_WIN32_WINNT=0x0501;NTDDI_VERSION=0x05010300;WINVER=0x0501;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(WinwrapRoot)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ProgramDataBaseFileName>$(IntDir)winwrap.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <!-- /ignore:4221: a couple of translation units are legitimately empty
+         on some configurations. -->
+    <Lib>
+      <AdditionalOptions>/ignore:4221 %(AdditionalOptions)</AdditionalOptions>
+    </Lib>
+    <ResourceCompile>
+      <PreprocessorDefinitions>$(WinwrapFormDefine);USING_WINWRAP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(WinwrapRoot)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+
+  <!-- TESTFLAGS: the unit tests. The CURRENT SDK, so no TARGETDEFS, and
+       exceptions on for the harness's use of iostreams. -->
+  <ItemDefinitionGroup Condition="'$(WinwrapKind)' == 'test'">
+    <ClCompile>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PreprocessorDefinitions>WINWRAP_TEST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(WinwrapRoot)src;$(WinwrapRoot)src\public;$(WinwrapRoot)test;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ProgramDataBaseFileName>$(IntDir)winwrap_test.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <!-- The link line of $(TESTEXE). AdditionalDependencies is the whole
+         list and inherits nothing: MSBuild's default adds kernel32.lib and
+         eleven others by name, and a kernel32.lib named on the command line
+         competes with winwrap.lib for the __imp_ slots on position. Left out,
+         it arrives through the CRT's /DEFAULTLIB, which is searched after
+         everything named here, so winwrap.lib is ahead of it by construction.
+         winwrap.lib first, then LIBS and TESTLIBS. -->
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <MinimumRequiredVersion>$(WinwrapMinOS)</MinimumRequiredVersion>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(OutDir)winwrap_test.pdb</ProgramDatabaseFile>
+      <AdditionalLibraryDirectories>$(OutDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>winwrap.lib;advapi32.lib;user32.lib;ole32.lib;shell32.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <!-- FORCEREDIRECTS: a static-form concern only. The shared form's import
+       library already supplies every slot, and the anchor is not exported. -->
+  <ItemDefinitionGroup Condition="'$(WinwrapKind)' == 'test' And '$(WinwrapForm)' != 'dll'">
+    <Link>
+      <ForceSymbolReferences>$(WinwrapAnchor);%(ForceSymbolReferences)</ForceSymbolReferences>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- ASFLAGS. The architecture define is not optional: every .asm guards
+       its whole body on it and refuses to assemble without one. /safeseh on
+       x86 only, where link.exe otherwise rejects a MASM object with LNK2026.
+       No /Zi, which MSBuild's MASM rule would add and the Makefile does not. -->
+  <ItemDefinitionGroup>
+    <MASM>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+    </MASM>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(WinwrapArch)' == 'x64'">
+    <MASM>
+      <PreprocessorDefinitions>WINWRAP_X64=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </MASM>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(WinwrapArch)' != 'x64'">
+    <MASM>
+      <PreprocessorDefinitions>WINWRAP_X86=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <UseSafeExceptionHandlers>true</UseSafeExceptionHandlers>
+    </MASM>
+  </ItemDefinitionGroup>
+
+</Project>

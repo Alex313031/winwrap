@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright 2026 Alex313031. All rights reserved.
+  Use of this source code is governed by a BSD-style license that can be
+  found in the LICENSE file.
+
+  The unit tests, linked against whichever flavour the configuration names
+  and built beside it:
+
+    Debug, Release          out\<arch>\[debug\]static\winwrap_test.exe   `nmake test`
+    DebugDLL, ReleaseDLL    out\<arch>\[debug\]dll\winwrap_test.exe      `nmake SHARED=1 test`
+
+  Console, and at the same subsystem floor as the library, so the executable
+  itself runs on XP, which is the only place several of its assertions mean
+  anything.
+
+  The static form is linked with /INCLUDE: of the anchor, which is what forces
+  the redirect object out of winwrap.lib. The shared form is not: the import
+  library supplies every slot and the anchor is not exported. It is compiled
+  with WINWRAP_DLL so the test knows which form it has, and covers
+  DllGetVersion, which only that form exports, and it needs the winwrap.dll
+  that sits beside it at run time.
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="DebugDLL|Win32">
+      <Configuration>DebugDLL</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="ReleaseDLL|Win32">
+      <Configuration>ReleaseDLL</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="DebugDLL|x64">
+      <Configuration>DebugDLL</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="ReleaseDLL|x64">
+      <Configuration>ReleaseDLL</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{6D1F3B52-8C0A-4E57-9B7E-3A61D5E2C103}</ProjectGuid>
+    <ProjectName>winwrap_test</ProjectName>
+    <RootNamespace>winwrap</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <!-- The flavour, from the configuration's name: DebugDLL and ReleaseDLL
+         are the shared form. Here and not in winwrap_common.props because
+         ConfigurationType, just below, has to be settled before that file is
+         imported. -->
+    <WinwrapForm>static</WinwrapForm>
+    <WinwrapForm Condition="$(Configuration.EndsWith('DLL'))">dll</WinwrapForm>
+    <WinwrapKind>test</WinwrapKind>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="..\src\winwrap_common.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <TargetName>winwrap_test</TargetName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ClCompile Include="winwrap_unittest.cc" />
+    <!-- TESTCFLAGS: this one has to be C, and takes the test's flags without
+         the switches that only mean something to C++. -->
+    <ClCompile Include="plain_names_test.c">
+      <CompileAs>CompileAsC</CompileAs>
+      <ExceptionHandling>false</ExceptionHandling>
+      <AdditionalOptions></AdditionalOptions>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="plain_names_test.h" />
+    <ClInclude Include="winwrap_unittest.h" />
+  </ItemGroup>
+  <!-- For build order only. The reference builds winwrap.vcxproj in the same
+       configuration as this project, which is what puts the right flavour's
+       winwrap.lib in $(OutDir). The library is named in AdditionalDependencies,
+       in src\winwrap_common.props, so that its place on the link line is stated
+       and not left to where MSBuild puts a referenced project's output. -->
+  <ItemGroup>
+    <ProjectReference Include="..\src\winwrap.vcxproj">
+      <Project>{6D1F3B52-8C0A-4E57-9B7E-3A61D5E2C101}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
