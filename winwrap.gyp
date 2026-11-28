@@ -250,6 +250,7 @@
         'src/asm/plain_names_x64.asm',
         'src/sync_objects.cc',
         'src/system.cc',
+        'src/task_dialog.cc',
         'src/thread_pool.cc',
         'src/threads.cc',
         'src/tick_count.cc',

@@ -105,6 +105,7 @@ EXTERN ww_FlsFree : PROC
 EXTERN ww_SHGetKnownFolderPath : PROC
 EXTERN ww_Shell_NotifyIconW : PROC
 EXTERN ww_Shell_NotifyIconGetRect : PROC
+EXTERN ww_TaskDialogIndirect : PROC
 EXTERN ww_ConvertInterfaceIndexToLuid : PROC
 EXTERN ww_ConvertInterfaceLuidToNameW : PROC
 EXTERN ww_SymGetSearchPathW : PROC
@@ -422,6 +423,10 @@ PUBLIC Shell_NotifyIconGetRect
 Shell_NotifyIconGetRect PROC
     jmp ww_Shell_NotifyIconGetRect
 Shell_NotifyIconGetRect ENDP
+PUBLIC TaskDialogIndirect
+TaskDialogIndirect PROC
+    jmp ww_TaskDialogIndirect
+TaskDialogIndirect ENDP
 PUBLIC ConvertInterfaceIndexToLuid
 ConvertInterfaceIndexToLuid PROC
     jmp ww_ConvertInterfaceIndexToLuid

@@ -375,6 +375,49 @@ that puts two icons on one window, tells them apart only by GUID and leaves
 `uID` at zero for both will find it has one icon on XP. Giving each its own
 `uID` as well, which is harmless everywhere, avoids it.
 
+### `TaskDialogIndirect`: an XP dialog, not Vista's
+
+Where comctl32 has no task dialogs, which is all of XP and any program without
+a version 6 manifest, winwrap shows a dialog of its own. It carries everything
+a caller says: the caption, the main icon, the main instruction, the content,
+custom and common buttons, radio buttons, the verification checkbox, the
+default button, and the three results. The callback gets `TDN_DIALOG_CONSTRUCTED`,
+`TDN_CREATED`, `TDN_BUTTON_CLICKED` (and may refuse the click with `S_FALSE`),
+`TDN_RADIO_BUTTON_CLICKED`, `TDN_VERIFICATION_CLICKED`, `TDN_TIMER` and
+`TDN_DESTROYED`. The window it is given answers `TDM_CLICK_BUTTON`,
+`TDM_ENABLE_BUTTON`, `TDM_CLICK_RADIO_BUTTON`, `TDM_ENABLE_RADIO_BUTTON` and
+`TDM_CLICK_VERIFICATION`, and closes on `WM_CLOSE` when it can be cancelled.
+
+It looks like an XP dialog rather than a Vista one, and these parts differ:
+
+- **Command links** are wide left-aligned buttons with both lines of their
+  text. No arrow, no icon, no second font.
+- **The main instruction** is the message font in bold, not larger and blue.
+- **Expanded information** is always shown, under the content. There is no
+  expander, so `pszExpandedControlText`, `pszCollapsedControlText` and the
+  `TDF_EXPAND*` flags do nothing and `TDN_EXPANDO_BUTTON_CLICKED` is never sent.
+- **The footer** is a line of text under the buttons. Its icon is not drawn.
+- **Hyperlinks** are not parsed. With `TDF_ENABLE_HYPERLINKS` the `<a>` markup
+  appears as written and `TDN_HYPERLINK_CLICKED` is never sent.
+- **The progress bar** does not exist, and the messages that drive it are
+  ignored.
+- **`TD_SHIELD_ICON`** draws nothing: XP has no shield and nothing for it to
+  mean. `TDM_SET_BUTTON_ELEVATION_REQUIRED_STATE` is ignored likewise.
+- **`TDM_SET_ELEMENT_TEXT` and `TDM_UPDATE_ELEMENT_TEXT`** both put the new
+  text in the space the old text had, without laying the dialog out again.
+  `TDM_UPDATE_ICON` and `TDM_NAVIGATE_PAGE` are ignored, and `TDN_HELP` is
+  never sent.
+- **Text taller than the screen** is cut off at the bottom; nothing scrolls.
+
+The plain `TaskDialog` function is not covered, only `TaskDialogIndirect`.
+
+comctl32 is looked up by bare name, as the delay-load thunk this replaces
+would have, because only the activation context can find version 6. The system
+directory's copy is version 5 on every Windows and has no task dialogs. In a
+process with no version 6 manifest a bare name is searched for beside the
+executable first, as it was for the thunk. Before Vista no lookup is made at
+all, since no comctl32 there has the function.
+
 ### `GetCurrentProcessorNumber`: a hint
 
 Derived from the CPUID initial APIC ID. It can be stale the moment it is

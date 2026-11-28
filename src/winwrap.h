@@ -486,6 +486,20 @@ BOOL WINAPI ww_Shell_NotifyIconW(DWORD dwMessage, struct _NOTIFYICONDATAW* lpDat
 HRESULT WINAPI ww_Shell_NotifyIconGetRect(const struct _NOTIFYICONIDENTIFIER* identifier,
                                           RECT* iconLocation);
 
+// --- Task dialogs ----------------------------------------------------------
+// comctl32 version 6, Vista. Where the system has none, a modal dialog built
+// from user32's own controls: the texts, the icon, common and custom buttons,
+// radio buttons, the checkbox and the callback. See task_dialog.cc, and
+// INCOMPLETE_FUNCS.md for what it leaves out.
+//
+// By tag, as above: commctrl.h is not included here and does not declare the
+// structure below NTDDI_VISTA.
+struct _TASKDIALOGCONFIG;
+HRESULT WINAPI ww_TaskDialogIndirect(const struct _TASKDIALOGCONFIG* pTaskConfig,
+                                     int* pnButton,
+                                     int* pnRadioButton,
+                                     BOOL* pfVerificationFlagChecked);
+
 #ifdef WINWRAP_DLL
 HRESULT CALLBACK DllGetVersion(DLLVERSIONINFO* pDvi);
 #endif // WINWRAP_DLL

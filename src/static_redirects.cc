@@ -315,6 +315,11 @@ WINWRAP_REDIRECT(SHGetKnownFolderPath, 16);
 WINWRAP_REDIRECT(Shell_NotifyIconW, 8);
 WINWRAP_REDIRECT(Shell_NotifyIconGetRect, 8);
 
+// comctl32, delay-imported by its consumers as shell32 is, and by ordinal:
+// the import library gives the name no say in what the loader looks up, but
+// the symbol a call site references is still this one. Four pointers.
+WINWRAP_REDIRECT(TaskDialogIndirect, 16);
+
 // iphlpapi, delay-imported by node as shell32 is. 8 and 12: an index and a
 // pointer, then two pointers and a SIZE_T.
 WINWRAP_REDIRECT(ConvertInterfaceIndexToLuid, 8);

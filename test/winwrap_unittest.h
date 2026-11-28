@@ -36,6 +36,9 @@
 // SymGetSearchPathW and SymSetSearchPathW. Only the declarations are wanted:
 // the rest of dbghelp is reached through GetProcAddress in
 // TestSymbolSearchPath, so no build needs dbghelp.lib for this.
+// TASKDIALOGCONFIG and the TDN_ and TDM_ constants. Declarations only: the
+// function resolves to winwrap, and no build links comctl32 for it.
+#include <commctrl.h>
 #include <dbghelp.h>
 // EventWriteTransfer and EVENT_DESCRIPTOR, likewise not in windows.h. Gated on
 // WINVER >= 0x0600, which this file is built at -- it deliberately does not

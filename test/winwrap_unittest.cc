@@ -52,6 +52,14 @@ extern "C" LSTATUS APIENTRY winwrap_RegGetValueFallbackW(HKEY hkey,
                                                          PVOID pvData,
                                                          LPDWORD pcbData);
 
+// winwrap's own task dialog, which TestTaskDialog drives directly: the Win32
+// name reaches it only where comctl32 has none of its own. See
+// src/task_dialog.cc.
+extern "C" HRESULT WINAPI winwrap_TaskDialogIndirectFallback(const TASKDIALOGCONFIG* pTaskConfig,
+                                                             int* pnButton,
+                                                             int* pnRadioButton,
+                                                             BOOL* pfVerificationFlagChecked);
+
 // The two iphlpapi functions TestNetworkInterfaces calls, declared here rather
 // than by including iphlpapi.h: that header wants Winsock 2 ahead of it, and
 // <windows.h> has already brought in Winsock 1. Declared without dllimport,
@@ -3897,6 +3905,204 @@ namespace {
     ::DestroyWindow(window);
   }
 
+  // --- Task dialogs -----------------------------------------------------------
+
+  // What one dialog's callback is to do, and what it saw. Nobody is at the
+  // keyboard, so the callback presses the buttons itself, by the messages a
+  // program is allowed to send its own task dialog.
+  struct TaskDialogScript {
+    int first_click;  // Sent as TDM_CLICK_BUTTON once the dialog exists; 0 for none.
+    int second_click; // And then this one.
+    int refused;      // A button whose click the callback turns down.
+    bool close;       // Post WM_CLOSE instead, as Electron does to dismiss one.
+    int clicks;
+    bool created;
+    bool destroyed;
+    bool timed_out;
+  };
+
+  HRESULT CALLBACK TaskDialogTestCallback(HWND window, UINT notification, WPARAM w_param, LPARAM,
+                                          LONG_PTR data) {
+    auto* script = reinterpret_cast<TaskDialogScript*>(data);
+    switch (notification) {
+      case TDN_CREATED:
+        script->created = true;
+        if (script->close) {
+          ::PostMessageW(window, WM_CLOSE, 0, 0);
+        }
+        if (script->first_click) {
+          ::PostMessageW(window, TDM_CLICK_BUTTON, static_cast<WPARAM>(script->first_click), 0);
+        }
+        if (script->second_click) {
+          ::PostMessageW(window, TDM_CLICK_BUTTON, static_cast<WPARAM>(script->second_click), 0);
+        }
+        break;
+      case TDN_BUTTON_CLICKED:
+        ++script->clicks;
+        if (static_cast<int>(w_param) == script->refused) {
+          return S_FALSE;
+        }
+        break;
+      case TDN_TIMER:
+        // The way out if a script did not end its dialog: a modal dialog with
+        // nobody to dismiss it would hang the run, and whoever started it.
+        if (w_param > 10000 && !script->timed_out) {
+          script->timed_out = true;
+          script->refused   = 0;
+          ::PostMessageW(window, WM_CLOSE, 0, 0);
+        }
+        break;
+      case TDN_DESTROYED:
+        script->destroyed = true;
+        break;
+      default:
+        break;
+    }
+    return S_OK;
+  }
+
+  using TaskDialogFn = HRESULT(WINAPI*)(const TASKDIALOGCONFIG*, int*, int*, BOOL*);
+
+  // The three dialogs, shown by whichever implementation is passed in.
+  void RunTaskDialogScripts(TaskDialogFn show) {
+    int button = -1;
+    const TASKDIALOG_FLAGS flags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_CALLBACK_TIMER;
+
+    // Custom buttons beside a common one, a checkbox that starts ticked, and
+    // a callback that refuses the first click and accepts the second.
+    {
+      const TASKDIALOG_BUTTON buttons[] = {{100, L"&First"}, {101, L"&Second"}};
+      TaskDialogScript script           = {};
+      script.first_click                = 100;
+      script.second_click               = 101;
+      script.refused                    = 100;
+
+      TASKDIALOGCONFIG config    = {};
+      config.cbSize              = sizeof(config);
+      config.dwFlags             = flags | TDF_VERIFICATION_FLAG_CHECKED;
+      config.dwCommonButtons     = TDCBF_CANCEL_BUTTON;
+      config.pszWindowTitle      = L"winwrap test";
+      config.pszMainIcon         = TD_INFORMATION_ICON;
+      config.pszMainInstruction  = L"A heading";
+      config.pszContent          = L"Some text under it, long enough that it has to be measured "
+                                   L"and wrapped rather than fitting on a line of its own.";
+      config.pButtons            = buttons;
+      config.cButtons            = 2;
+      config.nDefaultButton      = 101;
+      config.pszVerificationText = L"A checkbox";
+      config.pfCallback          = &TaskDialogTestCallback;
+      config.lpCallbackData      = reinterpret_cast<LONG_PTR>(&script);
+
+      BOOL checked     = FALSE;
+      button = -1;
+      const HRESULT hr = show(&config, &button, nullptr, &checked);
+      CHECK(hr == S_OK, L"the dialog failed with " << Hex(hr));
+      CHECK(script.created, L"TDN_CREATED was never sent");
+      CHECK(script.destroyed, L"TDN_DESTROYED was never sent");
+      CHECK(!script.timed_out, L"the dialog had to be closed by the timer");
+      CHECK(script.clicks == 2, L"the callback saw " << script.clicks << L" clicks, not 2");
+      CHECK(button == 101, L"button " << button << L" was returned, not the accepted 101");
+      CHECK(checked, L"the checkbox that started ticked came back clear");
+    }
+
+    // No buttons asked for, so there is an OK; and WM_CLOSE, which with
+    // TDF_ALLOW_DIALOG_CANCELLATION is a cancel whether or not there is a
+    // Cancel button. No checkbox, so that answer is FALSE.
+    {
+      TaskDialogScript script = {};
+      script.close            = true;
+
+      TASKDIALOGCONFIG config = {};
+      config.cbSize           = sizeof(config);
+      config.dwFlags          = flags;
+      config.pszContent       = L"Text only.";
+      config.pfCallback       = &TaskDialogTestCallback;
+      config.lpCallbackData   = reinterpret_cast<LONG_PTR>(&script);
+
+      BOOL checked     = TRUE;
+      button = -1;
+      const HRESULT hr = show(&config, &button, nullptr, &checked);
+      CHECK(hr == S_OK, L"the dialog failed with " << Hex(hr));
+      CHECK(!script.timed_out, L"the dialog had to be closed by the timer");
+      CHECK(button == IDCANCEL, L"WM_CLOSE returned button " << button << L", not IDCANCEL");
+      CHECK(!checked, L"a dialog with no checkbox reported one ticked");
+    }
+
+    // Command links and radio buttons, with the second radio button the
+    // default.
+    {
+      const TASKDIALOG_BUTTON links[]  = {{100, L"Do the thing\nWith a note saying what it is"},
+                                          {101, L"Do the other thing"}};
+      const TASKDIALOG_BUTTON radios[] = {{200, L"One"}, {201, L"Two"}};
+      TaskDialogScript script          = {};
+      script.first_click               = 100;
+
+      TASKDIALOGCONFIG config    = {};
+      config.cbSize              = sizeof(config);
+      config.dwFlags             = flags | TDF_USE_COMMAND_LINKS;
+      config.pszMainIcon         = TD_WARNING_ICON;
+      config.pszMainInstruction  = L"A choice";
+      config.pButtons            = links;
+      config.cButtons            = 2;
+      config.pRadioButtons       = radios;
+      config.cRadioButtons       = 2;
+      config.nDefaultRadioButton = 201;
+      config.pfCallback          = &TaskDialogTestCallback;
+      config.lpCallbackData      = reinterpret_cast<LONG_PTR>(&script);
+
+      int radio        = -1;
+      button = -1;
+      const HRESULT hr = show(&config, &button, &radio, nullptr);
+      CHECK(hr == S_OK, L"the dialog failed with " << Hex(hr));
+      CHECK(!script.timed_out, L"the dialog had to be closed by the timer");
+      CHECK(button == 100, L"button " << button << L" was returned, not 100");
+      CHECK(radio == 201, L"radio button " << radio << L" was returned, not the default 201");
+    }
+  }
+
+  void TestTaskDialog() {
+    std::wcout << L"  TaskDialogIndirect" << std::endl;
+
+    // Arguments first: these put nothing on screen.
+    int button = -1;
+    CHECK(::TaskDialogIndirect(nullptr, &button, nullptr, nullptr) == E_INVALIDARG,
+          L"a null configuration was accepted");
+    TASKDIALOGCONFIG wrong_size = {};
+    wrong_size.cbSize           = sizeof(wrong_size) - 4;
+    CHECK(::TaskDialogIndirect(&wrong_size, &button, nullptr, nullptr) == E_INVALIDARG,
+          L"a configuration of the wrong size was accepted");
+
+    // A dialog needs a desktop somebody could see. A service session has
+    // none, and that is not winwrap's to fix.
+    USEROBJECTFLAGS station = {};
+    DWORD needed            = 0;
+    if (!::GetUserObjectInformationW(::GetProcessWindowStation(), UOI_FLAGS, &station,
+                                     sizeof(station), &needed) ||
+        !(station.dwFlags & WSF_VISIBLE)) {
+      std::wcout << L"    (no interactive window station, not exercised)" << std::endl;
+      return;
+    }
+
+    // winwrap's own dialog first and always, by its own name: it is what XP
+    // gets, and the Win32 name only reaches it where comctl32 cannot answer.
+    std::wcout << L"    winwrap's dialog" << std::endl;
+    RunTaskDialogScripts(&winwrap_TaskDialogIndirectFallback);
+
+    // Then the Win32 name, whoever that turns out to be. Asked the way the
+    // shim asks: by bare name, so a manifest decides. This program has no
+    // manifest asking for comctl32 version 6, so on Windows it is normally
+    // winwrap's dialog a second time.
+    HMODULE comctl32   = ::LoadLibraryW(L"comctl32.dll");
+    const bool systems = comctl32 && ::GetProcAddress(comctl32, "TaskDialogIndirect");
+    std::wcout << L"    TaskDialogIndirect, which is "
+               << (systems ? L"the system's" : L"winwrap's again") << std::endl;
+    RunTaskDialogScripts(&::TaskDialogIndirect);
+
+    if (comctl32) {
+      ::FreeLibrary(comctl32);
+    }
+  }
+
   // --- AppUserModelID --------------------------------------------------------
 
   void TestAppUserModelId() {
@@ -4062,6 +4268,7 @@ int wmain(int argc, WCHAR* argv[]) {
   TestIoCancellation();
   TestCompletionPort();
   TestNotifyIcon();
+  TestTaskDialog();
   TestAppUserModelId();
   TestRegGetValue();
 
