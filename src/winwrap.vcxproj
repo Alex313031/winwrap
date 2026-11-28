@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright 2026 Alex313031. All rights reserved.
+  Use of this source code is governed by a BSD-style license that can be
+  found in the LICENSE file.
+
+  winwrap itself, in both flavours. The configuration picks which:
+
+    Debug, Release          out\<arch>\[debug\]static\winwrap.lib    `nmake static`
+    DebugDLL, ReleaseDLL    out\<arch>\[debug\]dll\winwrap.dll       `nmake dll`
+                            and its import library, winwrap.lib
+
+  The DLL is the same sources compiled again with WINWRAP_DLL, plus the three
+  files only it wants. The forwarders are linked into the DLL itself, as
+  objects: winwrap.dll links the static CRT, and that CRT calls FlsAlloc and
+  InitializeCriticalSectionEx, so without its own calls redirected the DLL
+  would import from kernel32 the very functions it exists to supply.
+
+  The settings are in winwrap_common.props, shared with
+  test\winwrap_test.vcxproj.
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="DebugDLL|Win32">
+      <Configuration>DebugDLL</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="ReleaseDLL|Win32">
+      <Configuration>ReleaseDLL</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="DebugDLL|x64">
+      <Configuration>DebugDLL</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="ReleaseDLL|x64">
+      <Configuration>ReleaseDLL</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{6D1F3B52-8C0A-4E57-9B7E-3A61D5E2C101}</ProjectGuid>
+    <ProjectName>winwrap</ProjectName>
+    <RootNamespace>winwrap</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <!-- The flavour, from the configuration's name: DebugDLL and ReleaseDLL
+         are the shared form. Here and not in winwrap_common.props because
+         ConfigurationType, just below, has to be settled before that file is
+         imported. -->
+    <WinwrapForm>static</WinwrapForm>
+    <WinwrapForm Condition="$(Configuration.EndsWith('DLL'))">dll</WinwrapForm>
+    <WinwrapKind>library</WinwrapKind>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType Condition="'$(WinwrapForm)' == 'dll'">DynamicLibrary</ConfigurationType>
+    <ConfigurationType Condition="'$(WinwrapForm)' != 'dll'">StaticLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="winwrap_common.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <TargetName>winwrap</TargetName>
+  </PropertyGroup>
+  <!-- The link line of $(SHAREDLIB), for the two DLL configurations.
+       AdditionalDependencies is LIBS and inherits nothing, for the reason
+       given in winwrap_common.props. -->
+  <ItemDefinitionGroup Condition="'$(WinwrapForm)' == 'dll'">
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <MinimumRequiredVersion>$(WinwrapMinOS)</MinimumRequiredVersion>
+      <ModuleDefinitionFile>$(WinwrapRoot)src\dll\winwrap.def</ModuleDefinitionFile>
+      <ImportLibrary>$(OutDir)winwrap.lib</ImportLibrary>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(OutDir)winwrap.pdb</ProgramDatabaseFile>
+      <AdditionalDependencies>advapi32.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <!-- OBJECTS in the Makefile. static_redirects.cc and asm\plain_names.cc are
+       absent, as they are there: they are the Clang and GCC form of the
+       redirect table, and MSVC cannot compile them. The four .asm files
+       further down are the same table for MASM. -->
+  <ItemGroup>
+    <ClCompile Include="cancel_io.cc" />
+    <ClCompile Include="condition_variable.cc" />
+    <ClCompile Include="critical_section.cc" />
+    <ClCompile Include="dbghelp.cc" />
+    <ClCompile Include="directories.cc" />
+    <ClCompile Include="dispatch.cc" />
+    <ClCompile Include="etw.cc" />
+    <ClCompile Include="extra.cc" />
+    <ClCompile Include="fibers.cc" />
+    <ClCompile Include="files.cc" />
+    <ClCompile Include="fls.cc" />
+    <ClCompile Include="init_once.cc" />
+    <ClCompile Include="io_completion.cc" />
+    <ClCompile Include="locale.cc" />
+    <ClCompile Include="lock_family.cc" />
+    <ClCompile Include="misc.cc" />
+    <ClCompile Include="net.cc" />
+    <ClCompile Include="parking_lot.cc" />
+    <ClCompile Include="pipes.cc" />
+    <ClCompile Include="process.cc" />
+    <ClCompile Include="registry.cc" />
+    <ClCompile Include="shell32.cc" />
+    <ClCompile Include="srwlock.cc" />
+    <ClCompile Include="sync_objects.cc" />
+    <ClCompile Include="system.cc" />
+    <ClCompile Include="task_dialog.cc" />
+    <ClCompile Include="thread_pool.cc" />
+    <ClCompile Include="threads.cc" />
+    <ClCompile Include="tick_count.cc" />
+    <ClCompile Include="timezone.cc" />
+  </ItemGroup>
+  <!-- What only the DLL wants, and would be dead weight in the static
+       library: its entry point and DllGetVersion, the version resource, and
+       the .def that exports the Win32 names aliased onto the ww_ functions. -->
+  <ItemGroup>
+    <ClCompile Include="dll\winwrap_dll.cc">
+      <ExcludedFromBuild Condition="'$(WinwrapForm)' != 'dll'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ResourceCompile Include="dll\winwrap.rc">
+      <ExcludedFromBuild Condition="'$(WinwrapForm)' != 'dll'">true</ExcludedFromBuild>
+    </ResourceCompile>
+    <None Include="dll\winwrap.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="dispatch.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="lock_family.h" />
+    <ClInclude Include="parking_lot.h" />
+    <ClInclude Include="winwrap.h" />
+    <ClInclude Include="winwrap_version.h" />
+    <ClInclude Include="public\winwrap_public.h" />
+  </ItemGroup>
+  <!-- Each platform assembles its own pair and skips the other. -->
+  <ItemGroup>
+    <MASM Include="asm\forwarders_x86.asm">
+      <ExcludedFromBuild Condition="'$(Platform)' == 'x64'">true</ExcludedFromBuild>
+    </MASM>
+    <MASM Include="asm\plain_names_x86.asm">
+      <ExcludedFromBuild Condition="'$(Platform)' == 'x64'">true</ExcludedFromBuild>
+    </MASM>
+    <MASM Include="asm\forwarders_x64.asm">
+      <ExcludedFromBuild Condition="'$(Platform)' != 'x64'">true</ExcludedFromBuild>
+    </MASM>
+    <MASM Include="asm\plain_names_x64.asm">
+      <ExcludedFromBuild Condition="'$(Platform)' != 'x64'">true</ExcludedFromBuild>
+    </MASM>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
+</Project>

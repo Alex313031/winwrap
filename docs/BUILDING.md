@@ -79,6 +79,44 @@ out\x64\dll\       ...
 Nothing else needs installing. Python, WiX and clang are all irrelevant here —
 `cl`, `link`, `lib`, `ml` and `rc` come with the C++ workload.
 
+#### Using the Visual Studio solution
+`winwrap.sln`, at the top level, opens in Visual Studio 2022 and builds the
+same things the Makefile does, with the same flags, into the same directories.
+It holds two projects, `src\winwrap.vcxproj` and `test\winwrap_test.vcxproj`,
+and the configuration picks the flavour for both:
+
+| configuration | builds | Makefile equivalent |
+|---|---|---|
+| `Release` | `out\<arch>\static\winwrap.lib` and `winwrap_test.exe` | `nmake static test` |
+| `ReleaseDLL` | `out\<arch>\dll\winwrap.dll`, its import library, and `winwrap_test.exe` | `nmake dll` and `nmake SHARED=1 test` |
+| `Debug` | the static form under `out\<arch>\debug\` | `nmake DEBUG=1 static test` |
+| `DebugDLL` | the shared form under `out\<arch>\debug\` | the same with `DEBUG=1` |
+
+The solution platform picks the architecture, `x86` or `x64`, where the
+Makefile takes it from the prompt. Build → Batch Build does all eight at once.
+From a command line:
+
+```bat
+msbuild winwrap.sln /p:Configuration=Release /p:Platform=x86
+msbuild winwrap.sln /p:Configuration=DebugDLL /p:Platform=x64
+```
+
+The settings both projects share are in `src\winwrap_common.props`. They are
+the Makefile's restated, as is the source list in `winwrap.vcxproj`; when one
+changes, change the other.
+
+Running GYP on `winwrap.gyp` by itself writes its own `winwrap.sln` beside the
+`.gyp`, over this one. Give it a suffix to keep both:
+
+```bat
+gyp --suffix=_gyp winwrap.gyp
+```
+
+That writes `winwrap_gyp.sln`, `winwrap_gyp.vcxproj` and
+`winwrap_test_gyp.vcxproj`. A tree that takes winwrap as a dependency, as
+sawbuck-ng does, is not affected: GYP writes a solution only for the `.gyp`
+file it was pointed at.
+
 #### Using GYP
 This is the method that [Sawbuck-ng](https://github.com/Alex313031/sawbuck-ng) uses.
 
