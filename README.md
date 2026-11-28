@@ -13,6 +13,8 @@ For building winwrap from source, see [BUILDING.md](./docs/BUILDING.md).
 ### Usage
 For integrating into your own project, see [USAGE.md](./docs/USAGE.md).
 
+For a list of projects that currently use winwrap, see [CONSUMERS.md](./docs/CONSUMERS.md).
+
 ## About
 To see a list of the functions that this library shims/spoofs, see [FUNCTION_LIST.md](docs/FUNCTION_LIST.md).
 Most of them are complete; the ones that cannot be, and what they do instead, are in

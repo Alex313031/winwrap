@@ -112,7 +112,7 @@ goes wrong nothing says so: the binary links, it runs on your machine, and it
 fails at load on the Windows it was built for. So verify rather than assume:
 
 ```bat
-python3 tools\check_imports.py --min-os 5.01 Sawbuck.exe
+python3 tools\check_imports.py --min-os 5.01 example.exe
 ```
 
 It reads the import table and the subsystem version straight out of the PE and
@@ -123,7 +123,7 @@ cannot disagree with the library. There are no dependencies, and it does not
 have to run on Windows.
 
 ```
-Sawbuck.exe  (x86, subsystem version 5.01)
+example.exe  (x86, subsystem version 5.01)
   ok     subsystem version 5.01 is at or below 5.01
   ok     nothing winwrap covers is bound to a system DLL
 ```
@@ -239,17 +239,23 @@ the whole public surface:
 #include "winwrap_public.h"
 ```
 
-It declares the handful of functions winwrap supplies in its own right, rather
-than as stand-ins for Win32:
+`USING_WINWRAP` is defined for anything that links winwrap, through
+`direct_dependent_settings` in `winwrap.gyp` and `winwrap_public_config` in
+`BUILD.gn`. Nothing inside winwrap reads it; it is there so that a consumer can
+test for it.
 
-| | |
-|---|---|
+#### Extra functions
+`winwrap_public.h` declares the handful of useful extra functions that winwrap
+supplies (in its own right, rather than as stand-ins for Win32):
+
+| Function | Description |
+|----------|-------------|
 | `GetRealNTVersion()` | The host's real NT version from `RtlGetNtVersionNumbers`, in the form `_WIN32_WINNT` takes — `0x0501` on XP. Unaffected by the manifest-based lying `GetVersionEx` does from Windows 8 on. Compare with `>=`, so an unknown version reads as older |
 | `IsRunningOnWine(const char** out = nullptr)` | Whether this is Wine, optionally with its version string. The pointer is into ntdll's own data and needs no freeing |
 | `GetWinWrapVersion(unsigned* major, unsigned* minor, unsigned* build)` | Which winwrap this is. Returns the version as a string, e.g. `L"0.3.8"`; every out parameter is optional, so pass three `nullptr`s to use the return value alone |
 
-`DllGetVersion` is **not** here, though `winwrap.dll` does export it. A dozen
-system DLLs export that name too and winwrap's is rarely the one a caller
+`DllGetVersion` is **not** in the header, though `winwrap.dll` **does** export it.
+A dozen system DLLs export that name too and winwrap's is rarely the one a caller
 means, so a declaration on the include path would resolve to the wrong thing
 as easily as the right one. Use `GetProcAddress` on the module in question,
 with the SDK's own `DLLGETVERSIONPROC` for the pointer type — which is what
@@ -261,11 +267,6 @@ with the SDK's own `DLLGETVERSIONPROC` for the pointer type — which is what
 It is a shared-build export only; there is no such entry point in
 `winwrap.lib`. `test/winwrap_unittest.cc` exercises it exactly that way, and
 only when built against the DLL.
-
-`USING_WINWRAP` is defined for anything that links winwrap, through
-`direct_dependent_settings` in `winwrap.gyp` and `winwrap_public_config` in
-`BUILD.gn`. Nothing inside winwrap reads it; it is there so that a consumer can
-test for it.
 
 ### Calling a shim directly
 Rarely wanted, and required by none of the above: the shims are reached through
@@ -281,12 +282,14 @@ deliberately on a current OS — add `src` to your own include path and include
 `winwrap.h` directly. winwrap's own unit test does exactly that, in
 `test/BUILD.gn`.
 
-### A worked example
+### Working examples
 [Sawbuck-ng](https://github.com/Alex313031/sawbuck-ng) does all five steps in
 one conditional block, for a GYP project that is not Chromium:
 `sawbuck/viewer/viewer.gyp`, under `sawbuck_use_winwrap`. Every setting there
 carries a comment on why it is written the way it is, including the two attempts
 that failed first and the import-table evidence that identified each.
+
+For a list of other projects that use winwrap, see [CONSUMERS.md](CONSUMERS.md).
 
 ## Integrating into Chromium/Electron's GN system
 This is how winwrap is able to be built in tree using Chromium's native tools, and linked
